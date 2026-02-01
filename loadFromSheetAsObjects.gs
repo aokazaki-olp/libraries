@@ -14,7 +14,7 @@
  * 
  * サポートする source 形式:
  *   URL:   https://docs.google.com/spreadsheets/d/{id}/...?gid={gid}
- *   ID:    {id}
+ *   シート名: {name}（アクティブスプレッドシート対象）
  *   配列:  [{id}, {index}]
  *   配列:  [{id}, {name}]
  *   オブジェクト: { id: {id}, index: {index} }
@@ -90,7 +90,7 @@ const loadFromSheetAsObjects = (source, ...args) => {
    * @throws {Error} 指定した識別子（gid・インデックス・シート名）に該当するシートが見つからない場合
    * 
    * @example
-   *   resolve('abc123')                          // => 先頭シート
+   *   resolve('Sheet1')                                          // => アクティブスプレッドシートのシート名で検索
    *   resolve({ id: 'abc123', index: 1 })        // => インデックス1のシート
    *   resolve({ id: 'abc123', name: 'Sheet1' })  // => シート名で検索
    *   resolve(['abc123', 1])                     // => インデックス1のシート
@@ -163,9 +163,13 @@ const loadFromSheetAsObjects = (source, ...args) => {
       return spreadsheet.getSheets()[0];
     }
 
-    // 文字列（IDのみ）
+    // 文字列（アクティブスプレッドシートのシート名）
     if (typeof source === 'string') {
-      return SpreadsheetApp.openById(source).getSheets()[0];
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(source);
+      if (!sheet) {
+        throw new Error(`シートが見つかりません: name=${source}`);
+      }
+      return sheet;
     }
 
     // それ以外は Sheet オブジェクトとして直達
