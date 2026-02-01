@@ -15,11 +15,20 @@
  * サポートする source 形式:
  *   URL:   https://docs.google.com/spreadsheets/d/{id}/...?gid={gid}
  *   シート名: {name}（アクティブスプレッドシート対象）
- *   配列:  [{id}, {index}]
- *   配列:  [{id}, {name}]
- *   オブジェクト: { id: {id}, index: {index} }
+ *   配列:  [{urlOrId}, {index}]  ※ urlOrId は URL または ID（自動判定）
+ *   配列:  [{urlOrId}, {name}]
+ *   オブジェクト: { urlOrId: {urlOrId}, index: {index} }  ※ 自動判定
+ *   オブジェクト: { urlOrId: {urlOrId}, name: {name} }
+ *   オブジェクト: { url: {url}, index: {index} }  ※ 厳密に URL として扱う
+ *   オブジェクト: { url: {url}, name: {name} }
+ *   オブジェクト: { id: {id}, index: {index} }   ※ 厳密に ID として扱う
  *   オブジェクト: { id: {id}, name: {name} }
  *   Obj:   Sheet オブジェクト
+ *
+ * シート選択の優先順位:
+ *   1. index または name が指定されていればそれで選択
+ *   2. URL の場合、gid パラメータがあればそれで選択
+ *   3. 上記がなければ最初のシート
  * 
  * 使用例:
  *   const data = loadFromSheetAsObjects(sheet);
@@ -84,41 +93,34 @@ const loadFromSheetAsObjects = (source, ...args) => {
 
   /**
    * [内部] source を Sheet オブジェクトに解決
-   * 
+   *
    * @param {string|Array|Object} source ソース指定
    * @returns {GoogleAppsScript.Spreadsheet.Sheet} Sheetオブジェクト
    * @throws {Error} 指定した識別子（gid・インデックス・シート名）に該当するシートが見つからない場合
-   * 
+   *
    * @example
-   *   resolve('Sheet1')                                          // => アクティブスプレッドシートのシート名で検索
-   *   resolve({ id: 'abc123', index: 1 })        // => インデックス1のシート
-   *   resolve({ id: 'abc123', name: 'Sheet1' })  // => シート名で検索
-   *   resolve(['abc123', 1])                     // => インデックス1のシート
-   *   resolve(['abc123', 'Sheet1'])              // => シート名で検索
+   *   resolve('Sheet1')                              // => アクティブスプレッドシートのシート名で検索
+   *   resolve('https://docs.google.com/...?gid=123') // => URL + gid でシート選択
+   *   resolve(['abc123', 1])                         // => ID + インデックス
+   *   resolve(['https://...', 'Sheet1'])             // => URL + シート名
+   *   resolve({ urlOrId: 'abc123', index: 1 })       // => 自動判定 + インデックス
+   *   resolve({ urlOrId: 'https://...', name: 'Sheet1' }) // => 自動判定 + シート名
+   *   resolve({ url: 'https://...', index: 0 })      // => 厳密にURL + インデックス
+   *   resolve({ id: 'abc123', name: 'Sheet1' })      // => 厳密にID + シート名
    */
   const resolve = source => {
-    // URL
+    // URL文字列 → オブジェクト形式に変換して再帰処理
     if (typeof source === 'string' && isUrl(source)) {
-      const spreadsheet = SpreadsheetApp.openByUrl(source);
-      const gid = getGid(source);
-      const sheets = spreadsheet.getSheets();
-
-      if (gid != null) {
-        for (const sheet of sheets) {
-          if (sheet.getSheetId && sheet.getSheetId() === gid) {
-            return sheet;
-          }
-        }
-        throw new Error(`シートが見つかりません: gid=${gid}`);
-      }
-
-      return sheets[0];
+      return resolve({ urlOrId: source });
     }
 
-    // 配列: [id, index] または [id, name]
+    // 配列: [urlOrId, index] または [urlOrId, name]
     if (Array.isArray(source)) {
-      const [id, selector] = source;
-      const spreadsheet = SpreadsheetApp.openById(id);
+      const [urlOrId, selector] = source;
+      const useUrl = isUrl(urlOrId);
+      const spreadsheet = useUrl
+        ? SpreadsheetApp.openByUrl(urlOrId)
+        : SpreadsheetApp.openById(urlOrId);
 
       if (typeof selector === 'number') {
         const sheet = spreadsheet.getSheets()[selector];
@@ -136,13 +138,34 @@ const loadFromSheetAsObjects = (source, ...args) => {
         return sheet;
       }
 
+      // selector 指定なし、かつ URL の場合は gid で選択
+      if (useUrl) {
+        const gid = getGid(urlOrId);
+        if (gid != null) {
+          const sheets = spreadsheet.getSheets();
+          for (const sheet of sheets) {
+            if (sheet.getSheetId && sheet.getSheetId() === gid) {
+              return sheet;
+            }
+          }
+          throw new Error(`シートが見つかりません: gid=${gid}`);
+        }
+      }
+
       return spreadsheet.getSheets()[0];
     }
 
-    // オブジェクト: { id, index } または { id, name }
-    if (typeof source === 'object' && source !== null && source.id) {
-      const { id, index, name } = source;
-      const spreadsheet = SpreadsheetApp.openById(id);
+    // オブジェクト: { url, index/name } または { id, index/name } または { urlOrId, index/name }
+    if (typeof source === 'object' && source !== null && (source.url || source.id || source.urlOrId)) {
+      const { url, id, urlOrId, index, name } = source;
+
+      // 優先順位: url > id > urlOrId
+      const identifier = url ?? id ?? urlOrId;
+      const useUrl = url != null || (urlOrId != null && id == null && isUrl(urlOrId));
+
+      const spreadsheet = useUrl
+        ? SpreadsheetApp.openByUrl(url ?? urlOrId)
+        : SpreadsheetApp.openById(id ?? urlOrId);
 
       if (typeof index === 'number') {
         const sheet = spreadsheet.getSheets()[index];
@@ -158,6 +181,20 @@ const loadFromSheetAsObjects = (source, ...args) => {
           throw new Error(`シートが見つかりません: name=${name}`);
         }
         return sheet;
+      }
+
+      // index/name 指定なし、かつ URL の場合は gid で選択
+      if (useUrl) {
+        const gid = getGid(url ?? urlOrId);
+        if (gid != null) {
+          const sheets = spreadsheet.getSheets();
+          for (const sheet of sheets) {
+            if (sheet.getSheetId && sheet.getSheetId() === gid) {
+              return sheet;
+            }
+          }
+          throw new Error(`シートが見つかりません: gid=${gid}`);
+        }
       }
 
       return spreadsheet.getSheets()[0];
