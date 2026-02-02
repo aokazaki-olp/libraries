@@ -219,7 +219,7 @@ const ApiClient = (function () {
 
     const baseUrl = trimRightSlash(config.baseUrl || '');
     const transport = config.transport;
-    const log = config.logger || null;
+    const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers || {};
 
     // ─── 公開インターフェース（return で外に出る） ──────────────
@@ -259,7 +259,7 @@ const ApiClient = (function () {
           if (!hasHeader(mergedHeaders, 'Content-Type')) {
             mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
           }
-        } else if (log && log.warn) {
+        } else if (log) {
           log.warn(`[HTTP] ⚠ GETまたはHEADリクエストでbodyが検出されました。無視されます。 method=${method}, url=${url}`);
         }
       }
@@ -347,7 +347,8 @@ const ApiClient = (function () {
    * @returns {Object} ロギング機能付きトランスポート
    */
   const withLogger = (transport, logger) => {
-    if (!logger) {
+    const log = LoggerFacade.createLogger(logger);
+    if (!log) {
       return transport;
     }
 
@@ -356,26 +357,20 @@ const ApiClient = (function () {
         const method = options && options.method ? options.method : 'GET';
         const startMs = Date.now();
 
-        if (logger.debug) {
-          logger.debug(`[HTTP] → ${method} ${url}`);
-        }
+        log.debug(`[HTTP] → ${method} ${url}`);
 
         try {
           const response = transport.fetch(url, options);
           const elapsedMs = Date.now() - startMs;
 
-          if (logger.info) {
-            logger.info(`[HTTP] ← ${response.getResponseCode()} ${method} ${url} ${elapsedMs}ms`);
-          }
+          log.info(`[HTTP] ← ${response.getResponseCode()} ${method} ${url} ${elapsedMs}ms`);
 
           return response;
 
         } catch (e) {
           const elapsedMs = Date.now() - startMs;
 
-          if (logger.error) {
-            logger.error(`[HTTP] ✖ ${method} ${url} ${elapsedMs}ms`, e);
-          }
+          log.error(`[HTTP] ✖ ${method} ${url} ${elapsedMs}ms`, e);
 
           throw e;
         }
