@@ -13,13 +13,7 @@
  * - 明示がすべて: fn の戻り値とキー末尾の [] のみを構造化の根拠とする
  * 
  * サポートする source 形式:
- *   URL:   https://docs.google.com/spreadsheets/d/{id}/...?gid={gid}
- *   シート名: {name}（アクティブスプレッドシート対象）
- *   配列:  [{id}, {index}]
- *   配列:  [{id}, {name}]
- *   オブジェクト: { id: {id}, index: {index} }
- *   オブジェクト: { id: {id}, name: {name} }
- *   Obj:   Sheet オブジェクト
+ *   resolveSheet と同じ形式をサポート（resolveSheet.gs を参照）
  * 
  * 使用例:
  *   const data = loadFromSheetAsObjects(sheet);
@@ -63,119 +57,6 @@
  *   const data = loadFromSheetAsObjects(sheet, k => k.toLowerCase(), 100, 10);
  */
 const loadFromSheetAsObjects = (source, ...args) => {
-  /**
-   * [内部] URL が Google Spreadsheet URL かどうかを判定
-   * 
-   * @param {string} url URL文字列
-   * @returns {boolean} Spreadsheet URLの場合true
-   */
-  const isUrl = url => /^https?:\/\/.+\/spreadsheets\/d\//.test(url);
-
-  /**
-   * [内部] URL から gid（sheet ID）を抽出
-   * 
-   * @param {string} url SpreadsheetのURL
-   * @returns {number|null} gid（見つからない場合null）
-   */
-  const getGid = url => {
-    const match = url.match(/[?&#]gid=(\d+)/);
-    return match ? Number(match[1]) : null;
-  };
-
-  /**
-   * [内部] source を Sheet オブジェクトに解決
-   * 
-   * @param {string|Array|Object} source ソース指定
-   * @returns {GoogleAppsScript.Spreadsheet.Sheet} Sheetオブジェクト
-   * @throws {Error} 指定した識別子（gid・インデックス・シート名）に該当するシートが見つからない場合
-   * 
-   * @example
-   *   resolve('Sheet1')                                          // => アクティブスプレッドシートのシート名で検索
-   *   resolve({ id: 'abc123', index: 1 })        // => インデックス1のシート
-   *   resolve({ id: 'abc123', name: 'Sheet1' })  // => シート名で検索
-   *   resolve(['abc123', 1])                     // => インデックス1のシート
-   *   resolve(['abc123', 'Sheet1'])              // => シート名で検索
-   */
-  const resolve = source => {
-    // URL
-    if (typeof source === 'string' && isUrl(source)) {
-      const spreadsheet = SpreadsheetApp.openByUrl(source);
-      const gid = getGid(source);
-      const sheets = spreadsheet.getSheets();
-
-      if (gid != null) {
-        for (const sheet of sheets) {
-          if (sheet.getSheetId && sheet.getSheetId() === gid) {
-            return sheet;
-          }
-        }
-        throw new Error(`シートが見つかりません: gid=${gid}`);
-      }
-
-      return sheets[0];
-    }
-
-    // 配列: [id, index] または [id, name]
-    if (Array.isArray(source)) {
-      const [id, selector] = source;
-      const spreadsheet = SpreadsheetApp.openById(id);
-
-      if (typeof selector === 'number') {
-        const sheet = spreadsheet.getSheets()[selector];
-        if (!sheet) {
-          throw new Error(`シートが見つかりません: index=${selector}`);
-        }
-        return sheet;
-      }
-
-      if (typeof selector === 'string') {
-        const sheet = spreadsheet.getSheetByName(selector);
-        if (!sheet) {
-          throw new Error(`シートが見つかりません: name=${selector}`);
-        }
-        return sheet;
-      }
-
-      return spreadsheet.getSheets()[0];
-    }
-
-    // オブジェクト: { id, index } または { id, name }
-    if (typeof source === 'object' && source !== null && source.id) {
-      const { id, index, name } = source;
-      const spreadsheet = SpreadsheetApp.openById(id);
-
-      if (typeof index === 'number') {
-        const sheet = spreadsheet.getSheets()[index];
-        if (!sheet) {
-          throw new Error(`シートが見つかりません: index=${index}`);
-        }
-        return sheet;
-      }
-
-      if (typeof name === 'string') {
-        const sheet = spreadsheet.getSheetByName(name);
-        if (!sheet) {
-          throw new Error(`シートが見つかりません: name=${name}`);
-        }
-        return sheet;
-      }
-
-      return spreadsheet.getSheets()[0];
-    }
-
-    // 文字列（アクティブスプレッドシートのシート名）
-    if (typeof source === 'string') {
-      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(source);
-      if (!sheet) {
-        throw new Error(`シートが見つかりません: name=${source}`);
-      }
-      return sheet;
-    }
-
-    // それ以外は Sheet オブジェクトとして直達
-    return source;
-  };
-
   /**
    * [内部] キー末尾の [] 指定を解析（\[] はエスケープ）
    * 
@@ -284,7 +165,7 @@ const loadFromSheetAsObjects = (source, ...args) => {
   const fn = args.find(a => typeof a === 'function') || null;
   const [limit = Infinity, offset = 0] = args.filter(a => typeof a === 'number');
 
-  const sheet = resolve(source);
+  const sheet = resolveSheet(source);
 
   const lastRow = sheet.getLastRow();
   const lastColumn = sheet.getLastColumn();
