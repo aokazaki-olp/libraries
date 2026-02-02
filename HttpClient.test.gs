@@ -470,25 +470,9 @@ const runHttpCoreTests = () => {
 const runApiClientTests = () => {
   const { suite, test, assertEqual, assertDeepEqual, assertTrue, assertThrows } = TestRunner;
 
-  // ─── 後方互換性テスト ────────────────────────────────────────────
+  // ─── インターフェーステスト ──────────────────────────────────────
 
-  suite('ApiClient 後方互換性');
-
-  test('cloneHeaders が公開されている', () => {
-    assertTrue(typeof ApiClient.cloneHeaders === 'function');
-  });
-
-  test('createTransport が公開されている', () => {
-    assertTrue(typeof ApiClient.createTransport === 'function');
-  });
-
-  test('withRetry が公開されている', () => {
-    assertTrue(typeof ApiClient.withRetry === 'function');
-  });
-
-  test('withLogger が公開されている', () => {
-    assertTrue(typeof ApiClient.withLogger === 'function');
-  });
+  suite('ApiClient インターフェース');
 
   test('withBearerAuth が公開されている', () => {
     assertTrue(typeof ApiClient.withBearerAuth === 'function');

@@ -98,12 +98,12 @@ const SlackApiClient = (function () {
   const create = (token, logger) => {
     const client = ApiClient.createClient({
       baseUrl: CONFIG.BASE_URL,
-      transport: ApiClient.createTransport(),
+      transport: HttpCore.createTransport(),
       logger: logger
     })
       .extend(transport => ApiClient.withBearerAuth(transport, token))
       .extend(transport => withRetry(transport, { maxRetries: CONFIG.DEFAULT_MAX_RETRIES }))
-      .extend(transport => ApiClient.withLogger(transport, logger));
+      .extend(transport => HttpCore.withLogger(transport, logger));
 
     /**
      * Slack APIを呼び出し

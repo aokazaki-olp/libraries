@@ -431,12 +431,6 @@ const ApiClient = (function () {
   };
 
   return {
-    // 後方互換のため HttpCore の関数も公開
-    cloneHeaders: HttpCore.cloneHeaders,
-    createTransport: HttpCore.createTransport,
-    withRetry: HttpCore.withRetry,
-    withLogger: HttpCore.withLogger,
-    // ApiClient 固有
     withBearerAuth: withBearerAuth,
     createClient: createClient
   };
