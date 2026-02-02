@@ -135,11 +135,8 @@ const SlackApiClient = (function () {
       return response.body;
     };
 
-    return { call: call };
+    return { call };
   };
 
-  return {
-    withRetry: withRetry,
-    create: create
-  };
+  return { withRetry, create };
 })();

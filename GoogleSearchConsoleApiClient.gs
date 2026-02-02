@@ -93,11 +93,8 @@ const GoogleSearchConsoleApiClient = (function () {
       return response.body;
     };
 
-    return { call: call };
+    return { call };
   };
 
-  return {
-    withGoogleAuth: withGoogleAuth,
-    create: create
-  };
+  return { withGoogleAuth, create };
 })();

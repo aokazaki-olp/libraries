@@ -99,7 +99,5 @@ const LoggerFacade = (function () {
     };
   };
 
-  return {
-    createLogger: createLogger
-  };
+  return { createLogger };
 })();

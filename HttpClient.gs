@@ -131,7 +131,7 @@ const HttpCore = (function () {
       throw e;
     }
 
-    return { status: status, headers: headers, body: body, text: text };
+    return { status, headers, body, text };
   };
 
   // ─── Transport ──────────────────────────────────────────────────
@@ -255,14 +255,14 @@ const HttpCore = (function () {
   };
 
   return {
-    CONFIG: CONFIG,
-    cloneHeaders: cloneHeaders,
-    mergeHeaders: mergeHeaders,
-    hasHeader: hasHeader,
-    interpretResponse: interpretResponse,
-    createTransport: createTransport,
-    withRetry: withRetry,
-    withLogger: withLogger
+    CONFIG,
+    cloneHeaders,
+    mergeHeaders,
+    hasHeader,
+    interpretResponse,
+    createTransport,
+    withRetry,
+    withLogger
   };
 })();
 
@@ -427,13 +427,10 @@ const ApiClient = (function () {
       transport: decorator(transport)
     });
 
-    return { call: call, extend: extend };
+    return { call, extend };
   };
 
-  return {
-    withBearerAuth: withBearerAuth,
-    createClient: createClient
-  };
+  return { withBearerAuth, createClient };
 })();
 
 // ============================================================================
@@ -520,7 +517,7 @@ const WebhookClient = (function () {
       return HttpCore.interpretResponse(response, { url: webhookUrl, body: payload });
     };
 
-    return { send: send };
+    return { send };
   };
 
   /**
@@ -535,5 +532,5 @@ const WebhookClient = (function () {
     return create(webhookUrl, options).send(payload);
   };
 
-  return { create: create, send: send };
+  return { create, send };
 })();
