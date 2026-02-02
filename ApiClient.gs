@@ -219,7 +219,7 @@ const ApiClient = (function () {
 
     const baseUrl = trimRightSlash(config.baseUrl || '');
     const transport = config.transport;
-    const log = config.logger || null;
+    const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers || {};
 
     // ─── 公開インターフェース（return で外に出る） ──────────────
@@ -259,7 +259,7 @@ const ApiClient = (function () {
           if (!hasHeader(mergedHeaders, 'Content-Type')) {
             mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
           }
-        } else if (log && log.warn) {
+        } else if (log) {
           log.warn(`[HTTP] ⚠ GETまたはHEADリクエストでbodyが検出されました。無視されます。 method=${method}, url=${url}`);
         }
       }
@@ -295,19 +295,25 @@ const ApiClient = (function () {
    * @param {Object} retryOptions リトライ設定
    * @param {number} retryOptions.maxRetries 最大リトライ回数（デフォルト: 3）
    * @param {number} retryOptions.baseDelayMs 基本遅延時間（ミリ秒、デフォルト: 500）
+   * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
    */
   const withRetry = (transport, retryOptions) => {
     const config = retryOptions || {};
     const maxRetries = config.maxRetries != null ? config.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
     const delayMs = config.baseDelayMs != null ? config.baseDelayMs : CONFIG.DEFAULT_BASE_DELAY_MS;
+    const log = LoggerFacade.createLogger(config.logger);
 
     // 指数バックオフでスリープ
-    const sleepWithBackoff = (attempt, baseDelayMs) =>
-      Utilities.sleep(Math.pow(2, attempt) * baseDelayMs);
+    const sleepWithBackoff = (attempt, baseDelayMs) => {
+      const delay = Math.pow(2, attempt) * baseDelayMs;
+      Utilities.sleep(delay);
+      return delay;
+    };
 
     return {
       fetch: (url, options) => {
+        const method = options && options.method ? options.method : 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -317,9 +323,15 @@ const ApiClient = (function () {
 
             if (status === 429 || (status >= 500 && status < 600)) {
               if (attempt === maxRetries) {
+                if (log) {
+                  log.error(`[HTTP] ✖ RETRY exhausted status=${status} ${method} ${url}`);
+                }
                 throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
               }
-              sleepWithBackoff(attempt, delayMs);
+              const delay = sleepWithBackoff(attempt, delayMs);
+              if (log) {
+                log.warn(`[HTTP] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`);
+              }
               continue;
             }
 
@@ -328,9 +340,15 @@ const ApiClient = (function () {
           } catch (e) {
             lastError = e;
             if (attempt === maxRetries) {
+              if (log) {
+                log.error(`[HTTP] ✖ RETRY exhausted ${method} ${url}`, e);
+              }
               break;
             }
-            sleepWithBackoff(attempt, delayMs);
+            const delay = sleepWithBackoff(attempt, delayMs);
+            if (log) {
+              log.warn(`[HTTP] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`);
+            }
           }
         }
 
@@ -347,7 +365,8 @@ const ApiClient = (function () {
    * @returns {Object} ロギング機能付きトランスポート
    */
   const withLogger = (transport, logger) => {
-    if (!logger) {
+    const log = LoggerFacade.createLogger(logger);
+    if (!log) {
       return transport;
     }
 
@@ -356,26 +375,20 @@ const ApiClient = (function () {
         const method = options && options.method ? options.method : 'GET';
         const startMs = Date.now();
 
-        if (logger.debug) {
-          logger.debug(`[HTTP] → ${method} ${url}`);
-        }
+        log.debug(`[HTTP] → ${method} ${url}`);
 
         try {
           const response = transport.fetch(url, options);
           const elapsedMs = Date.now() - startMs;
 
-          if (logger.info) {
-            logger.info(`[HTTP] ← ${response.getResponseCode()} ${method} ${url} ${elapsedMs}ms`);
-          }
+          log.info(`[HTTP] ← ${response.getResponseCode()} ${method} ${url} ${elapsedMs}ms`);
 
           return response;
 
         } catch (e) {
           const elapsedMs = Date.now() - startMs;
 
-          if (logger.error) {
-            logger.error(`[HTTP] ✖ ${method} ${url} ${elapsedMs}ms`, e);
-          }
+          log.error(`[HTTP] ✖ ${method} ${url} ${elapsedMs}ms`, e);
 
           throw e;
         }
