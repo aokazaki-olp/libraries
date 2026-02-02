@@ -295,19 +295,25 @@ const ApiClient = (function () {
    * @param {Object} retryOptions リトライ設定
    * @param {number} retryOptions.maxRetries 最大リトライ回数（デフォルト: 3）
    * @param {number} retryOptions.baseDelayMs 基本遅延時間（ミリ秒、デフォルト: 500）
+   * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
    */
   const withRetry = (transport, retryOptions) => {
     const config = retryOptions || {};
     const maxRetries = config.maxRetries != null ? config.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
     const delayMs = config.baseDelayMs != null ? config.baseDelayMs : CONFIG.DEFAULT_BASE_DELAY_MS;
+    const log = LoggerFacade.createLogger(config.logger);
 
     // 指数バックオフでスリープ
-    const sleepWithBackoff = (attempt, baseDelayMs) =>
-      Utilities.sleep(Math.pow(2, attempt) * baseDelayMs);
+    const sleepWithBackoff = (attempt, baseDelayMs) => {
+      const delay = Math.pow(2, attempt) * baseDelayMs;
+      Utilities.sleep(delay);
+      return delay;
+    };
 
     return {
       fetch: (url, options) => {
+        const method = options && options.method ? options.method : 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -317,9 +323,15 @@ const ApiClient = (function () {
 
             if (status === 429 || (status >= 500 && status < 600)) {
               if (attempt === maxRetries) {
+                if (log) {
+                  log.error(`[HTTP] ✖ RETRY exhausted status=${status} ${method} ${url}`);
+                }
                 throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
               }
-              sleepWithBackoff(attempt, delayMs);
+              const delay = sleepWithBackoff(attempt, delayMs);
+              if (log) {
+                log.warn(`[HTTP] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`);
+              }
               continue;
             }
 
@@ -328,9 +340,15 @@ const ApiClient = (function () {
           } catch (e) {
             lastError = e;
             if (attempt === maxRetries) {
+              if (log) {
+                log.error(`[HTTP] ✖ RETRY exhausted ${method} ${url}`, e);
+              }
               break;
             }
-            sleepWithBackoff(attempt, delayMs);
+            const delay = sleepWithBackoff(attempt, delayMs);
+            if (log) {
+              log.warn(`[HTTP] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`);
+            }
           }
         }
 
