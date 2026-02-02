@@ -110,6 +110,77 @@ const runWithSlackRetryTests = () => {
       'リトライ回数上限'
     );
   });
+
+  suite('withSlackRetry ロガー');
+
+  test('429 リトライ時に warn ログを出力する', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {}, headers: { 'Retry-After': '1' } },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
+    retryTransport.fetch('http://example.com', { method: 'POST' });
+    assertEqual(logs.length, 1);
+    assertEqual(logs[0].level, 'warn');
+    assertTrue(logs[0].args[0].includes('[Slack]'));
+    assertTrue(logs[0].args[0].includes('RETRY'));
+    assertTrue(logs[0].args[0].includes('Retry-After=1s'));
+  });
+
+  test('500 リトライ時に warn ログを出力する', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 500, body: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
+    retryTransport.fetch('http://example.com', { method: 'POST' });
+    assertEqual(logs.length, 1);
+    assertEqual(logs[0].level, 'warn');
+    assertTrue(logs[0].args[0].includes('[Slack]'));
+    assertTrue(logs[0].args[0].includes('status=500'));
+  });
+
+  test('リトライ上限時に error ログを出力する', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} },
+      { status: 429, body: {} }
+    ]);
+    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 1, logger: mockLogger });
+    try {
+      retryTransport.fetch('http://example.com', { method: 'POST' });
+    } catch (e) {
+      // expected
+    }
+    const errorLogs = logs.filter(l => l.level === 'error');
+    assertEqual(errorLogs.length, 1);
+    assertTrue(errorLogs[0].args[0].includes('[Slack]'));
+    assertTrue(errorLogs[0].args[0].includes('exhausted'));
+  });
+
+  test('ロガーなしでも動作する', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+  });
 };
 
 // ============================================================================
