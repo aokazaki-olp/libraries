@@ -387,7 +387,7 @@ const ApiClient = (function () {
       const mergedHeaders = HttpCore.mergeHeaders(headers, request.headers);
 
       const options = {
-        method: method,
+        method,
         headers: mergedHeaders,
         muteHttpExceptions: true
       };
@@ -421,7 +421,7 @@ const ApiClient = (function () {
      * @returns {Object} 新しいクライアント
      */
     const extend = decorator => createClient({
-      baseUrl: baseUrl,
+      baseUrl,
       logger: log,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport)
@@ -504,7 +504,7 @@ const WebhookClient = (function () {
 
       const fetchOptions = {
         method: 'POST',
-        headers: headers,
+        headers,
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
       };

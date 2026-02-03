@@ -65,7 +65,7 @@ const GoogleSearchConsoleApiClient = (function () {
     const client = ApiClient.createClient({
       baseUrl: `${CONFIG.BASE_URL}/sites/${encodeURIComponent(normalizeSiteUrl(siteUrl))}`,
       transport: HttpCore.createTransport(),
-      logger: logger
+      logger
     })
       .extend(withGoogleAuth)
       .extend(transport => HttpCore.withRetry(transport, {
