@@ -33,15 +33,9 @@ const GoogleSearchConsoleApiClient = (function () {
    */
   const withGoogleAuth = transport => ({
     fetch: (url, options) => {
-      const opts = options || {};
-      const headers = HttpCore.cloneHeaders(opts.headers);
-
-      // Google OAuthトークンを取得
-      const token = ScriptApp.getOAuthToken();
-      headers.Authorization = `Bearer ${token}`;
-
-      opts.headers = headers;
-      return transport.fetch(url, opts);
+      const headers = HttpCore.cloneHeaders(options && options.headers);
+      headers.Authorization = `Bearer ${ScriptApp.getOAuthToken()}`;
+      return transport.fetch(url, { ...options, headers });
     }
   });
 

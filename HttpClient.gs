@@ -296,11 +296,9 @@ const ApiClient = (function () {
    */
   const withBearerAuth = (transport, token) => ({
     fetch: (url, options) => {
-      const opts = options || {};
-      const headers = HttpCore.cloneHeaders(opts.headers);
+      const headers = HttpCore.cloneHeaders(options && options.headers);
       headers.Authorization = `Bearer ${token}`;
-      opts.headers = headers;
-      return transport.fetch(url, opts);
+      return transport.fetch(url, { ...options, headers });
     }
   });
 

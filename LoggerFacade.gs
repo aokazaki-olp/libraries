@@ -47,8 +47,8 @@ const LoggerFacade = (function () {
    *   - warn:  warn → warning → log
    *   - error: error → severe → log
    *
-   * @param {Object} impl ロガー実装（console, Logger, winston, BBLog等）
-   * @returns {Logger|null} 統一されたLoggerインターフェース、implがnullの場合はnull
+   * @param {Object} logger ロガー実装（console, Logger, winston, BBLog等）
+   * @returns {Logger|null} 統一されたLoggerインターフェース、loggerがnullの場合はnull
    *
    * @example
    *   // console（ブラウザ/Node）
@@ -70,8 +70,8 @@ const LoggerFacade = (function () {
    *   // ログ無効化
    *   const logger = LoggerFacade.createLogger(null);
    */
-  const createLogger = impl => {
-    if (!impl) {
+  const createLogger = logger => {
+    if (!logger) {
       return null;
     }
 
@@ -83,8 +83,8 @@ const LoggerFacade = (function () {
      */
     const resolve = (...candidates) => {
       for (const name of candidates) {
-        if (typeof impl[name] === 'function') {
-          return (...args) => impl[name](...args);
+        if (typeof logger[name] === 'function') {
+          return (...args) => logger[name](...args);
         }
       }
       return () => {};
