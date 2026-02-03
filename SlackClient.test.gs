@@ -60,17 +60,17 @@ const runSlackWebhookClientTests = () => {
 };
 
 // ============================================================================
-// withSlackRetry テスト
+// SlackCore.withRetry テスト
 // ============================================================================
 
-const runWithSlackRetryTests = () => {
+const runSlackCoreTests = () => {
   const { suite, test, assertEqual, assertTrue, assertThrows } = TestRunner;
 
-  suite('withSlackRetry');
+  suite('SlackCore.withRetry');
 
   test('成功時はリトライしない', () => {
     const mockTransport = MockTransport.success({ ok: true });
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
     retryTransport.fetch('http://example.com', {});
     assertEqual(mockTransport.getCallCount(), 1);
   });
@@ -80,7 +80,7 @@ const runWithSlackRetryTests = () => {
       { status: 429, body: {}, headers: { 'Retry-After': '1' } },
       { status: 200, body: { ok: true } }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
     const response = retryTransport.fetch('http://example.com', {});
     assertEqual(response.getResponseCode(), 200);
     assertEqual(mockTransport.getCallCount(), 2);
@@ -91,7 +91,7 @@ const runWithSlackRetryTests = () => {
       { status: 500, body: {} },
       { status: 200, body: { ok: true } }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
     const response = retryTransport.fetch('http://example.com', {});
     assertEqual(response.getResponseCode(), 200);
     assertEqual(mockTransport.getCallCount(), 2);
@@ -104,14 +104,14 @@ const runWithSlackRetryTests = () => {
       { status: 429, body: {} },
       { status: 429, body: {} }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
     assertThrows(
       () => retryTransport.fetch('http://example.com', {}),
       'リトライ回数上限'
     );
   });
 
-  suite('withSlackRetry ロガー');
+  suite('SlackCore.withRetry ロガー');
 
   test('429 リトライ時に warn ログを出力する', () => {
     const logs = [];
@@ -123,7 +123,7 @@ const runWithSlackRetryTests = () => {
       { status: 429, body: {}, headers: { 'Retry-After': '1' } },
       { status: 200, body: { ok: true } }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
     retryTransport.fetch('http://example.com', { method: 'POST' });
     assertEqual(logs.length, 1);
     assertEqual(logs[0].level, 'warn');
@@ -142,7 +142,7 @@ const runWithSlackRetryTests = () => {
       { status: 500, body: {} },
       { status: 200, body: { ok: true } }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
     retryTransport.fetch('http://example.com', { method: 'POST' });
     assertEqual(logs.length, 1);
     assertEqual(logs[0].level, 'warn');
@@ -160,7 +160,7 @@ const runWithSlackRetryTests = () => {
       { status: 429, body: {} },
       { status: 429, body: {} }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 1, logger: mockLogger });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 1, logger: mockLogger });
     try {
       retryTransport.fetch('http://example.com', { method: 'POST' });
     } catch (e) {
@@ -177,7 +177,7 @@ const runWithSlackRetryTests = () => {
       { status: 429, body: {} },
       { status: 200, body: { ok: true } }
     ]);
-    const retryTransport = withSlackRetry(mockTransport, { maxRetries: 3 });
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
     const response = retryTransport.fetch('http://example.com', {});
     assertEqual(response.getResponseCode(), 200);
   });
@@ -193,8 +193,8 @@ const runWithSlackRetryTests = () => {
 function runAllSlackClientTests() {
   TestRunner.reset();
 
-  console.log('Running withSlackRetry tests...');
-  runWithSlackRetryTests();
+  console.log('Running SlackCore tests...');
+  runSlackCoreTests();
 
   console.log('Running SlackApiClient tests...');
   runSlackApiClientTests();
