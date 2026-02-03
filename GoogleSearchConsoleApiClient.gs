@@ -33,15 +33,9 @@ const GoogleSearchConsoleApiClient = (function () {
    */
   const withGoogleAuth = transport => ({
     fetch: (url, options) => {
-      const opts = options || {};
-      const headers = ApiClient.cloneHeaders(opts.headers);
-
-      // Google OAuthトークンを取得
-      const token = ScriptApp.getOAuthToken();
-      headers.Authorization = `Bearer ${token}`;
-
-      opts.headers = headers;
-      return transport.fetch(url, opts);
+      const headers = HttpCore.cloneHeaders(options && options.headers);
+      headers.Authorization = `Bearer ${ScriptApp.getOAuthToken()}`;
+      return transport.fetch(url, { ...options, headers });
     }
   });
 
@@ -64,15 +58,15 @@ const GoogleSearchConsoleApiClient = (function () {
 
     const client = ApiClient.createClient({
       baseUrl: `${CONFIG.BASE_URL}/sites/${encodeURIComponent(normalizeSiteUrl(siteUrl))}`,
-      transport: ApiClient.createTransport(),
-      logger: logger
+      transport: HttpCore.createTransport(),
+      logger
     })
       .extend(withGoogleAuth)
-      .extend(transport => ApiClient.withRetry(transport, { 
-        maxRetries: CONFIG.DEFAULT_MAX_RETRIES, 
-        baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS 
+      .extend(transport => HttpCore.withRetry(transport, {
+        maxRetries: CONFIG.DEFAULT_MAX_RETRIES,
+        baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS
       }))
-      .extend(transport => ApiClient.withLogger(transport, logger));
+      .extend(transport => HttpCore.withLogger(transport, logger));
 
     /**
      * Google Search Console APIを呼び出し
@@ -93,11 +87,8 @@ const GoogleSearchConsoleApiClient = (function () {
       return response.body;
     };
 
-    return { call: call };
+    return { call };
   };
 
-  return {
-    withGoogleAuth: withGoogleAuth,
-    create: create
-  };
+  return { withGoogleAuth, create };
 })();

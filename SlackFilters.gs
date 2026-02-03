@@ -424,32 +424,32 @@ const SlackFilters = (function () {
 
   return {
     // Mrkdwn装飾
-    bold:          bold,
-    italic:        italic,
-    strike:        strike,
-    code:          code,
-    pre:           pre,
+    bold,
+    italic,
+    strike,
+    code,
+    pre,
 
     // エスケープ
-    escapeMrkdwn:  escapeMrkdwn,
-    escapeHtml:    escapeHtml,
-    escapeJson:    escapeJson,
+    escapeMrkdwn,
+    escapeHtml,
+    escapeJson,
 
     // 参照リンク
-    slackUser:     slackUser,
-    slackChannel:  slackChannel,
-    slackSpecial:  slackSpecial,
-    slackLink:     slackLink,
-    slackMail:     slackMail,
+    slackUser,
+    slackChannel,
+    slackSpecial,
+    slackLink,
+    slackMail,
 
     // 日時
-    slackDate:     slackDate,
-    slackDateFmt:  slackDateFmt,
+    slackDate,
+    slackDateFmt,
 
     // ユーティリティ
-    slackTruncate: slackTruncate,
-    slackNewline:  slackNewline,
-    slackBullet:   slackBullet,
-    slackNumbered: slackNumbered
+    slackTruncate,
+    slackNewline,
+    slackBullet,
+    slackNumbered
   };
 })();
