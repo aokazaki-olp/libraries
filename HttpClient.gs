@@ -4,7 +4,7 @@
  * HttpClient.gs
  *
  * @description GAS上で動くHTTPクライアント群（HttpCore / ApiClient / WebhookClient）
- * @version 2.0.0
+ * @version 1.0.0
  * @author Arihiro OKAZAKI
  * @created 2026-01-28
  * @modified 2026-02-02
