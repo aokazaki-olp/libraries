@@ -497,6 +497,41 @@ const ApiClient = (function () {
      * // 単体メソッド
      * client.use('myMethod', ({ call }) => (arg) => call({ ... }))
      */
+    /**
+     * 拡張されたクライアントを作成するヘルパー
+     *
+     * @param {Object} additionalMethods 追加するメソッド
+     * @returns {Object} 拡張されたクライアント
+     */
+    const createExtendedClient = additionalMethods => {
+      const extendedUse = (pluginOrName, fn) => {
+        let newMethods;
+
+        if (typeof pluginOrName === 'string') {
+          const name = pluginOrName;
+          const method = fn({ call, get, post, put, patch, delete: del });
+          newMethods = { [name]: method };
+        } else {
+          newMethods = pluginOrName({ call, get, post, put, patch, delete: del });
+        }
+
+        // 既存のメソッドと新しいメソッドをマージ
+        return createExtendedClient({ ...additionalMethods, ...newMethods });
+      };
+
+      return {
+        ...additionalMethods,
+        call,
+        extend,
+        use: extendedUse,
+        get,
+        post,
+        put,
+        patch,
+        delete: del
+      };
+    };
+
     const use = (pluginOrName, fn) => {
       let methods;
 
@@ -510,17 +545,7 @@ const ApiClient = (function () {
         methods = pluginOrName({ call, get, post, put, patch, delete: del });
       }
 
-      return {
-        ...methods,
-        call,
-        extend,
-        use,
-        get,
-        post,
-        put,
-        patch,
-        delete: del
-      };
+      return createExtendedClient(methods);
     };
 
     return { call, extend, use, get, post, put, patch, delete: del };

@@ -149,16 +149,24 @@ const runSlackApiClientTests = () => {
     const Plugin1 = ({ call }) => ({ method1: () => 'one' });
     const Plugin2 = ({ call }) => ({ method2: () => 'two' });
 
-    // モックの use 関数をシミュレート
+    // モックの use 関数をシミュレート（createExtendedClient パターン）
     const mockCall = () => {};
-    let client = { call: mockCall, use: null };
 
-    // use の実装をシミュレート
-    const use = (plugin) => {
-      const methods = plugin({ call: client.call });
-      return { ...methods, call: client.call, use };
+    // チェーン可能な use を作成するヘルパー
+    const createExtendedClient = (call, additionalMethods) => {
+      const extendedUse = (plugin) => {
+        const newMethods = plugin({ call });
+        return createExtendedClient(call, { ...additionalMethods, ...newMethods });
+      };
+      return { ...additionalMethods, call, use: extendedUse };
     };
-    client.use = use;
+
+    const use = (plugin) => {
+      const methods = plugin({ call: mockCall });
+      return createExtendedClient(mockCall, methods);
+    };
+
+    const client = { call: mockCall, use };
 
     const extended = client.use(Plugin1).use(Plugin2);
     assertEqual(extended.method1(), 'one');

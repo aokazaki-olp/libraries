@@ -215,6 +215,39 @@ const SlackApiClient = (function () {
     // ─── Plugin 注入 ──────────────────────────────────────────────
 
     /**
+     * 拡張されたクライアントを作成するヘルパー
+     *
+     * @param {Object} additionalMethods 追加するメソッド
+     * @returns {Object} 拡張されたクライアント
+     */
+    const createExtendedClient = additionalMethods => {
+      const extendedUse = (pluginOrName, fn) => {
+        let newMethods;
+
+        if (typeof pluginOrName === 'string') {
+          const name = pluginOrName;
+          const method = fn({ call, get, post, put, patch, delete: del });
+          newMethods = { [name]: method };
+        } else {
+          newMethods = pluginOrName({ call, get, post, put, patch, delete: del });
+        }
+
+        return createExtendedClient({ ...additionalMethods, ...newMethods });
+      };
+
+      return {
+        ...additionalMethods,
+        call,
+        use: extendedUse,
+        get,
+        post,
+        put,
+        patch,
+        delete: del
+      };
+    };
+
+    /**
      * Plugin または単体メソッドを注入して拡張
      *
      * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
@@ -232,16 +265,7 @@ const SlackApiClient = (function () {
         methods = pluginOrName({ call, get, post, put, patch, delete: del });
       }
 
-      return {
-        ...methods,
-        call,
-        use,
-        get,
-        post,
-        put,
-        patch,
-        delete: del
-      };
+      return createExtendedClient(methods);
     };
 
     return { call, use, get, post, put, patch, delete: del };
