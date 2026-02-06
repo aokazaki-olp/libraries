@@ -278,76 +278,63 @@ const HttpCore = (function () {
 const ClientHelper = (function () {
 
   /**
-   * use() メソッドを持つクライアントを作成するヘルパー
+   * HTTP メソッドショートカットを生成
    *
-   * @param {Object} context クライアントコンテキスト
-   * @param {Function} context.call call 関数
-   * @param {Function} context.get get 関数
-   * @param {Function} context.post post 関数
-   * @param {Function} context.put put 関数
-   * @param {Function} context.patch patch 関数
-   * @param {Function} context.delete delete 関数
-   * @param {Function} [context.extend] extend 関数（任意）
-   * @param {Object} additionalMethods 追加するメソッド
-   * @returns {Object} 拡張されたクライアント
+   * @param {Function} call call 関数
+   * @returns {Object} { get, post, put, patch, delete }
    */
-  const createExtendedClient = (context, additionalMethods) => {
-    const { call, get, post, put, patch, delete: del, extend } = context;
-
-    const use = (pluginOrName, fn) => {
-      let newMethods;
-
-      if (typeof pluginOrName === 'string') {
-        const name = pluginOrName;
-        const method = fn({ call, get, post, put, patch, delete: del });
-        newMethods = { [name]: method };
-      } else {
-        newMethods = pluginOrName({ call, get, post, put, patch, delete: del });
-      }
-
-      return createExtendedClient(context, { ...additionalMethods, ...newMethods });
-    };
-
-    const client = {
-      ...additionalMethods,
-      call,
-      use,
-      get,
-      post,
-      put,
-      patch,
-      delete: del
-    };
-
-    if (extend) {
-      client.extend = extend;
-    }
-
-    return client;
-  };
+  const createHttpMethods = call => ({
+    get: (endpoint, query, options) =>
+      call({ method: 'GET', endpoint, query, ...options }),
+    post: (endpoint, body, options) =>
+      call({ method: 'POST', endpoint, body, ...options }),
+    put: (endpoint, body, options) =>
+      call({ method: 'PUT', endpoint, body, ...options }),
+    patch: (endpoint, body, options) =>
+      call({ method: 'PATCH', endpoint, body, ...options }),
+    delete: (endpoint, options) =>
+      call({ method: 'DELETE', endpoint, ...options })
+  });
 
   /**
-   * 初回の use() 関数を作成
+   * use() 機能付きクライアントを作成
    *
-   * @param {Object} context クライアントコンテキスト
-   * @returns {Function} use 関数
+   * @param {Function} call call 関数
+   * @param {Object} [options] オプション
+   * @param {Function} [options.extend] extend 関数
+   * @returns {Object} クライアント { call, use, get, post, put, patch, delete, [extend] }
    */
-  const createUse = context => (pluginOrName, fn) => {
-    const { call, get, post, put, patch, delete: del } = context;
-    let methods;
+  const createClient = (call, options) => {
+    const opts = options || {};
+    const methods = createHttpMethods(call);
 
-    if (typeof pluginOrName === 'string') {
-      const name = pluginOrName;
-      const method = fn({ call, get, post, put, patch, delete: del });
-      methods = { [name]: method };
-    } else {
-      methods = pluginOrName({ call, get, post, put, patch, delete: del });
-    }
+    const createExtended = additionalMethods => {
+      const use = (pluginOrName, fn) => {
+        let newMethods;
+        const context = { call, ...methods };
 
-    return createExtendedClient(context, methods);
+        if (typeof pluginOrName === 'string') {
+          newMethods = { [pluginOrName]: fn(context) };
+        } else {
+          newMethods = pluginOrName(context);
+        }
+
+        return createExtended({ ...additionalMethods, ...newMethods });
+      };
+
+      const client = { ...additionalMethods, call, use, ...methods };
+
+      if (opts.extend) {
+        client.extend = opts.extend;
+      }
+
+      return client;
+    };
+
+    return createExtended({});
   };
 
-  return { createExtendedClient, createUse };
+  return { createHttpMethods, createClient };
 })();
 
 // ============================================================================
@@ -509,68 +496,7 @@ const ApiClient = (function () {
       transport: decorator(transport)
     });
 
-    // ─── HTTP メソッドショートカット ───────────────────────────────
-
-    /**
-     * GETリクエスト
-     *
-     * @param {string} endpoint エンドポイント
-     * @param {Object} query クエリパラメータ
-     * @param {Object} options その他オプション
-     * @returns {Object} レスポンス
-     */
-    const get = (endpoint, query, options) =>
-      call({ method: 'GET', endpoint, query, ...options });
-
-    /**
-     * POSTリクエスト
-     *
-     * @param {string} endpoint エンドポイント
-     * @param {Object} body リクエストボディ
-     * @param {Object} options その他オプション
-     * @returns {Object} レスポンス
-     */
-    const post = (endpoint, body, options) =>
-      call({ method: 'POST', endpoint, body, ...options });
-
-    /**
-     * PUTリクエスト
-     *
-     * @param {string} endpoint エンドポイント
-     * @param {Object} body リクエストボディ
-     * @param {Object} options その他オプション
-     * @returns {Object} レスポンス
-     */
-    const put = (endpoint, body, options) =>
-      call({ method: 'PUT', endpoint, body, ...options });
-
-    /**
-     * PATCHリクエスト
-     *
-     * @param {string} endpoint エンドポイント
-     * @param {Object} body リクエストボディ
-     * @param {Object} options その他オプション
-     * @returns {Object} レスポンス
-     */
-    const patch = (endpoint, body, options) =>
-      call({ method: 'PATCH', endpoint, body, ...options });
-
-    /**
-     * DELETEリクエスト
-     *
-     * @param {string} endpoint エンドポイント
-     * @param {Object} options その他オプション
-     * @returns {Object} レスポンス
-     */
-    const del = (endpoint, options) =>
-      call({ method: 'DELETE', endpoint, ...options });
-
-    // ─── Plugin 注入 ──────────────────────────────────────────────
-
-    const context = { call, get, post, put, patch, delete: del, extend };
-    const use = ClientHelper.createUse(context);
-
-    return { call, extend, use, get, post, put, patch, delete: del };
+    return ClientHelper.createClient(call, { extend });
   };
 
   return { withBearerAuth, createClient };

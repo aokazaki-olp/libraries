@@ -195,29 +195,7 @@ const SlackApiClient = (function () {
       return response.body;
     };
 
-    // ─── HTTP メソッドショートカット ───────────────────────────────
-
-    const get = (endpoint, query, options) =>
-      call({ method: 'GET', endpoint, query, ...options });
-
-    const post = (endpoint, body, options) =>
-      call({ method: 'POST', endpoint, body, ...options });
-
-    const put = (endpoint, body, options) =>
-      call({ method: 'PUT', endpoint, body, ...options });
-
-    const patch = (endpoint, body, options) =>
-      call({ method: 'PATCH', endpoint, body, ...options });
-
-    const del = (endpoint, options) =>
-      call({ method: 'DELETE', endpoint, ...options });
-
-    // ─── Plugin 注入 ──────────────────────────────────────────────
-
-    const context = { call, get, post, put, patch, delete: del };
-    const use = ClientHelper.createUse(context);
-
-    return { call, use, get, post, put, patch, delete: del };
+    return ClientHelper.createClient(call);
   };
 
   return { create };
