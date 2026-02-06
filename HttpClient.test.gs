@@ -667,6 +667,256 @@ const runApiClientTests = () => {
     assertEqual(response.status, 200);
     assertDeepEqual(response.body, { users: [{ id: 1 }] });
   });
+
+  // ─── HTTP メソッドショートカット テスト ─────────────────────────
+
+  suite('ApiClient HTTP メソッド');
+
+  test('get メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.get === 'function');
+  });
+
+  test('post メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.post === 'function');
+  });
+
+  test('put メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.put === 'function');
+  });
+
+  test('patch メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.patch === 'function');
+  });
+
+  test('delete メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.delete === 'function');
+  });
+
+  test('get で GET リクエストを送信する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.get('/users', { page: 1 });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'GET');
+    assertTrue(call.url.includes('/users'));
+    assertTrue(call.url.includes('page=1'));
+  });
+
+  test('post で POST リクエストを送信する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.post('/users', { name: 'John' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'POST');
+    assertEqual(call.options.payload, '{"name":"John"}');
+  });
+
+  test('put で PUT リクエストを送信する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.put('/users/1', { name: 'Jane' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'PUT');
+    assertTrue(call.url.includes('/users/1'));
+  });
+
+  test('patch で PATCH リクエストを送信する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.patch('/users/1', { name: 'Jane' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'PATCH');
+  });
+
+  test('delete で DELETE リクエストを送信する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.delete('/users/1');
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'DELETE');
+    assertTrue(call.url.includes('/users/1'));
+  });
+
+  // ─── use() メソッド テスト ──────────────────────────────────────
+
+  suite('ApiClient.use');
+
+  test('use メソッドが公開されている', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertTrue(typeof client.use === 'function');
+  });
+
+  test('use で Plugin を注入できる', () => {
+    const mockTransport = MockTransport.success({ result: 'success' });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ call }) => ({
+      customMethod: (id) => call({ endpoint: `/items/${id}`, method: 'GET' })
+    });
+
+    const extended = client.use(TestPlugin);
+    assertTrue(typeof extended.customMethod === 'function');
+  });
+
+  test('use 後も call が使える', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ call }) => ({
+      customMethod: () => call({ endpoint: '/test', method: 'GET' })
+    });
+
+    const extended = client.use(TestPlugin);
+    assertTrue(typeof extended.call === 'function');
+  });
+
+  test('use 後も use が使える（チェーン可能）', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const Plugin1 = ({ call }) => ({ method1: () => 'one' });
+    const Plugin2 = ({ call }) => ({ method2: () => 'two' });
+
+    const extended = client.use(Plugin1).use(Plugin2);
+    assertTrue(typeof extended.method1 === 'function');
+    assertTrue(typeof extended.method2 === 'function');
+  });
+
+  test('use 後も HTTP メソッドが使える', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ call }) => ({ customMethod: () => {} });
+    const extended = client.use(TestPlugin);
+
+    assertTrue(typeof extended.get === 'function');
+    assertTrue(typeof extended.post === 'function');
+    assertTrue(typeof extended.put === 'function');
+    assertTrue(typeof extended.patch === 'function');
+    assertTrue(typeof extended.delete === 'function');
+  });
+
+  test('use で単体メソッドを注入できる', () => {
+    const mockTransport = MockTransport.success({ id: 123 });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const extended = client.use('getItem', ({ call }) =>
+      (id) => call({ endpoint: `/items/${id}`, method: 'GET' })
+    );
+
+    assertTrue(typeof extended.getItem === 'function');
+  });
+
+  test('Plugin 内で call を使って実際にリクエストする', () => {
+    const mockTransport = MockTransport.success({ name: 'Test Item' });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ call }) => ({
+      getItem: (id) => call({ endpoint: `/items/${id}`, method: 'GET' })
+    });
+
+    const extended = client.use(TestPlugin);
+    const response = extended.getItem(42);
+
+    const call = mockTransport.getCalls()[0];
+    assertTrue(call.url.includes('/items/42'));
+    assertEqual(response.body.name, 'Test Item');
+  });
+
+  test('Plugin 内で HTTP メソッドショートカットを使える', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ get, post }) => ({
+      listItems: () => get('/items'),
+      createItem: (data) => post('/items', data)
+    });
+
+    const extended = client.use(TestPlugin);
+    extended.listItems();
+
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'GET');
+    assertTrue(call.url.includes('/items'));
+  });
+
+  test('use 後も extend が使える', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const TestPlugin = ({ call }) => ({ customMethod: () => {} });
+    const extended = client.use(TestPlugin);
+
+    assertTrue(typeof extended.extend === 'function');
+  });
 };
 
 // ============================================================================

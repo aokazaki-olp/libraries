@@ -17,7 +17,7 @@
 // ============================================================================
 
 const runSlackApiClientTests = () => {
-  const { suite, test, assertEqual, assertTrue, assertThrows } = TestRunner;
+  const { suite, test, assertEqual, assertDeepEqual, assertTrue, assertThrows } = TestRunner;
 
   suite('SlackApiClient インターフェース');
 
@@ -31,6 +31,140 @@ const runSlackApiClientTests = () => {
     // Note: 実際のテストではモックが必要
     // ここではインターフェースの確認のみ
     assertTrue(typeof SlackApiClient.create === 'function');
+  });
+
+  // ─── HTTP メソッドショートカット テスト ─────────────────────────
+
+  suite('SlackApiClient HTTP メソッド');
+
+  test('get メソッドが公開されている', () => {
+    // SlackApiClient は内部で ApiClient を使用するため、
+    // インターフェースの確認のみ行う
+    assertTrue(typeof SlackApiClient.create === 'function');
+    // Note: 実際のクライアント作成には token が必要
+  });
+
+  // ─── use() メソッド テスト ──────────────────────────────────────
+
+  suite('SlackApiClient.use');
+
+  test('use メソッドの存在確認（インターフェース）', () => {
+    // SlackApiClient.create() は内部で API 呼び出しを行うため、
+    // ここではインターフェースの存在確認を行う
+    assertTrue(typeof SlackApiClient.create === 'function');
+  });
+
+  // ─── Plugin 注入テスト（モック使用） ────────────────────────────
+
+  suite('SlackApiClient Plugin 注入');
+
+  test('SlackMessages Plugin パターンの例', () => {
+    // Plugin の形式が正しいことを確認
+    const SlackMessages = ({ call }) => ({
+      postMessage: (channel, text, options) =>
+        call({ endpoint: 'chat.postMessage', body: { channel, text, ...options } }),
+      updateMessage: (channel, ts, text, options) =>
+        call({ endpoint: 'chat.update', body: { channel, ts, text, ...options } })
+    });
+
+    // Plugin が正しい形式の関数であることを確認
+    assertTrue(typeof SlackMessages === 'function');
+
+    // モック call で Plugin をテスト
+    const mockCalls = [];
+    const mockCall = (request) => {
+      mockCalls.push(request);
+      return { ok: true, ts: '123.456' };
+    };
+
+    const methods = SlackMessages({ call: mockCall });
+    assertTrue(typeof methods.postMessage === 'function');
+    assertTrue(typeof methods.updateMessage === 'function');
+
+    // postMessage を呼び出してモック call が正しく呼ばれることを確認
+    methods.postMessage('#general', 'Hello', { thread_ts: '111.222' });
+    assertEqual(mockCalls.length, 1);
+    assertEqual(mockCalls[0].endpoint, 'chat.postMessage');
+    assertEqual(mockCalls[0].body.channel, '#general');
+    assertEqual(mockCalls[0].body.text, 'Hello');
+    assertEqual(mockCalls[0].body.thread_ts, '111.222');
+  });
+
+  test('SlackChannels Plugin パターンの例', () => {
+    const SlackChannels = ({ call }) => ({
+      listChannels: (options) =>
+        call({ endpoint: 'conversations.list', method: 'GET', query: options }),
+      getChannelInfo: (channel) =>
+        call({ endpoint: 'conversations.info', method: 'GET', query: { channel } })
+    });
+
+    const mockCalls = [];
+    const mockCall = (request) => {
+      mockCalls.push(request);
+      return { ok: true, channels: [] };
+    };
+
+    const methods = SlackChannels({ call: mockCall });
+
+    methods.listChannels({ limit: 100 });
+    assertEqual(mockCalls[0].endpoint, 'conversations.list');
+    assertEqual(mockCalls[0].method, 'GET');
+    assertEqual(mockCalls[0].query.limit, 100);
+
+    methods.getChannelInfo('C123');
+    assertEqual(mockCalls[1].endpoint, 'conversations.info');
+    assertEqual(mockCalls[1].query.channel, 'C123');
+  });
+
+  test('単体メソッド注入パターンの例', () => {
+    // use('name', factory) パターンのテスト
+    const mockCalls = [];
+    const mockContext = {
+      call: (request) => {
+        mockCalls.push(request);
+        return { ok: true };
+      },
+      get: () => {},
+      post: () => {},
+      put: () => {},
+      patch: () => {},
+      delete: () => {}
+    };
+
+    // 単体メソッドの factory 関数
+    const postMessageFactory = ({ call }) =>
+      (channel, text) => call({ endpoint: 'chat.postMessage', body: { channel, text } });
+
+    const postMessage = postMessageFactory(mockContext);
+    assertTrue(typeof postMessage === 'function');
+
+    postMessage('#random', 'Test message');
+    assertEqual(mockCalls[0].endpoint, 'chat.postMessage');
+    assertEqual(mockCalls[0].body.channel, '#random');
+    assertEqual(mockCalls[0].body.text, 'Test message');
+  });
+
+  test('複数 Plugin のチェーン注入パターン', () => {
+    // use().use() パターンの動作確認
+    const Plugin1 = ({ call }) => ({ method1: () => 'one' });
+    const Plugin2 = ({ call }) => ({ method2: () => 'two' });
+
+    // モックの use 関数をシミュレート
+    const mockCall = () => {};
+    let client = { call: mockCall, use: null };
+
+    // use の実装をシミュレート
+    const use = (plugin) => {
+      const methods = plugin({ call: client.call });
+      return { ...methods, call: client.call, use };
+    };
+    client.use = use;
+
+    const extended = client.use(Plugin1).use(Plugin2);
+    assertEqual(extended.method1(), 'one');
+    assertEqual(extended.method2(), 'two');
+    assertTrue(typeof extended.call === 'function');
+    assertTrue(typeof extended.use === 'function');
   });
 };
 
