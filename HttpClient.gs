@@ -309,24 +309,39 @@ const ClientHelper = (function () {
     const methods = createHttpMethods(call);
 
     const createExtended = additionalMethods => {
-      const use = (pluginOrName, fn) => {
-        let newMethods;
-        const context = { call, ...methods };
-
-        if (typeof pluginOrName === 'string') {
-          newMethods = { [pluginOrName]: fn(context) };
-        } else {
-          newMethods = pluginOrName(context);
-        }
-
-        return createExtended({ ...additionalMethods, ...newMethods });
-      };
-
-      const client = { ...additionalMethods, call, use, ...methods };
+      const client = { ...additionalMethods, call, ...methods };
 
       if (opts.extend) {
         client.extend = opts.extend;
       }
+
+      /**
+       * Plugin を注入してクライアントを拡張
+       *
+       * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
+       * @param {Function} [fn] - メソッド名の場合、メソッド定義関数
+       * @returns {Object} 拡張されたクライアント
+       *
+       * @example
+       * // Plugin パターン
+       * client.use(client => ({
+       *   myMethod: () => client.call({ ... })
+       * }))
+       *
+       * // 単体メソッドパターン
+       * client.use('myMethod', client => () => client.call({ ... }))
+       */
+      client.use = (pluginOrName, fn) => {
+        let newMethods;
+
+        if (typeof pluginOrName === 'string') {
+          newMethods = { [pluginOrName]: fn(client) };
+        } else {
+          newMethods = pluginOrName(client);
+        }
+
+        return createExtended({ ...additionalMethods, ...newMethods });
+      };
 
       return client;
     };
