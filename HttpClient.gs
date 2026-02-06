@@ -267,6 +267,90 @@ const HttpCore = (function () {
 })();
 
 // ============================================================================
+// ClientHelper - クライアント共通ヘルパー
+// ============================================================================
+
+/**
+ * ClientHelper
+ *
+ * @description クライアント拡張の共通ヘルパー
+ */
+const ClientHelper = (function () {
+
+  /**
+   * use() メソッドを持つクライアントを作成するヘルパー
+   *
+   * @param {Object} context クライアントコンテキスト
+   * @param {Function} context.call call 関数
+   * @param {Function} context.get get 関数
+   * @param {Function} context.post post 関数
+   * @param {Function} context.put put 関数
+   * @param {Function} context.patch patch 関数
+   * @param {Function} context.delete delete 関数
+   * @param {Function} [context.extend] extend 関数（任意）
+   * @param {Object} additionalMethods 追加するメソッド
+   * @returns {Object} 拡張されたクライアント
+   */
+  const createExtendedClient = (context, additionalMethods) => {
+    const { call, get, post, put, patch, delete: del, extend } = context;
+
+    const use = (pluginOrName, fn) => {
+      let newMethods;
+
+      if (typeof pluginOrName === 'string') {
+        const name = pluginOrName;
+        const method = fn({ call, get, post, put, patch, delete: del });
+        newMethods = { [name]: method };
+      } else {
+        newMethods = pluginOrName({ call, get, post, put, patch, delete: del });
+      }
+
+      return createExtendedClient(context, { ...additionalMethods, ...newMethods });
+    };
+
+    const client = {
+      ...additionalMethods,
+      call,
+      use,
+      get,
+      post,
+      put,
+      patch,
+      delete: del
+    };
+
+    if (extend) {
+      client.extend = extend;
+    }
+
+    return client;
+  };
+
+  /**
+   * 初回の use() 関数を作成
+   *
+   * @param {Object} context クライアントコンテキスト
+   * @returns {Function} use 関数
+   */
+  const createUse = context => (pluginOrName, fn) => {
+    const { call, get, post, put, patch, delete: del } = context;
+    let methods;
+
+    if (typeof pluginOrName === 'string') {
+      const name = pluginOrName;
+      const method = fn({ call, get, post, put, patch, delete: del });
+      methods = { [name]: method };
+    } else {
+      methods = pluginOrName({ call, get, post, put, patch, delete: del });
+    }
+
+    return createExtendedClient(context, methods);
+  };
+
+  return { createExtendedClient, createUse };
+})();
+
+// ============================================================================
 // ApiClient - REST API用クライアント
 // ============================================================================
 
@@ -483,70 +567,8 @@ const ApiClient = (function () {
 
     // ─── Plugin 注入 ──────────────────────────────────────────────
 
-    /**
-     * Plugin または単体メソッドを注入して拡張
-     *
-     * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
-     * @param {Function} [fn] - メソッド名の場合、メソッド定義関数
-     * @returns {Object} 拡張されたクライアント
-     *
-     * @example
-     * // 複数メソッド（Plugin）
-     * client.use(MyPlugin)
-     *
-     * // 単体メソッド
-     * client.use('myMethod', ({ call }) => (arg) => call({ ... }))
-     */
-    /**
-     * 拡張されたクライアントを作成するヘルパー
-     *
-     * @param {Object} additionalMethods 追加するメソッド
-     * @returns {Object} 拡張されたクライアント
-     */
-    const createExtendedClient = additionalMethods => {
-      const extendedUse = (pluginOrName, fn) => {
-        let newMethods;
-
-        if (typeof pluginOrName === 'string') {
-          const name = pluginOrName;
-          const method = fn({ call, get, post, put, patch, delete: del });
-          newMethods = { [name]: method };
-        } else {
-          newMethods = pluginOrName({ call, get, post, put, patch, delete: del });
-        }
-
-        // 既存のメソッドと新しいメソッドをマージ
-        return createExtendedClient({ ...additionalMethods, ...newMethods });
-      };
-
-      return {
-        ...additionalMethods,
-        call,
-        extend,
-        use: extendedUse,
-        get,
-        post,
-        put,
-        patch,
-        delete: del
-      };
-    };
-
-    const use = (pluginOrName, fn) => {
-      let methods;
-
-      if (typeof pluginOrName === 'string') {
-        // 単体メソッド: use('name', ({ call }) => fn)
-        const name = pluginOrName;
-        const method = fn({ call, get, post, put, patch, delete: del });
-        methods = { [name]: method };
-      } else {
-        // Plugin: use(({ call }) => ({ methods }))
-        methods = pluginOrName({ call, get, post, put, patch, delete: del });
-      }
-
-      return createExtendedClient(methods);
-    };
+    const context = { call, get, post, put, patch, delete: del, extend };
+    const use = ClientHelper.createUse(context);
 
     return { call, extend, use, get, post, put, patch, delete: del };
   };
