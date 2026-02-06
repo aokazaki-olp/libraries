@@ -381,6 +381,7 @@ const ApiClient = (function () {
    * @param {Object} config.transport トランスポートオブジェクト
    * @param {Object} config.logger ロガーインスタンス
    * @param {Object} config.headers デフォルトヘッダー
+   * @param {Function} config.responseHandler レスポンス後処理関数
    * @returns {Object} クライアント
    */
   const createClient = config => {
@@ -433,6 +434,7 @@ const ApiClient = (function () {
     const transport = config.transport || HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers || {};
+    const responseHandler = config.responseHandler || null;
 
     // ─── 公開インターフェース ─────────────────────────────────────
 
@@ -479,8 +481,10 @@ const ApiClient = (function () {
         options.timeout = request.timeoutMs;
       }
 
-      const response = transport.fetch(url, options);
-      return HttpCore.interpretResponse(response, request);
+      const rawResponse = transport.fetch(url, options);
+      const response = HttpCore.interpretResponse(rawResponse, request);
+
+      return responseHandler ? responseHandler(response, request) : response;
     };
 
     /**
@@ -493,7 +497,8 @@ const ApiClient = (function () {
       baseUrl,
       logger: log,
       headers: HttpCore.cloneHeaders(headers),
-      transport: decorator(transport)
+      transport: decorator(transport),
+      responseHandler
     });
 
     return ClientHelper.createClient(call, { extend });
