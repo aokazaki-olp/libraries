@@ -425,7 +425,105 @@ const ApiClient = (function () {
       transport: decorator(transport)
     });
 
-    return { call, extend };
+    // ─── HTTP メソッドショートカット ───────────────────────────────
+
+    /**
+     * GETリクエスト
+     *
+     * @param {string} endpoint エンドポイント
+     * @param {Object} query クエリパラメータ
+     * @param {Object} options その他オプション
+     * @returns {Object} レスポンス
+     */
+    const get = (endpoint, query, options) =>
+      call({ method: 'GET', endpoint, query, ...options });
+
+    /**
+     * POSTリクエスト
+     *
+     * @param {string} endpoint エンドポイント
+     * @param {Object} body リクエストボディ
+     * @param {Object} options その他オプション
+     * @returns {Object} レスポンス
+     */
+    const post = (endpoint, body, options) =>
+      call({ method: 'POST', endpoint, body, ...options });
+
+    /**
+     * PUTリクエスト
+     *
+     * @param {string} endpoint エンドポイント
+     * @param {Object} body リクエストボディ
+     * @param {Object} options その他オプション
+     * @returns {Object} レスポンス
+     */
+    const put = (endpoint, body, options) =>
+      call({ method: 'PUT', endpoint, body, ...options });
+
+    /**
+     * PATCHリクエスト
+     *
+     * @param {string} endpoint エンドポイント
+     * @param {Object} body リクエストボディ
+     * @param {Object} options その他オプション
+     * @returns {Object} レスポンス
+     */
+    const patch = (endpoint, body, options) =>
+      call({ method: 'PATCH', endpoint, body, ...options });
+
+    /**
+     * DELETEリクエスト
+     *
+     * @param {string} endpoint エンドポイント
+     * @param {Object} options その他オプション
+     * @returns {Object} レスポンス
+     */
+    const del = (endpoint, options) =>
+      call({ method: 'DELETE', endpoint, ...options });
+
+    // ─── Plugin 注入 ──────────────────────────────────────────────
+
+    /**
+     * Plugin または単体メソッドを注入して拡張
+     *
+     * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
+     * @param {Function} [fn] - メソッド名の場合、メソッド定義関数
+     * @returns {Object} 拡張されたクライアント
+     *
+     * @example
+     * // 複数メソッド（Plugin）
+     * client.use(MyPlugin)
+     *
+     * // 単体メソッド
+     * client.use('myMethod', ({ call }) => (arg) => call({ ... }))
+     */
+    const use = (pluginOrName, fn) => {
+      let methods;
+
+      if (typeof pluginOrName === 'string') {
+        // 単体メソッド: use('name', ({ call }) => fn)
+        const name = pluginOrName;
+        const method = fn({ call, get, post, put, patch, delete: del });
+        methods = { [name]: method };
+      } else {
+        // Plugin: use(({ call }) => ({ methods }))
+        methods = pluginOrName({ call, get, post, put, patch, delete: del });
+      }
+
+      return {
+        ...methods,
+        call,
+        extend,
+        use,
+        get,
+        post,
+        put,
+        patch,
+        delete: del
+      };
+    };
+
+    return { call, extend, use, get, post, put, patch, delete: del };
   };
 
   return { withBearerAuth, createClient };

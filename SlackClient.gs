@@ -195,7 +195,56 @@ const SlackApiClient = (function () {
       return response.body;
     };
 
-    return { call };
+    // ─── HTTP メソッドショートカット ───────────────────────────────
+
+    const get = (endpoint, query, options) =>
+      call({ method: 'GET', endpoint, query, ...options });
+
+    const post = (endpoint, body, options) =>
+      call({ method: 'POST', endpoint, body, ...options });
+
+    const put = (endpoint, body, options) =>
+      call({ method: 'PUT', endpoint, body, ...options });
+
+    const patch = (endpoint, body, options) =>
+      call({ method: 'PATCH', endpoint, body, ...options });
+
+    const del = (endpoint, options) =>
+      call({ method: 'DELETE', endpoint, ...options });
+
+    // ─── Plugin 注入 ──────────────────────────────────────────────
+
+    /**
+     * Plugin または単体メソッドを注入して拡張
+     *
+     * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
+     * @param {Function} [fn] - メソッド名の場合、メソッド定義関数
+     * @returns {Object} 拡張されたクライアント
+     */
+    const use = (pluginOrName, fn) => {
+      let methods;
+
+      if (typeof pluginOrName === 'string') {
+        const name = pluginOrName;
+        const method = fn({ call, get, post, put, patch, delete: del });
+        methods = { [name]: method };
+      } else {
+        methods = pluginOrName({ call, get, post, put, patch, delete: del });
+      }
+
+      return {
+        ...methods,
+        call,
+        use,
+        get,
+        post,
+        put,
+        patch,
+        delete: del
+      };
+    };
+
+    return { call, use, get, post, put, patch, delete: del };
   };
 
   return { create };
