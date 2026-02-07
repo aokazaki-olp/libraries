@@ -49,7 +49,18 @@ const TestRunner = (function () {
   };
 
   const assertDeepEqual = (actual, expected, message) => {
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    const deepEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null || b == null) return a === b;
+      if (typeof a !== typeof b) return false;
+      if (typeof a !== 'object') return false;
+      if (Array.isArray(a) !== Array.isArray(b)) return false;
+      const keysA = Object.keys(a);
+      const keysB = Object.keys(b);
+      if (keysA.length !== keysB.length) return false;
+      return keysA.every(k => deepEqual(a[k], b[k]));
+    };
+    if (!deepEqual(actual, expected)) {
       throw new Error(`${message || 'Assertion failed'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
     }
   };
@@ -397,6 +408,44 @@ const runHttpCoreTests = () => {
       () => retryTransport.fetch('http://example.com', {}),
       'リトライ回数上限'
     );
+  });
+
+  test('リトライ上限エラーの e.name が RetryExhaustedError である', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 500, body: {} },
+      { status: 500, body: {} }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 1, baseDelayMs: 1 });
+    try {
+      retryTransport.fetch('http://example.com', {});
+      throw new Error('Should not reach here');
+    } catch (e) {
+      assertEqual(e.name, 'RetryExhaustedError');
+      assertTrue(e.message.includes('リトライ回数上限'));
+    }
+  });
+
+  test('リトライ上限エラーは二重ログを防ぐために再スローされる', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} },
+      { status: 429, body: {} }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 1, baseDelayMs: 1, logger: mockLogger });
+
+    try {
+      retryTransport.fetch('http://example.com', {});
+    } catch (e) {
+      assertEqual(e.name, 'RetryExhaustedError');
+    }
+
+    // error ログは1回のみ（二重ログなし）
+    const errorLogs = logs.filter(l => l.level === 'error');
+    assertEqual(errorLogs.length, 1);
   });
 
   test('例外発生時もリトライする', () => {
