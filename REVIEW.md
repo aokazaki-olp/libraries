@@ -45,9 +45,9 @@ resolveSheet ← loadFromSheetAsObjects
 
 前回レビュー（第3版）で指摘した18件のうち、14件が修正済み。品質は大幅に向上している。
 
-| 修正済み（14件） | 未対応（2件） | テスト除外（2件） |
-|---|---|---|
-| H-1, H-2, H-3, M-1, M-2, M-3, M-4, M-6, M-9, L-1, L-2, L-3, L-5, L-6 | M-5, M-7 | M-8, L-4 |
+| 修正済み（14件） | 設計意図クローズ（1件） | 未対応（1件） | テスト除外（2件） |
+|---|---|---|---|
+| H-1, H-2, H-3, M-1, M-2, M-3, M-4, M-6, M-9, L-1, L-2, L-3, L-5, L-6 | M-5 | M-7 | M-8, L-4 |
 
 ---
 
@@ -291,42 +291,16 @@ Google Search Console API クライアント。
 
 ### 前回レビューからの未対応指摘
 
-#### M-5: LazyTemplate.applyFilters — 未知のフィルター名を黙殺（継続）
+#### M-5: LazyTemplate.applyFilters — 未知のフィルター名を黙殺（設計意図によりクローズ）
 
 **ファイル**: `LazyTemplate.gs:440-448`
-**ステータス**: 未対応
+**ステータス**: 対応しない（設計意図）
 
-```javascript
-applyFilters(value, filterNames) {
-  let v = value;
-  for (const name of filterNames) {
-    const fn = this.filters[name];
-    if (typeof fn === 'function') {
-      v = fn(v);
-    }
-  }
-  return v;
-}
-```
+未知のフィルター名やキー参照のタイポが黙殺される挙動について、以下の理由で現状維持とする。
 
-フィルター名のタイポ（例: `{{{name | boldd}}}`）が検出されず、値がそのまま通過する。テンプレート開発時にデバッグが困難になる。
-
-**修正案**: 未知のフィルターで警告ログを出力するか、strict モードオプションでエラーにする。
-```javascript
-applyFilters(value, filterNames) {
-  let v = value;
-  for (const name of filterNames) {
-    const fn = this.filters[name];
-    if (typeof fn === 'function') {
-      v = fn(v);
-    } else {
-      // 開発時のデバッグを支援
-      console.warn(`[LazyTemplate] 未知のフィルター: "${name}"`);
-    }
-  }
-  return v;
-}
-```
+1. **影響範囲の一貫性**: フィルター名のタイポだけでなく、キー参照のタイポも同様に `undefined` → 空文字として処理される。警告を出すなら全箇所に統一的に適用すべきだが、テンプレート評価のホットパスに警告ログを挟むのは過剰
+2. **依存関係の独立性**: LazyTemplate は LoggerFacade に依存しないランタイム非依存モジュールとして設計されている。警告のために LoggerFacade 依存を追加するのは設計方針に反する
+3. **「何もしない」の一貫性**: 未知の参照に対して黙って空文字を返す挙動は、テンプレートエンジンとしてのフォールバック動作として合理的
 
 ---
 
@@ -564,7 +538,7 @@ const slackDate = v => {
 | SlackApiClient | SlackClient.gs:139-187 | 49 | **A** | responseHandler パターンで簡潔。問題なし |
 | SlackWebhookClient | SlackClient.gs:213-302 | 90 | **A-** | 機能的に問題なし。レスポンス形式の差異（N-2）はドキュメント推奨 |
 | LoggerFacade | LoggerFacade.gs | 103 | **A** | SLF4J 互換の設計が簡潔で明確。問題なし |
-| LazyTemplate | LazyTemplate.gs | 663 | **A-** | テンプレートエンジンとして高機能。H-3 修正済み。M-5（未知フィルター黙殺）が残存 |
+| LazyTemplate | LazyTemplate.gs | 663 | **A** | テンプレートエンジンとして高機能。H-3 修正済み。M-5 は設計意図によりクローズ |
 | SlackFilters | SlackFilters.gs | 467 | **A** | 純関数のみ。命名規則統一。問題なし |
 | resolveSheet | resolveSheet.gs | 221 | **A** | 柔軟な入力対応。M-4, L-3 修正済み。全体的に健全 |
 | loadFromSheetAsObjects | loadFromSheetAsObjects.gs | 217 | **A** | 「切るだけ」の設計原則が徹底。型による引数判定も明確 |
@@ -585,7 +559,7 @@ const slackDate = v => {
 | M-2 | Medium | SlackCore | Retry-After parseInt NaN 安全性 | **修正済み** |
 | M-3 | Medium | HttpCore | hasHeader の hasOwnProperty ガード欠落 | **修正済み** |
 | M-4 | Medium | resolveSheet | 最終フォールバックが無効な型を返す | **修正済み** |
-| M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 | **未対応** |
+| M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 | **対応しない（設計意図）** |
 | M-6 | Medium | WebhookClient 他 | パラメータ再代入 | **修正済み** |
 | M-7 | Medium | GSC Client | withGoogleAuth の不要なエクスポート | **未対応** |
 | M-8 | Medium | TestRunner | グローバル可変状態 | 対象外（テストコード） |
@@ -612,18 +586,18 @@ const slackDate = v => {
 
 | 区分 | High | Medium | Low | 合計 |
 |---|---|---|---|---|
-| 前回から未対応 | 0 | 2 (M-5, M-7) | 0 | 2 |
+| 前回から未対応 | 0 | 1 (M-7) | 0 | 1 |
 | 今回新規 | 0 | 1 (N-1) | 5 (N-2〜N-6) | 6 |
-| **合計** | **0** | **3** | **5** | **8** |
+| 設計意図でクローズ | 0 | 1 (M-5) | 0 | — |
+| **合計（要対応）** | **0** | **2** | **5** | **7** |
 
 ---
 
 ## 7. 推奨対応優先順位
 
 ### 早期対応（Medium）
-1. **M-5**: LazyTemplate.applyFilters に未知フィルター警告を追加
-2. **M-7**: GoogleSearchConsoleApiClient のエクスポートから withGoogleAuth を除去
-3. **N-1**: HttpCore.withRetry と SlackCore.withRetry の統一（strategy パターン導入）
+1. **M-7**: GoogleSearchConsoleApiClient のエクスポートから withGoogleAuth を除去
+2. **N-1**: HttpCore.withRetry と SlackCore.withRetry の統一（strategy パターン導入）
 
 ### 継続改善（Low）
 4. N-3: ApiClient.extend の logger 二重ラップ解消
@@ -643,4 +617,4 @@ const slackDate = v => {
 - **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
 - GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
 
-残存する指摘は Medium 3件・Low 5件であり、いずれも機能的な影響は限定的。N-1（withRetry の重複統一）が最も改善効果の大きい技術的負債である。
+残存する指摘は Medium 2件・Low 5件であり、いずれも機能的な影響は限定的。N-1（withRetry の重複統一）が最も改善効果の大きい技術的負債である。
