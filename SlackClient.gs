@@ -7,17 +7,12 @@
  * @version 1.0.0
  * @author Arihiro OKAZAKI
  * @created 2026-01-28
- * @modified 2026-02-03
  *
  * 構成:
  *   SlackCore          - Slack用共通基盤（Retry-After対応リトライ）
  *   SlackApiClient     - Slack Web API用クライアント（Bearer Token認証）
  *   SlackWebhookClient - Slack Incoming Webhooks用クライアント（URL認証）
  */
-
-// ============================================================================
-// SlackCore - Slack用共通基盤
-// ============================================================================
 
 /**
  * SlackCore
@@ -124,10 +119,6 @@ const SlackCore = (function () {
   return { withRetry };
 })();
 
-// ============================================================================
-// SlackApiClient - Slack Web API用クライアント
-// ============================================================================
-
 /**
  * SlackApiClient
  *
@@ -191,10 +182,6 @@ const SlackApiClient = (function () {
 
   return { create };
 })();
-
-// ============================================================================
-// SlackWebhookClient - Slack Incoming Webhooks用クライアント
-// ============================================================================
 
 /**
  * SlackWebhookClient

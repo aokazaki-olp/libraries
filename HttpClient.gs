@@ -7,17 +7,12 @@
  * @version 1.0.0
  * @author Arihiro OKAZAKI
  * @created 2026-01-28
- * @modified 2026-02-02
  *
  * 構成:
  *   HttpCore      - HTTP通信の共通基盤（Transport・デコレータ・ユーティリティ）
  *   ApiClient     - REST API用クライアント（baseUrl + endpoint 方式）
  *   WebhookClient - Webhook送信クライアント（フルURL方式）
  */
-
-// ============================================================================
-// HttpCore - HTTP通信の共通基盤
-// ============================================================================
 
 /**
  * HttpCore
@@ -40,8 +35,6 @@ const HttpCore = (function () {
     DEFAULT_MAX_RETRIES: 3,
     DEFAULT_BASE_DELAY_MS: 500
   });
-
-  // ─── ユーティリティ ─────────────────────────────────────────────
 
   /**
    * ヘッダーオブジェクトをクローン
@@ -134,8 +127,6 @@ const HttpCore = (function () {
     return { status, headers, body, text };
   };
 
-  // ─── Transport ──────────────────────────────────────────────────
-
   /**
    * 基本的なHTTP transportを作成
    *
@@ -144,8 +135,6 @@ const HttpCore = (function () {
   const createTransport = () => ({
     fetch: (url, options) => UrlFetchApp.fetch(url, options || {})
   });
-
-  // ─── Decorators ─────────────────────────────────────────────────
 
   /**
    * リトライ機能をtransportに追加
@@ -266,10 +255,6 @@ const HttpCore = (function () {
   };
 })();
 
-// ============================================================================
-// ClientHelper - クライアント共通ヘルパー
-// ============================================================================
-
 /**
  * ClientHelper
  *
@@ -351,10 +336,6 @@ const ClientHelper = (function () {
   return { createHttpMethods, createClient };
 })();
 
-// ============================================================================
-// ApiClient - REST API用クライアント
-// ============================================================================
-
 /**
  * ApiClient
  *
@@ -399,8 +380,6 @@ const ApiClient = (function () {
    * @returns {Object} クライアント
    */
   const createClient = config => {
-    // ─── 内部ユーティリティ（API専用） ────────────────────────────
-
     const trimRightSlash = s => String(s).replace(/\/+$/, '');
     const trimLeftSlash = s => String(s).replace(/^\/+/, '');
     const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
@@ -442,15 +421,11 @@ const ApiClient = (function () {
       return url + separator + queryString;
     };
 
-    // ─── 設定 ─────────────────────────────────────────────────────
-
     const baseUrl = trimRightSlash(config.baseUrl || '');
     const transport = config.transport || HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers || {};
     const responseHandler = config.responseHandler || null;
-
-    // ─── 公開インターフェース ─────────────────────────────────────
 
     /**
      * HTTPリクエストを実行
@@ -520,10 +495,6 @@ const ApiClient = (function () {
 
   return { withBearerAuth, createClient };
 })();
-
-// ============================================================================
-// WebhookClient - Webhook送信クライアント
-// ============================================================================
 
 /**
  * WebhookClient
