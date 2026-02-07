@@ -535,9 +535,7 @@ const WebhookClient = (function () {
    * @param {Object} options.headers カスタムヘッダー
    * @returns {Object} クライアント
    */
-  const create = (webhookUrl, options) => {
-    options = options || {};
-
+  const create = (webhookUrl, options = {}) => {
     // Transport 構築
     let transport = HttpCore.createTransport();
 

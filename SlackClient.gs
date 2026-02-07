@@ -226,8 +226,7 @@ const SlackWebhookClient = (function () {
    * @param {Object} options.logger ロガーインスタンス
    * @returns {Object} クライアント
    */
-  const create = (webhookUrl, options) => {
-    options = options || {};
+  const create = (webhookUrl, options = {}) => {
     const maxRetries = options.maxRetries != null ? options.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
 
     // Transport 構築（Slack用リトライを使用）
