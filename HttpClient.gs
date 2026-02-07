@@ -304,6 +304,9 @@ const ClientHelper = (function () {
           newMethods = { [pluginOrName]: fn(client) };
         } else {
           newMethods = pluginOrName(client);
+          if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
+            throw new TypeError('Plugin は Object を返す必要があります');
+          }
         }
 
         return createExtended({ ...additionalMethods, ...newMethods });
