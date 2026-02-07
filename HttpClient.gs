@@ -338,6 +338,44 @@ const ClientHelper = (function () {
  */
 const ApiClient = (function () {
 
+  // URL・クエリ文字列ユーティリティ（純粋関数、config 非依存）
+  const trimRightSlash = s => String(s).replace(/\/+$/, '');
+  const trimLeftSlash = s => String(s).replace(/^\/+/, '');
+  const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
+
+  const buildQueryString = query => {
+    if (!query) {
+      return '';
+    }
+    const parts = [];
+    for (const [k, v] of Object.entries(query)) {
+      if (v == null) {
+        continue;
+      }
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          parts.push(encodeKeyValue(k, item));
+        }
+      } else {
+        parts.push(encodeKeyValue(k, v));
+      }
+    }
+    return parts.join('&');
+  };
+
+  const buildUrl = (baseUrl, endpoint, query) => {
+    const path = `/${trimLeftSlash(endpoint || '')}`;
+    const url = baseUrl + path;
+
+    const queryString = buildQueryString(query);
+    if (!queryString) {
+      return url;
+    }
+
+    const separator = url.includes('?') ? '&' : '?';
+    return url + separator + queryString;
+  };
+
   /**
    * Bearer認証をtransportに追加
    *
@@ -365,43 +403,6 @@ const ApiClient = (function () {
    * @returns {Object} クライアント
    */
   const createClient = config => {
-    const trimRightSlash = s => String(s).replace(/\/+$/, '');
-    const trimLeftSlash = s => String(s).replace(/^\/+/, '');
-    const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
-
-    const buildQueryString = query => {
-      if (!query) {
-        return '';
-      }
-      const parts = [];
-      for (const [k, v] of Object.entries(query)) {
-        if (v == null) {
-          continue;
-        }
-        if (Array.isArray(v)) {
-          for (const item of v) {
-            parts.push(encodeKeyValue(k, item));
-          }
-        } else {
-          parts.push(encodeKeyValue(k, v));
-        }
-      }
-      return parts.join('&');
-    };
-
-    const buildUrl = (baseUrl, endpoint, query) => {
-      const path = `/${trimLeftSlash(endpoint || '')}`;
-      const url = baseUrl + path;
-
-      const queryString = buildQueryString(query);
-      if (!queryString) {
-        return url;
-      }
-
-      const separator = url.includes('?') ? '&' : '?';
-      return url + separator + queryString;
-    };
-
     const baseUrl = trimRightSlash(config.baseUrl ?? '');
     const transport = config.transport ?? HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
@@ -465,7 +466,7 @@ const ApiClient = (function () {
      */
     const extend = decorator => createClient({
       baseUrl,
-      logger: log,
+      logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport),
       responseHandler
