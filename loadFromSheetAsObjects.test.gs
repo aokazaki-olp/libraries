@@ -4,7 +4,7 @@
  * loadFromSheetAsObjects.test.gs
  *
  * @description loadFromSheetAsObjects のテストスイート（GAS モック使用）
- * @version 1.0.0
+ * @version 1.1.0
  * @author Arihiro OKAZAKI
  * @created 2026-02-07
  *

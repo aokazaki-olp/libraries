@@ -22,14 +22,14 @@
  *   const data = loadFromSheetAsObjects(sheet);
  *   const mapped = loadFromSheetAsObjects(sheet, k => k.toLowerCase());
  *   const limited = loadFromSheetAsObjects(sheet, 100, 10);
- *   const ranged = loadFromSheetAsObjects(sheet.getRange('B2:E20'));
- *   const ranged = loadFromSheetAsObjects('A1:D10');
+ *   const fromRange = loadFromSheetAsObjects(sheet.getRange('B2:E20'));
+ *   const fromNotation = loadFromSheetAsObjects('A1:D10');
  */
 
 /**
  * メイン関数: スプレッドシートからオブジェクト配列を読み込む
  *
- * @param {string|Array|Object|Range} source データソース
+ * @param {string|Array|Object|GoogleAppsScript.Spreadsheet.Range} source データソース
  * @param {Function} [fn] キーマッパー: fn(rawKey, columnIndex) → string|string[]|null|undefined
  * @param {number} [limit=Infinity] 読み込む行数の上限
  * @param {number} [offset=0] ヘッダー行の直後からスキップする行数
