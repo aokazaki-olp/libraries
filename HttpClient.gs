@@ -84,7 +84,7 @@ const HttpCore = (function () {
   const hasHeader = (headers, key) => {
     const needle = String(key).toLowerCase();
     for (const k in headers) {
-      if (String(k).toLowerCase() === needle) {
+      if (Object.prototype.hasOwnProperty.call(headers, k) && String(k).toLowerCase() === needle) {
         return true;
       }
     }
