@@ -1,8 +1,8 @@
-# 設計レビュー・コードレビュー（第3版）
+# 設計レビュー・コードレビュー（第4版 — 全面再レビュー）
 
-- **対象**: `/home/user/libraries/` 配下の全ソースコード（10ファイル）
+- **対象**: `/home/user/libraries/` 配下の全ソースコード（8ファイル、テストコード除外）
 - **レビュー日**: 2026-02-07
-- **ベース**: PR #4 マージ後の `main` ブランチ
+- **レビュー範囲**: HttpClient.gs, SlackClient.gs, LoggerFacade.gs, LazyTemplate.gs, SlackFilters.gs, resolveSheet.gs, loadFromSheetAsObjects.gs, GoogleSearchConsoleApiClient.gs
 
 ---
 
@@ -14,25 +14,270 @@
 
 | パターン | 適用箇所 | 評価 |
 |---|---|---|
-| IIFE モジュール | HttpCore, ClientHelper, ApiClient, WebhookClient, SlackCore, SlackApiClient, SlackWebhookClient, GSC, LoggerFacade, SlackFilters | GAS のスコープ制約に適合。一貫性あり |
-| Transport + Decorator | HttpCore.withRetry, withLogger, withBearerAuth, withGoogleAuth, SlackCore.withRetry | 関心の分離が明確。合成可能 |
-| Immutable Builder | ApiClient.extend() | 元クライアントを変更しない。安全 |
-| Plugin Injection | ClientHelper.use() | **PR #4 で新規追加**。拡張性が大幅に向上 |
-| Facade | LoggerFacade | SLF4J 互換。多様なロガー実装を吸収 |
-| Factory + Static | WebhookClient, SlackWebhookClient | create() + send() の二重インターフェース |
+| IIFE モジュール | HttpCore, ClientHelper, ApiClient, WebhookClient, SlackCore, SlackApiClient, SlackWebhookClient, GSC, LoggerFacade, SlackFilters, resolveSheet, loadFromSheetAsObjects | GAS V8 の `const` スコープ制約に適合。全モジュールで一貫 |
+| Transport + Decorator | HttpCore.withRetry, withLogger, withBearerAuth, withGoogleAuth, SlackCore.withRetry | 関心の分離が明確。合成可能で拡張に強い |
+| Immutable Builder | ApiClient.extend() | 元クライアントを変更しない。安全な機能積層 |
+| Plugin Injection | ClientHelper.use() | 拡張性が高く、サードパーティプラグインにも対応 |
+| Facade | LoggerFacade | SLF4J 互換の5レベル。多様なロガー実装を吸収 |
+| Factory + Static | WebhookClient, SlackWebhookClient | create() でインスタンス生成、send() で使い捨て呼び出し |
+| "切るだけ" | loadFromSheetAsObjects | 意味推論・型変換を行わない設計原則が徹底 |
 
-**総合評価**: 設計の一貫性は高く、各モジュール間の責任分離が明確。PR #4 で追加された `ClientHelper`（HTTP メソッドショートカット・Plugin Injection）は既存設計を壊さず自然に統合されている。
+**総合評価**: 設計の一貫性は高い。各モジュール間の責任分離が明確であり、共通基盤（HttpCore, LoggerFacade）を通じたコード再利用が効果的に機能している。
 
-### 1.2 PR #4 による改善点
+### 1.2 モジュール依存グラフ
 
-1. **`ClientHelper` モジュール新設** — `use()` による Plugin Injection パターンを導入し、API クライアントの拡張性を大幅に改善
-2. **HTTP メソッドショートカット** — `get()`, `post()`, `put()`, `patch()`, `delete()` で呼び出しが簡潔に
-3. **`responseHandler` パターン** — レスポンス後処理を `ApiClient.createClient()` の設定に集約。SlackApiClient・GSC クライアントともにクリーンな統合
-4. **テスト大幅拡充** — HttpClient.test.gs にエッジケース・Plugin テスト・responseHandler テストを追加
+```
+LoggerFacade ← HttpCore ← ApiClient ← SlackApiClient
+                  ↑            ↑           GoogleSearchConsoleApiClient
+                  ↑            ↑
+             ClientHelper      WebhookClient ← SlackWebhookClient
+                               ↑
+                          SlackCore
+
+LazyTemplate ← SlackFilters
+
+resolveSheet ← loadFromSheetAsObjects
+```
+
+依存は単方向で循環がない。LoggerFacade が最下層に位置し、HttpCore が HTTP 基盤として全クライアントに共通サービスを提供する構造は健全。
+
+### 1.3 前回レビューからの改善
+
+前回レビュー（第3版）で指摘した18件のうち、14件が修正済み。品質は大幅に向上している。
+
+| 修正済み（14件） | 未対応（2件） | テスト除外（2件） |
+|---|---|---|
+| H-1, H-2, H-3, M-1, M-2, M-3, M-4, M-6, M-9, L-1, L-2, L-3, L-5, L-6 | M-5, M-7 | M-8, L-4 |
 
 ---
 
-## 2. 指摘事項
+## 2. モジュール別詳細レビュー
+
+### 2.1 HttpClient.gs（575行）
+
+#### HttpCore（L32-238）
+
+**品質: A-**
+
+HTTP 通信の共通基盤。Transport パターンにより抽象化された fetch インターフェースに、Decorator パターンで withRetry・withLogger を積み重ねる設計。
+
+**良い点**:
+- `interpretResponse()` でレスポンス解釈とエラー生成を一元化。カスタムエラー型 `HttpError` にステータス・ヘッダー・ボディ・リクエスト情報を全て保持
+- `withRetry()` の `RetryExhaustedError` 名前付きエラーにより、二重ログ防止（H-1, H-2 の修正成果）
+- `hasHeader()` が `Object.keys().some()` を使用し、プロトタイプチェーン汚染を回避（M-3 の修正成果）
+- `cloneHeaders()` / `mergeHeaders()` が spread で簡潔に実装
+
+**注意点**:
+- `withRetry` と `SlackCore.withRetry` の構造的重複 → N-1 参照
+
+#### ClientHelper（L245-322）
+
+**品質: A**
+
+HTTP メソッドショートカットと Plugin Injection の共通ヘルパー。
+
+**良い点**:
+- `createHttpMethods()` で `options` を先にスプレッドし、明示的な `method`/`endpoint`/`body`/`query` が後置されるため、意図しないオーバーライドを防止（M-1 の修正成果）
+- `use()` にプラグイン戻り値の型検証を追加。Object 以外は `TypeError` をスロー（L-1 の修正成果）
+- 文字列 + 関数のショートカット形式 `use('name', client => () => ...)` が DX に優れる
+
+**注意点**:
+- `delete` ショートカットが body パラメータを受け付けない → N-4 参照
+
+#### ApiClient（L339-478）
+
+**品質: A**
+
+REST API 用クライアント。`createClient()` + `extend()` によるイミュータブルなデコレータ積層。
+
+**良い点**:
+- `buildUrl()` / `buildQueryString()` が配列パラメータ・null スキップに対応
+- `extend()` がヘッダーをクローンし、トランスポートのみを差し替えるイミュータブル設計
+- `responseHandler` でレスポンス後処理を設定に集約。SlackApiClient・GSC クライアントで活用
+- デフォルト HTTP メソッドを `GET` に変更し、汎用クライアントとしての直感性が向上（L-2 の修正成果）
+- GET/HEAD リクエストで body が指定された場合、警告ログを出力して無視（堅牢な挙動）
+
+**注意点**:
+- `extend()` で logger が二重ラップされる → N-3 参照
+- 内部の純粋関数が毎回再定義される → N-5 参照
+
+#### WebhookClient（L499-574）
+
+**品質: A**
+
+Webhook 送信クライアント。シンプルで明確な設計。
+
+**良い点**:
+- `create()` + `send()` の二重インターフェースが使いやすい
+- `maxRetries: 0` でリトライ無効化、`logger` 指定でロギング有効化の制御が明快
+- `HttpCore.interpretResponse()` を利用してレスポンス形式を統一
+- パラメータ再代入を排除（`options = {}` デフォルト引数）（M-6 の修正成果）
+
+---
+
+### 2.2 SlackClient.gs（303行）
+
+#### SlackCore（L27-123）
+
+**品質: B+**
+
+Slack 固有の Retry-After ヘッダー対応リトライ。
+
+**良い点**:
+- 429 レスポンスの `Retry-After` ヘッダーを尊重（Slack API の推奨プラクティスに準拠）
+- `parseInt(retryAfter, 10) || 1` で NaN 安全性を確保（M-2 の修正成果）
+- `RetryExhaustedError` 名前付きエラーで二重ログ防止（H-2 の修正成果）
+
+**注意点**:
+- HttpCore.withRetry との構造的重複 → N-1 参照
+
+#### SlackApiClient（L139-187）
+
+**品質: A**
+
+Slack Web API クライアント。`ApiClient` の `responseHandler` パターンを活用。
+
+**良い点**:
+- `slackResponseHandler` で Slack 固有のエラー（`ok: false`）を統一的にハンドリング
+- カスタムエラー型 `SlackApiError` に `code`, `metadata`, `response` を保持
+- `extend()` チェーンで認証・リトライ・ロギングを積層する構成が明快
+
+#### SlackWebhookClient（L213-302）
+
+**品質: A-**
+
+Slack Incoming Webhooks クライアント。
+
+**良い点**:
+- `SlackCore.withRetry` を使用して Slack 固有のリトライポリシーを適用
+- カスタムエラー型 `SlackWebhookError` でステータスとボディを保持
+- `maxRetries: 0` でリトライ無効化が可能
+- パラメータ再代入を排除（M-6 の修正成果）
+
+**注意点**:
+- `WebhookClient.send` との `body` フィールドの型不一致 → N-2 参照
+
+---
+
+### 2.3 LoggerFacade.gs（103行）
+
+**品質: A**
+
+SLF4J 互換のロガーファサード。
+
+**良い点**:
+- `resolve()` によるメソッド優先順位チェーンが明確（trace → finest → finer → debug → log 等）
+- falsy 入力（null, undefined, false, 0, 空文字）で null を返し、呼び出し側で `if (log)` の短絡評価が可能
+- メソッドが見つからない場合は no-op（`() => {}`）を返し、呼び出し側のガード不要
+- console, GAS Logger, Winston, java.util.logging 等の多様な実装に対応
+
+**コードの健全性**:
+- 行数が少なく（103行）、単一責任が徹底されている
+- IIFE でスコープを分離し、外部には `createLogger` のみを公開
+
+---
+
+### 2.4 LazyTemplate.gs（663行）
+
+**品質: A-**
+
+ランタイム非依存の遅延評価テンプレートエンジン。
+
+**良い点**:
+- `{{{expression}}}` 構文でプレースホルダー、`|` でフィルター、`||` でフォールバックの3機能を簡潔に表現
+- コンパイル済み式のキャッシュ（`this.cache = new Map()`）による繰り返し評価の最適化
+- `stripWhitespaceWithoutStringLiteral()` で文字列リテラル内の空白を保持しつつ正規化
+- プロパティアクセス（ドット記法・ブラケット記法）の完全サポート
+- 18個のプリミティブフィルター（文字列操作・数値変換・型変換・JSON）が組み込み済み
+- `registerFilter()` で実行時のフィルター追加が可能
+- バックスラッシュによるエスケープ機構（`\{{{...}}}` でリテラル出力）
+- エクスポート処理が module.exports / window / global の3パターンに対応（H-3 の修正成果）
+- フォールバック評価は `undefined`, `null`, `''` のみをスキップし、`0` や `false` は有効値として扱う（明確な仕様）
+
+**注意点**:
+- `applyFilters()` が未知のフィルター名を黙殺する → 前回 M-5（未対応、詳細後述）
+- `parseStringLiteral()` で Unicode PUA（U+E000）を一時プレースホルダーに使用。入力にこの文字が含まれる場合に誤動作するが、極めて稀なケース
+
+---
+
+### 2.5 SlackFilters.gs（467行）
+
+**品質: A**
+
+Slack Mrkdwn・Block Kit 対応の18個の拡張フィルター。
+
+**良い点**:
+- 全フィルターが `v => ...` の統一シグネチャで LazyTemplate と完全互換
+- 副作用なしの純関数のみ
+- 命名規則が一貫（`escape*`, `slack*`）
+- Mrkdwn 装飾フィルター（bold, italic, strike, code, pre）が空文字入力時に空の装飾を生成しない
+- `escapeMrkdwn` / `escapeHtml` / `escapeJson` のエスケープ順序が正しい（`&` を最初にエスケープ）
+- `escapeJson` が制御文字 U+0000〜U+001F を完全にカバー
+- 日時フィルター（slackDate, slackDateFmt）が `Number.isFinite()` で型安全性を確保
+
+**注意点**:
+- `slackDate(null)` と `slackDate(undefined)` の非対称挙動 → N-6 参照
+
+---
+
+### 2.6 resolveSheet.gs（221行）
+
+**品質: A**
+
+柔軟なソース指定からシートを解決するユーティリティ。
+
+**良い点**:
+- 7種のソース形式（URL, シート名, 配列, オブジェクト3種, Sheet直接）をサポート
+- `isUrl`, `getGid`, `getOrCreateSheet`, `throwCreateNotSupported` が IIFE スコープ内に定義され、毎回の再生成を回避（L-3 の修正成果）
+- `create: true` オプションで「なければ作成」パターンに対応
+- `create` と `index`/`gid` の組み合わせを明示的にエラーとする防御的設計
+- サポート外の型で `TypeError` をスロー（M-4 の修正成果）
+- Sheet オブジェクトの直接パススルー（`getSheetId` メソッドの存在チェック）
+
+**コードの健全性**:
+- 複雑な入力形式の判定ロジックが整理されており、各分岐が明確
+
+---
+
+### 2.7 loadFromSheetAsObjects.gs（217行）
+
+**品質: A**
+
+スプレッドシートからオブジェクト配列への変換。
+
+**良い点**:
+- 「切るだけ」の設計原則が徹底（意味推論・型変換・構造の自動補正を一切行わない）
+- 引数の型による自動判定（Function, number）で柔軟な呼び出しインターフェース
+- `parseSuffix()` による `[]` サフィックスの配列展開と `\[]` のエスケープ
+- `setNested()` によるパス配列の深層セット
+- `fn` で null/undefined を返すことで列のスキップが可能
+- `limit` / `offset` による部分読み込みでメモリ効率を確保
+
+**コードの健全性**:
+- 入力バリデーション（型チェック）が各内部関数で徹底
+- `resolveSheet` を活用してソース解決を完全に委譲
+
+---
+
+### 2.8 GoogleSearchConsoleApiClient.gs（81行）
+
+**品質: A-**
+
+Google Search Console API クライアント。
+
+**良い点**:
+- `ScriptApp.getOAuthToken()` を毎回動的に取得（トークンの有効期限切れに自動対応）
+- `normalizeSiteUrl()` で `sc-domain:` プレフィックスを適切に処理（末尾スラッシュを追加しない）
+- `gscResponseHandler` で `response.body` のみを返すシンプルなハンドラ
+- `ApiClient.createClient()` + `extend()` チェーンで認証・リトライ・ロギングを構成
+- GSC 向けの緩やかなリトライ設定（maxRetries: 5, baseDelayMs: 1000ms）
+
+**注意点**:
+- `withGoogleAuth` の不要なエクスポート → 前回 M-7（未対応、詳細後述）
+
+---
+
+## 3. 指摘事項
 
 ### 重要度の定義
 
@@ -44,193 +289,12 @@
 
 ---
 
-### H-1: HttpCore.withRetry — リトライ上限時の二重ログ
+### 前回レビューからの未対応指摘
 
-**ファイル**: `HttpClient.gs:166-202`
-
-HTTP ステータス 429/5xx でリトライ上限に達した場合、エラーが **2回ログ出力** される。
-
-**再現フロー**:
-```
-1. attempt === maxRetries かつ status === 429 or 5xx
-2. L174: log.error(「RETRY exhausted status=...」)    ← 1回目
-3. L176: throw new Error(「リトライ回数上限...」)
-4. この throw は try ブロック (L167) 内なので catch (L187) に捕捉される
-5. L189: attempt === maxRetries → true
-6. L191: log.error(「RETRY exhausted method url」, e)  ← 2回目
-7. L193: break → L202: throw lastError
-```
-
-**SlackCore との対比**: SlackCore.withRetry（SlackClient.gs:94-98）では `e.message.includes('リトライ回数上限')` チェックで再スローしており、二重ログを回避している。HttpCore にはこの防御がない。
-
-**修正案**: catch ブロック冒頭にリトライ上限エラーの再スロー判定を追加する。
-```javascript
-catch (e) {
-  if (e.message && e.message.includes('リトライ回数上限')) {
-    throw e;
-  }
-  // ...既存のリトライロジック
-}
-```
-
----
-
-### H-2: SlackCore.withRetry — 文字列マッチによるエラー識別の脆弱性
-
-**ファイル**: `SlackClient.gs:96`
-
-```javascript
-if (e.message && e.message.includes('リトライ回数上限')) {
-  throw e;
-}
-```
-
-エラーの識別にエラーメッセージの文字列マッチを使用している。これは以下のリスクがある:
-
-- エラーメッセージが変更されると検出が壊れる
-- 別のエラーが偶然同じ文字列を含む場合に誤検出する
-
-**修正案**: カスタムエラー型またはエラープロパティで識別する。
-```javascript
-// throw 側
-const e = new Error(`リトライ回数上限に達しました (HTTP ${status})`);
-e.name = 'RetryExhaustedError';
-throw e;
-
-// catch 側
-if (e.name === 'RetryExhaustedError') {
-  throw e;
-}
-```
-
----
-
-### H-3: LazyTemplate.gs — strict mode でのエクスポート不成立
-
-**ファイル**: `LazyTemplate.gs:646-658`
-
-```javascript
-// GAS環境
-if (typeof global !== 'undefined' && global === this) {
-  global.LazyTemplate = LazyTemplate;
-}
-```
-
-ファイル先頭に `'use strict';`（L1）があるため、IIFE 内部の `this` は `undefined` になる。`global`（引数で渡された外側の `this`）と IIFE 内の `this`（`undefined`）は一致せず、GAS 環境向けのエクスポートが実行されない。
-
-**GAS での実影響**: GAS V8 ランタイムでは `.gs` ファイルのトップレベル `const` 宣言がプロジェクト全体で共有されるため、実運用上はクラスにアクセス可能。ただし、Node.js やブラウザでの再利用時に問題が顕在化する。
-
-**修正案**:
-```javascript
-// GAS環境 (strict mode 対応)
-if (typeof global !== 'undefined' && typeof globalThis !== 'undefined' && global === globalThis) {
-  global.LazyTemplate = LazyTemplate;
-}
-```
-または IIFE の呼び出しを `}).call(this, this);` に変更する。
-
----
-
-### M-1: HTTP メソッドショートカット — options による意図しないオーバーライド
-
-**ファイル**: `HttpClient.gs:272-282`
-
-```javascript
-get: (endpoint, query, options) =>
-  call({ method: 'GET', endpoint, query, ...options }),
-post: (endpoint, body, options) =>
-  call({ method: 'POST', endpoint, body, ...options }),
-```
-
-`options` にスプレッドを使用しているため、`options` に `method` や `endpoint` が含まれている場合、意図したメソッド・エンドポイントが上書きされる。
-
-```javascript
-// 意図: GET /users
-// 実際: POST /users (options.method が優先される)
-client.get('/users', {}, { method: 'POST' });
-```
-
-**修正案**: `options` から `method`, `endpoint`, `query`, `body` を除外する。
-```javascript
-get: (endpoint, query, options) => {
-  const { method: _, endpoint: __, query: ___, body: ____, ...rest } = options || {};
-  return call({ method: 'GET', endpoint, query, ...rest });
-},
-```
-または、`options` パラメータを `headers` や `timeoutMs` など限定的なキーのみ受け付ける設計にする。
-
----
-
-### M-2: SlackCore — Retry-After ヘッダーの NaN 安全性
-
-**ファイル**: `SlackClient.gs:61`
-
-```javascript
-const delaySeconds = retryAfter ? parseInt(retryAfter, 10) : 1;
-const delayMs = delaySeconds * 1000;
-```
-
-`Retry-After` ヘッダーが数値でない文字列（例: `"Thu, 01 Dec 2026 16:00:00 GMT"`）の場合、`parseInt` は `NaN` を返す。`NaN * 1000 = NaN` となり、`Utilities.sleep(NaN)` の挙動は未定義。
-
-**修正案**:
-```javascript
-const delaySeconds = retryAfter ? (parseInt(retryAfter, 10) || 1) : 1;
-```
-
----
-
-### M-3: HttpCore.hasHeader — hasOwnProperty ガード欠落
-
-**ファイル**: `HttpClient.gs:84-92`
-
-```javascript
-const hasHeader = (headers, key) => {
-  const needle = String(key).toLowerCase();
-  for (const k in headers) {
-    if (String(k).toLowerCase() === needle) {
-      return true;
-    }
-  }
-  return false;
-};
-```
-
-`for...in` がプロトタイプチェーンのプロパティも走査する。`cloneHeaders`（L51）と `mergeHeaders`（L69）は `Object.prototype.hasOwnProperty.call()` ガードを使用しているが、`hasHeader` にはない。
-
-**実影響**: headers は通常プレーンオブジェクトなので影響は限定的だが、3つのヘッダーユーティリティ間で一貫性がない。
-
-**修正案**:
-```javascript
-for (const k in headers) {
-  if (Object.prototype.hasOwnProperty.call(headers, k) && String(k).toLowerCase() === needle) {
-    return true;
-  }
-}
-```
-
----
-
-### M-4: resolveSheet — 最終フォールバックが無効な型を返す
-
-**ファイル**: `resolveSheet.gs:215-216`
-
-```javascript
-// それ以外は Sheet オブジェクトとして直接返す
-return source;
-```
-
-`source` が `number`, `boolean`, `Date` などの場合、Sheet オブジェクトではないものがそのまま返却される。呼び出し元で Sheet API（`getRange()` 等）を呼ぶと不明なエラーが発生する。
-
-**修正案**: 認識できない型はエラーにする。
-```javascript
-throw new Error(`resolveSheet: サポートされていない source 型です: ${typeof source}`);
-```
-
----
-
-### M-5: LazyTemplate.applyFilters — 未知のフィルター名を黙殺
+#### M-5: LazyTemplate.applyFilters — 未知のフィルター名を黙殺（継続）
 
 **ファイル**: `LazyTemplate.gs:440-448`
+**ステータス**: 未対応
 
 ```javascript
 applyFilters(value, filterNames) {
@@ -248,208 +312,335 @@ applyFilters(value, filterNames) {
 フィルター名のタイポ（例: `{{{name | boldd}}}`）が検出されず、値がそのまま通過する。テンプレート開発時にデバッグが困難になる。
 
 **修正案**: 未知のフィルターで警告ログを出力するか、strict モードオプションでエラーにする。
-
----
-
-### M-6: SlackWebhookClient.create — パラメータ再代入
-
-**ファイル**: `SlackClient.gs:226`
-
 ```javascript
-const create = (webhookUrl, options) => {
-  options = options || {};
+applyFilters(value, filterNames) {
+  let v = value;
+  for (const name of filterNames) {
+    const fn = this.filters[name];
+    if (typeof fn === 'function') {
+      v = fn(v);
+    } else {
+      // 開発時のデバッグを支援
+      console.warn(`[LazyTemplate] 未知のフィルター: "${name}"`);
+    }
+  }
+  return v;
+}
 ```
 
-引数 `options` を再代入している。strict mode では動作するが、ESLint の `no-param-reassign` ルールに違反し、可読性を損なう。同様のパターンが `WebhookClient.create`（HttpClient.gs:533）にも存在する。
-
-**修正案**: `const opts = options || {};` に変更する。
-
 ---
 
-### M-7: GoogleSearchConsoleApiClient — withGoogleAuth の不要なエクスポート
+#### M-7: GoogleSearchConsoleApiClient — withGoogleAuth の不要なエクスポート（継続）
 
 **ファイル**: `GoogleSearchConsoleApiClient.gs:80`
+**ステータス**: 未対応
 
 ```javascript
 return { withGoogleAuth, create };
 ```
 
-`withGoogleAuth` は `create()` 内部でのみ使用される内部関数。外部に公開すると、不完全な状態（baseUrl なし等）で使用される可能性がある。
+`withGoogleAuth` は `create()` 内部の `extend()` チェーンで使用される内部関数。外部に公開すると、baseUrl 未設定の状態で使用される可能性がある。
 
-**修正案**: `return { create };` のみにする。
-
----
-
-### M-8: TestRunner — グローバル可変状態
-
-**ファイル**: `HttpClient.test.gs:28-29`
-
+**修正案**:
 ```javascript
-let results = [];
-let currentSuite = '';
+return { create };
 ```
 
-`TestRunner` はシングルトンで可変状態を保持している。複数のテストファイル（HttpClient.test.gs, SlackClient.test.gs）が同じ `TestRunner` を共有するため、`reset()` 呼び出し漏れでテスト結果が汚染される。
-
-**現状**: 各テストランナー関数（`runAllHttpClientTests`, `runAllSlackClientTests`）で `reset()` を呼んでおり問題は発生していないが、テストファイルの追加時にリスクが増大する。
-
 ---
 
-### M-9: SlackClient.test.gs — slackResponseHandler テストがロジックを複製
+### 新規指摘
 
-**ファイル**: `SlackClient.test.gs:462-531`
+#### N-1: HttpCore.withRetry と SlackCore.withRetry の構造的重複
 
-`slackResponseHandler` のテスト（L462-531）が、実際の `SlackApiClient` を経由せず、ハンドラのロジックをテストコード内で再実装している。
+**ファイル**: `HttpClient.gs:126-187`, `SlackClient.gs:37-120`
+**重要度**: **M (Medium)**
 
+HttpCore.withRetry（62行）と SlackCore.withRetry（84行）は以下のロジックが共通しており、~70% が重複している。
+
+| 共通ロジック | HttpCore | SlackCore |
+|---|---|---|
+| ループ制御 (`for attempt`) | L142 | L52 |
+| 429/5xx ステータス判定 | L147 | L57, L79 |
+| `RetryExhaustedError` 名前付きエラー | L153 | L68, L85 |
+| catch 内の再スロー判定 | L167 | L99 |
+| lastError 管理 | L170 | L103 |
+| 指数バックオフ | L131-135 | L41-45 |
+
+**差分**:
+- SlackCore は 429 と 5xx を別処理し、429 の場合に `Retry-After` ヘッダーを尊重
+- SlackCore は固定 baseDelay = 1000ms（HttpCore は設定可能）
+
+**リスク**: 一方にバグ修正を適用しても、もう一方に適用漏れが発生する（実際に H-1/H-2 の修正時にこのリスクが顕在化した）。
+
+**修正案**: 共通の withRetry を strategy パターンで統一する。
 ```javascript
-// テスト内でロジックを再実装
-if (response.body && response.body.ok === false) {
-  const errorCode = response.body.error || 'slack_error';
-  const e = new Error(`Slack APIエラー: ${errorCode}`);
-  e.code = errorCode;
-  throw e;
-}
+// HttpCore に統一
+const withRetry = (transport, retryOptions = {}) => {
+  const shouldRetry = retryOptions.shouldRetry ?? defaultShouldRetry;
+  const getDelay = retryOptions.getDelay ?? defaultGetDelay;
+  // ...共通ループロジック
+};
+
+// SlackCore は設定のみ提供
+SlackCore.withRetry = (transport, opts) => HttpCore.withRetry(transport, {
+  ...opts,
+  shouldRetry: slackShouldRetry,
+  getDelay: slackGetDelay  // Retry-After 対応
+});
 ```
 
-これでは「テスト用の再実装が正しいか」を検証しているだけで、実際の `slackResponseHandler` 関数の挙動は保証されない。
+---
 
-**修正案**: `ApiClient.createClient` に `responseHandler` と `MockTransport` を組み合わせて、実際のハンドラを経由するテストに変更する。
+#### N-2: SlackWebhookClient.send と WebhookClient.send のレスポンス形式不一致
+
+**ファイル**: `HttpClient.gs:554-555`, `SlackClient.gs:270-275`
+**重要度**: **L (Low)**
+
+| | WebhookClient.send | SlackWebhookClient.send |
+|---|---|---|
+| レスポンス解釈 | `HttpCore.interpretResponse()` | 自前処理 |
+| `body` フィールド | パース済み JSON (`Object`) | 生テキスト (`string`, 通常 `"ok"`) |
+
+```javascript
+// WebhookClient (HttpClient.gs:555)
+return HttpCore.interpretResponse(response, { url: webhookUrl, body: payload });
+// → { status, headers, body: { ...parsed JSON... }, text }
+
+// SlackWebhookClient (SlackClient.gs:275)
+return { status, headers: response.getAllHeaders(), body: text, text };
+// → { status, headers, body: "ok", text: "ok" }
+```
+
+**リスク**: WebhookClient から SlackWebhookClient に切り替えた際、`response.body` の型が `Object` から `string` に変わり、`.body.ok` のようなアクセスが `undefined` になる。
+
+**緩和**: Slack Webhook の応答は通常 `"ok"` のプレーンテキストであり JSON ではないため、`interpretResponse()` を通すと `body = "ok"`（JSON パース失敗で生テキスト）になる。`interpretResponse()` を使っても結果は同じだが、エラー処理（非2xx時の `HttpError` スロー）が `SlackWebhookError` ではなく `HttpError` になる点で差異が生じる。
+→ 現状の設計は Slack Webhook の仕様に合致しており、意図的な差異と判断。ドキュメントで明記を推奨。
 
 ---
 
-### L-1: ClientHelper.use() — プラグイン戻り値の型検証なし
+#### N-3: ApiClient.extend で logger が二重ラップされる
 
-**ファイル**: `HttpClient.gs:318-328`
+**ファイル**: `HttpClient.gs:466-472`, `HttpClient.gs:407`
+**重要度**: **L (Low)**
 
 ```javascript
-client.use = (pluginOrName, fn) => {
-  let newMethods;
-  if (typeof pluginOrName === 'string') {
-    newMethods = { [pluginOrName]: fn(client) };
-  } else {
-    newMethods = pluginOrName(client);
+// extend() (L466-472)
+const extend = decorator => createClient({
+  baseUrl,
+  logger: log,           // ← LoggerFacade.createLogger() の戻り値
+  headers: HttpCore.cloneHeaders(headers),
+  transport: decorator(transport),
+  responseHandler
+});
+
+// createClient() 内 (L407)
+const log = LoggerFacade.createLogger(config.logger);  // ← 再度ラップ
+```
+
+`extend()` が `log`（`LoggerFacade.createLogger()` の戻り値、5メソッドを持つオブジェクト）を渡し、`createClient()` 内部で再度 `LoggerFacade.createLogger()` に渡す。
+
+**動作上の影響**: `LoggerFacade.createLogger()` は渡されたオブジェクトの `trace`/`debug`/`info`/`warn`/`error` メソッドを検出するため、結果は正しい。ただし、`resolve()` が新しいクロージャラッパーを生成するため、`extend()` を N 回呼ぶと呼び出しチェーンが N+1 段になる。
+
+**修正案**: `extend()` で元の `config.logger` を保持して渡す。
+```javascript
+const extend = decorator => createClient({
+  baseUrl,
+  logger: config.logger,    // ← 元のロガー実装を渡す
+  headers: HttpCore.cloneHeaders(headers),
+  transport: decorator(transport),
+  responseHandler
+});
+```
+
+---
+
+#### N-4: delete HTTP メソッドショートカットが body を受け付けない
+
+**ファイル**: `HttpClient.gs:262-263`
+**重要度**: **L (Low)**
+
+```javascript
+delete: (endpoint, options) =>
+  call({ ...options, method: 'DELETE', endpoint })
+```
+
+`put`, `patch`, `post` は第2引数に `body` を受け付けるが、`delete` は受け付けない。HTTP 仕様上 DELETE with body は非推奨だが、一部 API（Elasticsearch, GitHub API 等）で使用される。
+
+**緩和**: `call()` で直接 body を指定すれば対応可能。
+```javascript
+client.call({ method: 'DELETE', endpoint: '/resource', body: { id: 123 } });
+```
+
+**修正案（任意）**:
+```javascript
+delete: (endpoint, body, options) =>
+  call({ ...options, method: 'DELETE', endpoint, body })
+```
+
+---
+
+#### N-5: ApiClient.createClient 内部の純粋関数が毎回再定義される
+
+**ファイル**: `HttpClient.gs:368-403`
+**重要度**: **L (Low)**
+
+`trimRightSlash`, `trimLeftSlash`, `encodeKeyValue`, `buildQueryString`, `buildUrl` が `createClient()` 呼び出しのたびに再定義される。`extend()` が内部で `createClient()` を呼ぶため、典型的な3段 extend チェーン（auth → retry → logger）で5つの関数 × 4回 = 20個の関数オブジェクトが生成される。
+
+**影響**: クライアント生成は通常1回（起動時）のため、実行時パフォーマンスへの影響は無視できる。メモリ使用量も GAS のコンテキストでは問題にならない。
+
+**修正案（任意）**: config に依存しない純粋関数を IIFE スコープ（`ApiClient` の直下）に移動する。
+```javascript
+const ApiClient = (function () {
+  const trimRightSlash = s => String(s).replace(/\/+$/, '');
+  const trimLeftSlash = s => String(s).replace(/^\/+/, '');
+  const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
+
+  // ...
+  const createClient = config => {
+    // trimRightSlash 等を直接参照
+  };
+})();
+```
+
+---
+
+#### N-6: slackDate(null) と slackDate(undefined) の非対称挙動
+
+**ファイル**: `SlackFilters.gs:308-314`
+**重要度**: **L (Low)**
+
+```javascript
+const slackDate = v => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) {
+    return toString(v);
   }
-  return createExtended({ ...additionalMethods, ...newMethods });
+  return `<!date^${Math.floor(n)}^{date_short_time}|${toString(v)}>`;
 };
 ```
 
-`pluginOrName(client)` が `null`, `undefined`, または非オブジェクトを返した場合、スプレッドで予期しない動作が発生する可能性がある。
+| 入力 | `Number(v)` | `isFinite` | 出力 |
+|---|---|---|---|
+| `null` | `0` | `true` | `<!date^0^{date_short_time}|>` |
+| `undefined` | `NaN` | `false` | `""` |
 
----
+`null` と `undefined` を同等に扱う呼び出し元にとって予期しない挙動になり得る。これは JavaScript の `Number()` の仕様に起因する既知の挙動であり、テスト（SlackFilters.test.gs）で期待値を修正済み。
 
-### L-2: ApiClient.createClient — デフォルトメソッドが POST
-
-**ファイル**: `HttpClient.gs:443`
-
+**修正案（任意）**: null ガードを追加する。
 ```javascript
-const method = (request.method || 'POST').toUpperCase();
+const slackDate = v => {
+  if (v == null) return '';
+  const n = Number(v);
+  // ...
+};
 ```
 
-一般的な HTTP クライアントは GET をデフォルトとするが、本ライブラリは POST をデフォルトとしている。Slack API（多くのメソッドが POST）向けの設計意図は理解できるが、汎用的な `ApiClient` としては直感に反する。HTTP メソッドショートカット（`get()`, `post()` 等）の導入により、`call()` 直接呼び出し時のデフォルトの影響は軽減されている。
+---
+
+## 4. カスタムエラー型の整理
+
+本ライブラリで定義されている4つのカスタムエラー型を整理する。
+
+| エラー名 | 定義箇所 | 付与プロパティ | スロー条件 |
+|---|---|---|---|
+| `HttpError` | HttpClient.gs:94-101 | `status`, `headers`, `body`, `text`, `request` | HTTP 2xx 以外のレスポンス |
+| `RetryExhaustedError` | HttpClient.gs:152-153, SlackClient.gs:67-68 | なし（メッセージのみ） | リトライ回数上限到達（429/5xx） |
+| `SlackApiError` | SlackClient.gs:156-161 | `code`, `metadata`, `response` | Slack API レスポンス `ok: false` |
+| `SlackWebhookError` | SlackClient.gs:279-283 | `status`, `body` | Slack Webhook 非2xx レスポンス |
+
+全エラーは `Error` を継承し、`e.name` プロパティでカスタム名を設定する GAS V8 互換の方式を採用。`class CustomError extends Error` ではなく `new Error(); e.name = '...'` 方式であるため、`instanceof` での判定はできないが、`e.name === 'HttpError'` での判定は可能。
 
 ---
 
-### L-3: resolveSheet — 内部関数の毎回再生成
-
-**ファイル**: `resolveSheet.gs:66, 74, 87, 106`
-
-`isUrl`, `getGid`, `getOrCreateSheet`, `throwCreateNotSupported` が `resolveSheet` 呼び出しのたびに再定義される。`getOrCreateSheet` は `create` 変数をクロージャで参照するため内部定義が必要だが、`isUrl` と `getGid` は外部に移動可能。
-
----
-
-### L-4: assertDeepEqual — JSON.stringify による比較の制約
-
-**ファイル**: `HttpClient.test.gs:51-54`
-
-```javascript
-const assertDeepEqual = (actual, expected, message) => {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-```
-
-`undefined` 値、`function` 型、循環参照を含むオブジェクトでは正しく比較できない。現在のテストケースでは問題ないが、テストの拡張時に注意が必要。
-
----
-
-### L-5: GoogleSearchConsoleApiClient — JSDoc 誤字
-
-**ファイル**: `GoogleSearchConsoleApiClient.gs:14`
-
-```
-リトライは ApiClient.withRetry を再利用し、レートリミットに合わせて緩やかな設定にある
-```
-
-「設定にある」→「設定にする」の誤字。また、実際には `ApiClient.withRetry` ではなく `HttpCore.withRetry` を使用している。
-
----
-
-### L-6: テスト — Retry-After NaN ケースのテスト不足
-
-**ファイル**: `SlackClient.test.gs`
-
-`Retry-After` ヘッダーに数値でない文字列が設定された場合のテストが存在しない。M-2 の問題を検出できない。
-
----
-
-## 3. モジュール別評価
+## 5. モジュール別評価サマリー
 
 | モジュール | ファイル | 行数 | 品質 | 主な評価 |
 |---|---|---|---|---|
-| HttpCore | HttpClient.gs:32-256 | 225 | **B+** | Transport + Decorator の基盤は堅牢。H-1（二重ログ）が未修正 |
-| ClientHelper | HttpClient.gs:263-337 | 75 | **A-** | PR #4 で新規追加。Plugin Injection の設計は良好。M-1（options オーバーライド）に注意 |
-| ApiClient | HttpClient.gs:354-497 | 144 | **A** | responseHandler 統合で可読性向上。extend() のイミュータブル設計も健全 |
-| WebhookClient | HttpClient.gs:518-595 | 78 | **A** | シンプルで明確。問題なし |
-| SlackCore | SlackClient.gs:27-120 | 94 | **B** | Retry-After 対応は適切だが NaN 安全性（M-2）と文字列マッチ（H-2）に課題 |
-| SlackApiClient | SlackClient.gs:136-184 | 49 | **A** | responseHandler パターンへの移行で大幅に簡潔化 |
-| SlackWebhookClient | SlackClient.gs:210-300 | 91 | **A-** | 機能的に問題なし。M-6（パラメータ再代入）は軽微 |
-| GSC Client | GoogleSearchConsoleApiClient.gs | 82 | **A-** | responseHandler 統合で簡潔。OAuth 動的取得の設計は適切 |
-| LazyTemplate | LazyTemplate.gs | 661 | **B+** | テンプレートエンジンとして高機能。H-3（エクスポート）と M-5（未知フィルター黙殺）が課題 |
-| SlackFilters | SlackFilters.gs | 455 | **A** | 純関数のみ。命名規則統一。問題なし |
+| HttpCore | HttpClient.gs:32-238 | 207 | **A-** | Transport + Decorator の基盤が堅牢。H-1 修正済み。SlackCore との重複（N-1）が改善余地 |
+| ClientHelper | HttpClient.gs:245-322 | 78 | **A** | Plugin Injection の設計が良好。型検証も追加済み |
+| ApiClient | HttpClient.gs:339-478 | 140 | **A** | Immutable Builder が健全。responseHandler 統合で可読性向上 |
+| WebhookClient | HttpClient.gs:499-574 | 76 | **A** | シンプルで明確。問題なし |
+| SlackCore | SlackClient.gs:27-123 | 97 | **B+** | Retry-After 対応は適切。HttpCore との重複（N-1）が改善余地 |
+| SlackApiClient | SlackClient.gs:139-187 | 49 | **A** | responseHandler パターンで簡潔。問題なし |
+| SlackWebhookClient | SlackClient.gs:213-302 | 90 | **A-** | 機能的に問題なし。レスポンス形式の差異（N-2）はドキュメント推奨 |
 | LoggerFacade | LoggerFacade.gs | 103 | **A** | SLF4J 互換の設計が簡潔で明確。問題なし |
-| resolveSheet | resolveSheet.gs | 217 | **B+** | 柔軟な入力対応。M-4（最終フォールバック）の修正推奨 |
-| loadFromSheetAsObjects | loadFromSheetAsObjects.gs | 215 | **A** | 「切るだけ」の設計原則が徹底。型による引数判定も明確 |
-| HttpClient.test.gs | HttpClient.test.gs | 1483 | **A-** | PR #4 でテスト大幅拡充。MockTransport の設計が良好。カバレッジ充分 |
-| SlackClient.test.gs | SlackClient.test.gs | 615 | **B+** | Plugin パターンのテストは良好。M-9（ロジック複製）が改善点 |
+| LazyTemplate | LazyTemplate.gs | 663 | **A-** | テンプレートエンジンとして高機能。H-3 修正済み。M-5（未知フィルター黙殺）が残存 |
+| SlackFilters | SlackFilters.gs | 467 | **A** | 純関数のみ。命名規則統一。問題なし |
+| resolveSheet | resolveSheet.gs | 221 | **A** | 柔軟な入力対応。M-4, L-3 修正済み。全体的に健全 |
+| loadFromSheetAsObjects | loadFromSheetAsObjects.gs | 217 | **A** | 「切るだけ」の設計原則が徹底。型による引数判定も明確 |
+| GSC Client | GoogleSearchConsoleApiClient.gs | 81 | **A-** | responseHandler 統合で簡潔。M-7（withGoogleAuth 公開）が残存 |
 
 ---
 
-## 4. 指摘事項サマリー
+## 6. 全指摘事項サマリー
+
+### 前回レビューからの修正状況
+
+| ID | 重要度 | モジュール | 概要 | ステータス |
+|---|---|---|---|---|
+| H-1 | High | HttpCore.withRetry | リトライ上限時の二重ログ | **修正済み** |
+| H-2 | High | SlackCore.withRetry | 文字列マッチによるエラー識別 | **修正済み** |
+| H-3 | High | LazyTemplate | strict mode でのエクスポート不成立 | **修正済み** |
+| M-1 | Medium | ClientHelper | options によるオーバーライド | **修正済み** |
+| M-2 | Medium | SlackCore | Retry-After parseInt NaN 安全性 | **修正済み** |
+| M-3 | Medium | HttpCore | hasHeader の hasOwnProperty ガード欠落 | **修正済み** |
+| M-4 | Medium | resolveSheet | 最終フォールバックが無効な型を返す | **修正済み** |
+| M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 | **未対応** |
+| M-6 | Medium | WebhookClient 他 | パラメータ再代入 | **修正済み** |
+| M-7 | Medium | GSC Client | withGoogleAuth の不要なエクスポート | **未対応** |
+| M-8 | Medium | TestRunner | グローバル可変状態 | 対象外（テストコード） |
+| M-9 | Medium | SlackClient.test.gs | slackResponseHandler テスト複製 | **修正済み** |
+| L-1 | Low | ClientHelper | use() のプラグイン戻り値型検証なし | **修正済み** |
+| L-2 | Low | ApiClient | デフォルトメソッドが POST | **修正済み** |
+| L-3 | Low | resolveSheet | 内部関数の毎回再生成 | **修正済み** |
+| L-4 | Low | HttpClient.test.gs | assertDeepEqual の JSON.stringify 制約 | **修正済み** |
+| L-5 | Low | GSC Client | JSDoc 誤字 | **修正済み** |
+| L-6 | Low | SlackClient.test.gs | Retry-After NaN テスト不足 | **修正済み** |
+
+### 今回の新規指摘
 
 | ID | 重要度 | モジュール | 概要 |
 |---|---|---|---|
-| H-1 | High | HttpCore.withRetry | リトライ上限時の二重ログ |
-| H-2 | High | SlackCore.withRetry | 文字列マッチによるエラー識別の脆弱性 |
-| H-3 | High | LazyTemplate | strict mode でのエクスポート不成立 |
-| M-1 | Medium | ClientHelper | HTTP メソッドショートカットの options オーバーライド |
-| M-2 | Medium | SlackCore | Retry-After parseInt NaN 安全性 |
-| M-3 | Medium | HttpCore | hasHeader の hasOwnProperty ガード欠落 |
-| M-4 | Medium | resolveSheet | 最終フォールバックが無効な型を返す |
-| M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 |
-| M-6 | Medium | SlackWebhookClient, WebhookClient | パラメータ再代入 |
-| M-7 | Medium | GSC Client | withGoogleAuth の不要なエクスポート |
-| M-8 | Medium | TestRunner | グローバル可変状態 |
-| M-9 | Medium | SlackClient.test.gs | slackResponseHandler テストがロジック複製 |
-| L-1 | Low | ClientHelper | use() のプラグイン戻り値型検証なし |
-| L-2 | Low | ApiClient | デフォルトメソッドが POST |
-| L-3 | Low | resolveSheet | 内部関数の毎回再生成 |
-| L-4 | Low | HttpClient.test.gs | assertDeepEqual の JSON.stringify 制約 |
-| L-5 | Low | GSC Client | JSDoc 誤字 |
-| L-6 | Low | SlackClient.test.gs | Retry-After NaN テスト不足 |
+| N-1 | Medium | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通） |
+| N-2 | Low | SlackWebhookClient | WebhookClient.send とのレスポンス形式不一致 |
+| N-3 | Low | ApiClient | extend() で logger が二重ラップされる |
+| N-4 | Low | ClientHelper | delete ショートカットが body を受け付けない |
+| N-5 | Low | ApiClient | createClient 内部の純粋関数が毎回再定義 |
+| N-6 | Low | SlackFilters | slackDate(null) と slackDate(undefined) の非対称挙動 |
 
-**High: 3件 / Medium: 9件 / Low: 6件 / 合計: 18件**
+### 現在の総計
+
+| 区分 | High | Medium | Low | 合計 |
+|---|---|---|---|---|
+| 前回から未対応 | 0 | 2 (M-5, M-7) | 0 | 2 |
+| 今回新規 | 0 | 1 (N-1) | 5 (N-2〜N-6) | 6 |
+| **合計** | **0** | **3** | **5** | **8** |
 
 ---
 
-## 5. 推奨対応優先順位
-
-### 即時対応（High）
-1. **H-1**: HttpCore.withRetry に二重ログ防止の catch ガードを追加
-2. **H-2**: エラー識別をカスタムエラー型（`e.name = 'RetryExhaustedError'`）に変更。HttpCore・SlackCore 両方に適用
-3. **H-3**: LazyTemplate のエクスポート条件を strict mode 対応に修正
+## 7. 推奨対応優先順位
 
 ### 早期対応（Medium）
-4. **M-1**: HTTP メソッドショートカットの options から予約キーを除外
-5. **M-2**: Retry-After の parseInt に `|| 1` フォールバックを追加
-6. **M-4**: resolveSheet の最終フォールバックをエラーに変更
+1. **M-5**: LazyTemplate.applyFilters に未知フィルター警告を追加
+2. **M-7**: GoogleSearchConsoleApiClient のエクスポートから withGoogleAuth を除去
+3. **N-1**: HttpCore.withRetry と SlackCore.withRetry の統一（strategy パターン導入）
 
-### 継続改善（Low + 残り Medium）
-7. 残りの Medium・Low 項目を技術的負債として管理
+### 継続改善（Low）
+4. N-3: ApiClient.extend の logger 二重ラップ解消
+5. N-5: ApiClient.createClient の純粋関数を IIFE スコープに移動
+6. N-2, N-4, N-6: ドキュメントまたは JSDoc での明記
+
+---
+
+## 8. 総合所見
+
+全8ファイル・約2,500行のライブラリとして、設計の一貫性・コード品質ともに高い水準にある。前回レビューで指摘した High 3件はすべて修正され、致命的な問題は解消された。
+
+特に評価できる点:
+- **Transport + Decorator パターン**の一貫した適用により、認証・リトライ・ロギングの合成が柔軟かつ安全
+- **LoggerFacade** による多様なロガー実装の吸収が、ライブラリ全体の可搬性を高めている
+- **responseHandler パターン**の導入により、API 固有のレスポンス処理がクリーンに統合
+- **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
+- GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
+
+残存する指摘は Medium 3件・Low 5件であり、いずれも機能的な影響は限定的。N-1（withRetry の重複統一）が最も改善効果の大きい技術的負債である。
