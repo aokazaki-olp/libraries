@@ -68,7 +68,7 @@ HTTP 通信の共通基盤。Transport パターンにより抽象化された f
 - `cloneHeaders()` / `mergeHeaders()` が spread で簡潔に実装
 
 **注意点**:
-- `withRetry` と `SlackCore.withRetry` の構造的重複 → N-1 参照
+- `withRetry` と `SlackCore.withRetry` の構造的重複 → N-1（§4 検討事項）参照
 
 #### ClientHelper（L245-322）
 
@@ -129,7 +129,7 @@ Slack 固有の Retry-After ヘッダー対応リトライ。
 - `RetryExhaustedError` 名前付きエラーで二重ログ防止（H-2 の修正成果）
 
 **注意点**:
-- HttpCore.withRetry との構造的重複 → N-1 参照
+- HttpCore.withRetry との構造的重複 → N-1（§4 検討事項）参照
 
 #### SlackApiClient（L139-187）
 
@@ -318,38 +318,6 @@ Google Search Console API クライアント。
 
 ### 新規指摘
 
-#### N-1: HttpCore.withRetry と SlackCore.withRetry の構造的重複（検討事項）
-
-**ファイル**: `HttpClient.gs:126-187`, `SlackClient.gs:37-120`
-**重要度**: **L (Low)** — 検討事項として格下げ
-
-HttpCore.withRetry（62行）と SlackCore.withRetry（84行）は以下のロジックが共通しており、~70% が重複している。
-
-| 共通ロジック | HttpCore | SlackCore |
-|---|---|---|
-| ループ制御 (`for attempt`) | L142 | L52 |
-| 429/5xx ステータス判定 | L147 | L57, L79 |
-| `RetryExhaustedError` 名前付きエラー | L153 | L68, L85 |
-| catch 内の再スロー判定 | L167 | L99 |
-| lastError 管理 | L170 | L103 |
-| 指数バックオフ | L131-135 | L41-45 |
-
-**差分**:
-- SlackCore は 429 と 5xx を別処理し、429 の場合に `Retry-After` ヘッダーを尊重
-- SlackCore は固定 baseDelay = 1000ms（HttpCore は設定可能）
-
-**リスク**: 一方にバグ修正を適用しても、もう一方に適用漏れが発生する（実際に H-1/H-2 の修正時にこのリスクが顕在化した）。
-
-**検討ポイント**:
-- `Retry-After` は RFC 7231 Section 7.1.3 で定義された標準ヘッダーであり、Slack 固有ではない。HttpCore.withRetry が本来対応すべき範囲とも言える
-- HttpCore に Retry-After 対応を入れれば SlackCore.withRetry の存在意義がほぼなくなり、統合が自然な流れになる
-- 一方で strategy パターン（shouldRetry / getDelay の注入）を導入すると設計の複雑度が上がる
-- 現状は重複があっても動作に問題はなく、H-1/H-2 修正時のリスクも解消済み
-
-**結論**: 統合の方向性は正しいが、設計の複雑度とのトレードオフがある。新たな API クライアント（Retry-After 対応が必要なもの）を追加するタイミングでの統合が適切
-
----
-
 #### N-2: SlackWebhookClient.send と WebhookClient.send のレスポンス形式不一致（ベストプラクティスによりクローズ）
 
 **ファイル**: `HttpClient.gs:554-555`, `SlackClient.gs:270-275`
@@ -472,7 +440,42 @@ const slackDate = v => {
 
 ---
 
-## 4. カスタムエラー型の整理
+## 4. 検討事項
+
+指摘事項とは別に、今後の設計改善のための検討事項を記録する。
+
+### N-1: HttpCore.withRetry と SlackCore.withRetry の構造的重複
+
+**ファイル**: `HttpClient.gs:126-187`, `SlackClient.gs:37-120`
+
+HttpCore.withRetry（62行）と SlackCore.withRetry（84行）は以下のロジックが共通しており、~70% が重複している。
+
+| 共通ロジック | HttpCore | SlackCore |
+|---|---|---|
+| ループ制御 (`for attempt`) | L142 | L52 |
+| 429/5xx ステータス判定 | L147 | L57, L79 |
+| `RetryExhaustedError` 名前付きエラー | L153 | L68, L85 |
+| catch 内の再スロー判定 | L167 | L99 |
+| lastError 管理 | L170 | L103 |
+| 指数バックオフ | L131-135 | L41-45 |
+
+**差分**:
+- SlackCore は 429 と 5xx を別処理し、429 の場合に `Retry-After` ヘッダーを尊重
+- SlackCore は固定 baseDelay = 1000ms（HttpCore は設定可能）
+
+**リスク**: 一方にバグ修正を適用しても、もう一方に適用漏れが発生する（実際に H-1/H-2 の修正時にこのリスクが顕在化した）。
+
+**検討ポイント**:
+- `Retry-After` は RFC 7231 Section 7.1.3 で定義された標準ヘッダーであり、Slack 固有ではない。HttpCore.withRetry が本来対応すべき範囲とも言える
+- HttpCore に Retry-After 対応を入れれば SlackCore.withRetry の存在意義がほぼなくなり、統合が自然な流れになる
+- 一方で strategy パターン（shouldRetry / getDelay の注入）を導入すると設計の複雑度が上がる
+- 現状は重複があっても動作に問題はなく、H-1/H-2 修正時のリスクも解消済み
+
+**結論**: 統合の方向性は正しいが、設計の複雑度とのトレードオフがある。新たな API クライアント（Retry-After 対応が必要なもの）を追加するタイミングでの統合が適切。
+
+---
+
+## 5. カスタムエラー型の整理
 
 本ライブラリで定義されている4つのカスタムエラー型を整理する。
 
@@ -487,7 +490,7 @@ const slackDate = v => {
 
 ---
 
-## 5. モジュール別評価サマリー
+## 6. モジュール別評価サマリー
 
 | モジュール | ファイル | 行数 | 品質 | 主な評価 |
 |---|---|---|---|---|
@@ -507,7 +510,7 @@ const slackDate = v => {
 
 ---
 
-## 6. 全指摘事項サマリー
+## 7. 全指摘事項サマリー
 
 ### 前回レビューからの修正状況
 
@@ -534,9 +537,9 @@ const slackDate = v => {
 
 ### 今回の新規指摘
 
-| ID | 重要度 | モジュール | 概要 |
-|---|---|---|---|
-| N-1 | Low | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通）— 検討事項 |
+| ID | 重要度 | モジュール | 概要 | ステータス |
+|---|---|---|---|---|
+| N-1 | — | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通） | **検討事項に移行**（§4 参照） |
 | N-2 | — | SlackWebhookClient | WebhookClient.send とのレスポンス形式不一致 | ベストプラクティスによりクローズ |
 | N-3 | Low | ApiClient | extend() で logger が二重ラップされる | **修正済み** |
 | N-4 | Low | ApiClient | DELETE リクエストの body 取り扱い | **修正済み** |
@@ -547,21 +550,23 @@ const slackDate = v => {
 
 | 区分 | High | Medium | Low | 合計 |
 |---|---|---|---|---|
-| 今回新規（残存） | 0 | 0 | 1 (N-1) | 1 |
+| 今回新規（残存） | 0 | 0 | 0 | 0 |
+| 検討事項 | — | — | — | 1 (N-1) |
 | 修正済み | 0 | 0 | 4 (N-3, N-4, N-5, N-6) | — |
 | クローズ済み | 0 | 2 (M-5, M-7) | 1 (N-2) | — |
-| **合計（要対応）** | **0** | **0** | **1** | **1** |
+| **合計（要対応）** | **0** | **0** | **0** | **0** |
 
 ---
 
-## 7. 推奨対応優先順位
+## 8. 推奨対応優先順位
 
-### 継続改善（Low）
-1. N-1: withRetry 統合 — 新規 API クライアント追加時に検討
+指摘事項はすべて修正済みまたはクローズ済み。要対応の指摘は **0件**。
+
+検討事項（§4）として N-1（withRetry 統合）を記録。新規 API クライアント追加時に検討する。
 
 ---
 
-## 8. 総合所見
+## 9. 総合所見
 
 全8ファイル・約2,500行のライブラリとして、設計の一貫性・コード品質ともに高い水準にある。前回レビューで指摘した High 3件はすべて修正され、致命的な問題は解消された。
 
@@ -572,4 +577,4 @@ const slackDate = v => {
 - **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
 - GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
 
-残存する指摘は Low 1件（N-1: withRetry 重複統一の検討事項）のみであり、機能的な影響はない。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。N-1（withRetry の重複統一）は新規 API クライアント追加時の検討事項として残す。
+残存する指摘は **0件**。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。新規指摘（N-1〜N-6）も全件修正済みまたはクローズ。N-1（withRetry の重複統一）は指摘事項から検討事項（§4）に移行し、新規 API クライアント追加時の改善候補として記録している。
