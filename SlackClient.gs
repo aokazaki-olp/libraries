@@ -34,10 +34,9 @@ const SlackCore = (function () {
    * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
    */
-  const withRetry = (transport, retryOptions) => {
-    const config = retryOptions || {};
-    const maxRetries = config.maxRetries != null ? config.maxRetries : 3;
-    const log = LoggerFacade.createLogger(config.logger);
+  const withRetry = (transport, retryOptions = {}) => {
+    const maxRetries = retryOptions.maxRetries ?? 3;
+    const log = LoggerFacade.createLogger(retryOptions.logger);
 
     const sleepWithBackoff = attempt => {
       const delay = Math.pow(2, attempt) * 1000;
@@ -47,7 +46,7 @@ const SlackCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options && options.method ? options.method : 'GET';
+        const method = options?.method || 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -227,7 +226,7 @@ const SlackWebhookClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (webhookUrl, options = {}) => {
-    const maxRetries = options.maxRetries != null ? options.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
+    const maxRetries = options.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
 
     // Transport 構築（Slack用リトライを使用）
     let transport = HttpCore.createTransport();

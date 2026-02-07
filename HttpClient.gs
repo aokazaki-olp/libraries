@@ -133,7 +133,7 @@ const HttpCore = (function () {
    * @returns {Object} トランスポートオブジェクト
    */
   const createTransport = () => ({
-    fetch: (url, options) => UrlFetchApp.fetch(url, options || {})
+    fetch: (url, options = {}) => UrlFetchApp.fetch(url, options)
   });
 
   /**
@@ -146,11 +146,10 @@ const HttpCore = (function () {
    * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
    */
-  const withRetry = (transport, retryOptions) => {
-    const config = retryOptions || {};
-    const maxRetries = config.maxRetries != null ? config.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
-    const delayMs = config.baseDelayMs != null ? config.baseDelayMs : CONFIG.DEFAULT_BASE_DELAY_MS;
-    const log = LoggerFacade.createLogger(config.logger);
+  const withRetry = (transport, retryOptions = {}) => {
+    const maxRetries = retryOptions.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
+    const delayMs = retryOptions.baseDelayMs ?? CONFIG.DEFAULT_BASE_DELAY_MS;
+    const log = LoggerFacade.createLogger(retryOptions.logger);
 
     const sleepWithBackoff = (attempt, baseDelayMs) => {
       const delay = Math.pow(2, attempt) * baseDelayMs;
@@ -160,7 +159,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options && options.method ? options.method : 'GET';
+        const method = options?.method || 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -225,7 +224,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options && options.method ? options.method : 'GET';
+        const method = options?.method || 'GET';
         const startMs = Date.now();
 
         log.debug(`[HTTP] → ${method} ${url}`);
@@ -427,11 +426,11 @@ const ApiClient = (function () {
       return url + separator + queryString;
     };
 
-    const baseUrl = trimRightSlash(config.baseUrl || '');
-    const transport = config.transport || HttpCore.createTransport();
+    const baseUrl = trimRightSlash(config.baseUrl ?? '');
+    const transport = config.transport ?? HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
-    const headers = config.headers || {};
-    const responseHandler = config.responseHandler || null;
+    const headers = config.headers ?? {};
+    const responseHandler = config.responseHandler ?? null;
 
     /**
      * HTTPリクエストを実行
