@@ -300,7 +300,7 @@ const ClientHelper = (function () {
     const createExtended = additionalMethods => {
       const client = { ...additionalMethods, call, ...methods };
 
-      if (clientOptions && clientOptions.extend) {
+      if (clientOptions?.extend) {
         client.extend = clientOptions.extend;
       }
 
@@ -367,7 +367,7 @@ const ApiClient = (function () {
    */
   const withBearerAuth = (transport, token) => ({
     fetch: (url, options) => {
-      const headers = HttpCore.cloneHeaders(options && options.headers);
+      const headers = HttpCore.cloneHeaders(options?.headers);
       headers.Authorization = `Bearer ${token}`;
       return transport.fetch(url, { ...options, headers });
     }
