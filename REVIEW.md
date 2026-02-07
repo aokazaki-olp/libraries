@@ -45,9 +45,9 @@ resolveSheet ← loadFromSheetAsObjects
 
 前回レビュー（第3版）で指摘した18件のうち、14件が修正済み。品質は大幅に向上している。
 
-| 修正済み（14件） | 設計意図クローズ（1件） | 未対応（1件） | テスト除外（2件） |
-|---|---|---|---|
-| H-1, H-2, H-3, M-1, M-2, M-3, M-4, M-6, M-9, L-1, L-2, L-3, L-5, L-6 | M-5 | M-7 | M-8, L-4 |
+| 修正済み（14件） | 設計意図クローズ（2件） | テスト除外（2件） |
+|---|---|---|
+| H-1, H-2, H-3, M-1, M-2, M-3, M-4, M-6, M-9, L-1, L-2, L-3, L-5, L-6 | M-5, M-7 | M-8, L-4 |
 
 ---
 
@@ -272,8 +272,8 @@ Google Search Console API クライアント。
 - `ApiClient.createClient()` + `extend()` チェーンで認証・リトライ・ロギングを構成
 - GSC 向けの緩やかなリトライ設定（maxRetries: 5, baseDelayMs: 1000ms）
 
-**注意点**:
-- `withGoogleAuth` の不要なエクスポート → 前回 M-7（未対応、詳細後述）
+**備考**:
+- `withGoogleAuth` は Google API 共通の OAuth デコレータとしてエクスポート。他の Google API クライアント追加時に再利用する前提（M-7: 設計意図によりクローズ）
 
 ---
 
@@ -304,21 +304,15 @@ Google Search Console API クライアント。
 
 ---
 
-#### M-7: GoogleSearchConsoleApiClient — withGoogleAuth の不要なエクスポート（継続）
+#### M-7: GoogleSearchConsoleApiClient — withGoogleAuth のエクスポート（設計意図によりクローズ）
 
 **ファイル**: `GoogleSearchConsoleApiClient.gs:80`
-**ステータス**: 未対応
+**ステータス**: 対応しない（設計意図）
 
-```javascript
-return { withGoogleAuth, create };
-```
+`withGoogleAuth` は Google 系 API 共通の OAuth デコレータであり、以下の理由で公開を維持する。
 
-`withGoogleAuth` は `create()` 内部の `extend()` チェーンで使用される内部関数。外部に公開すると、baseUrl 未設定の状態で使用される可能性がある。
-
-**修正案**:
-```javascript
-return { create };
-```
+1. **再利用性**: Google Analytics, Google Drive 等の Google API クライアントを追加する際に、同じ `withGoogleAuth` デコレータを `extend()` チェーンで利用できる。内部に隠蔽すると各クライアントで同一実装の重複が発生する（N-1 と同種の問題）
+2. **暫定的な名前空間**: 現時点では GSC の名前空間に配置しているが、Google API クライアントが増えた際に適切な共通名前空間に移動する前提の暫定措置
 
 ---
 
@@ -542,7 +536,7 @@ const slackDate = v => {
 | SlackFilters | SlackFilters.gs | 467 | **A** | 純関数のみ。命名規則統一。問題なし |
 | resolveSheet | resolveSheet.gs | 221 | **A** | 柔軟な入力対応。M-4, L-3 修正済み。全体的に健全 |
 | loadFromSheetAsObjects | loadFromSheetAsObjects.gs | 217 | **A** | 「切るだけ」の設計原則が徹底。型による引数判定も明確 |
-| GSC Client | GoogleSearchConsoleApiClient.gs | 81 | **A-** | responseHandler 統合で簡潔。M-7（withGoogleAuth 公開）が残存 |
+| GSC Client | GoogleSearchConsoleApiClient.gs | 81 | **A** | responseHandler 統合で簡潔。withGoogleAuth は Google API 共通デコレータとして公開（設計意図） |
 
 ---
 
@@ -561,7 +555,7 @@ const slackDate = v => {
 | M-4 | Medium | resolveSheet | 最終フォールバックが無効な型を返す | **修正済み** |
 | M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 | **対応しない（設計意図）** |
 | M-6 | Medium | WebhookClient 他 | パラメータ再代入 | **修正済み** |
-| M-7 | Medium | GSC Client | withGoogleAuth の不要なエクスポート | **未対応** |
+| M-7 | Medium | GSC Client | withGoogleAuth のエクスポート | **対応しない（設計意図）** |
 | M-8 | Medium | TestRunner | グローバル可変状態 | 対象外（テストコード） |
 | M-9 | Medium | SlackClient.test.gs | slackResponseHandler テスト複製 | **修正済み** |
 | L-1 | Low | ClientHelper | use() のプラグイン戻り値型検証なし | **修正済み** |
@@ -586,18 +580,16 @@ const slackDate = v => {
 
 | 区分 | High | Medium | Low | 合計 |
 |---|---|---|---|---|
-| 前回から未対応 | 0 | 1 (M-7) | 0 | 1 |
 | 今回新規 | 0 | 1 (N-1) | 5 (N-2〜N-6) | 6 |
-| 設計意図でクローズ | 0 | 1 (M-5) | 0 | — |
-| **合計（要対応）** | **0** | **2** | **5** | **7** |
+| 設計意図でクローズ | 0 | 2 (M-5, M-7) | 0 | — |
+| **合計（要対応）** | **0** | **1** | **5** | **6** |
 
 ---
 
 ## 7. 推奨対応優先順位
 
 ### 早期対応（Medium）
-1. **M-7**: GoogleSearchConsoleApiClient のエクスポートから withGoogleAuth を除去
-2. **N-1**: HttpCore.withRetry と SlackCore.withRetry の統一（strategy パターン導入）
+1. **N-1**: HttpCore.withRetry と SlackCore.withRetry の統一（strategy パターン導入）
 
 ### 継続改善（Low）
 4. N-3: ApiClient.extend の logger 二重ラップ解消
@@ -617,4 +609,4 @@ const slackDate = v => {
 - **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
 - GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
 
-残存する指摘は Medium 2件・Low 5件であり、いずれも機能的な影響は限定的。N-1（withRetry の重複統一）が最も改善効果の大きい技術的負債である。
+残存する指摘は Medium 1件・Low 5件であり、いずれも機能的な影響は限定的。N-1（withRetry の重複統一）が最も改善効果の大きい技術的負債である。
