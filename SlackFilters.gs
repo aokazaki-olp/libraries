@@ -306,6 +306,7 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDate = v => {
+    if (v == null) return '';
     const n = Number(v);
     if (!Number.isFinite(n)) {
       return toString(v);
@@ -331,6 +332,7 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDateFmt = v => {
+    if (v == null) return '';
     const s = toString(v);
     const pipeIdx = s.indexOf('|');
 

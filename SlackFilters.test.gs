@@ -265,9 +265,12 @@ const runSlackFiltersDateTests = () => {
     assertEqual(SlackFilters.slackDate('not-a-number'), 'not-a-number');
   });
 
-  test('null は timestamp 0 として扱われる', () => {
-    // Number(null) = 0, isFinite(0) = true → 有効なタイムスタンプとして処理
-    assertEqual(SlackFilters.slackDate(null), '<!date^0^{date_short_time}|>');
+  test('null は空文字を返す', () => {
+    assertEqual(SlackFilters.slackDate(null), '');
+  });
+
+  test('undefined は空文字を返す', () => {
+    assertEqual(SlackFilters.slackDate(undefined), '');
   });
 
   test('Infinity はそのまま文字列を返す', () => {
@@ -294,9 +297,12 @@ const runSlackFiltersDateTests = () => {
     assertEqual(SlackFilters.slackDateFmt('abc|{time}'), 'abc|{time}');
   });
 
-  test('null は timestamp 0 として扱われる', () => {
-    // Number(null) = 0, isFinite(0) = true → slackDate(null) と同一動作
-    assertEqual(SlackFilters.slackDateFmt(null), '<!date^0^{date_short_time}|>');
+  test('null は空文字を返す', () => {
+    assertEqual(SlackFilters.slackDateFmt(null), '');
+  });
+
+  test('undefined は空文字を返す', () => {
+    assertEqual(SlackFilters.slackDateFmt(undefined), '');
   });
 };
 
