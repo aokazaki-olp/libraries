@@ -150,7 +150,7 @@ const MockTransport = (function () {
   const createMockResponse = (statusCode, body, headers) => ({
     getResponseCode: () => statusCode,
     getContentText: () => typeof body === 'string' ? body : JSON.stringify(body),
-    getAllHeaders: () => headers || {}
+    getAllHeaders: () => headers ?? {}
   });
 
   /**

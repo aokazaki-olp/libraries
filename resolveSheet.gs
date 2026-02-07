@@ -108,7 +108,7 @@ const resolveSheet = (source, options = {}) => {
   };
 
   // Sheet オブジェクトが直接渡された場合はそのまま返す
-  if (source && typeof source.getSheetId === 'function') {
+  if (typeof source?.getSheetId === 'function') {
     return source;
   }
 

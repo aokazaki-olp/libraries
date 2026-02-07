@@ -162,7 +162,7 @@ const loadFromSheetAsObjects = (source, ...args) => {
   // メイン処理
   // ========================================
 
-  const fn = args.find(a => typeof a === 'function') || null;
+  const fn = args.find(a => typeof a === 'function') ?? null;
   const [limit = Infinity, offset = 0] = args.filter(a => typeof a === 'number');
 
   const sheet = resolveSheet(source);

@@ -57,7 +57,7 @@ const GoogleSearchConsoleApiClient = (function () {
   const create = (siteUrl, logger) => {
     const normalizeSiteUrl = url => {
       const s = String(url || '').trim();
-      if (s.indexOf('sc-domain:') === 0) {
+      if (s.startsWith('sc-domain:')) {
         return s;
       }
       return s.replace(/\/?$/, '/');

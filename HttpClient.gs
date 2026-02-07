@@ -42,18 +42,7 @@ const HttpCore = (function () {
    * @param {Object} headers クローン元ヘッダー
    * @returns {Object} クローンされたヘッダー
    */
-  const cloneHeaders = headers => {
-    const cloned = {};
-    if (!headers) {
-      return cloned;
-    }
-    for (const k in headers) {
-      if (Object.prototype.hasOwnProperty.call(headers, k)) {
-        cloned[k] = headers[k];
-      }
-    }
-    return cloned;
-  };
+  const cloneHeaders = headers => ({ ...headers });
 
   /**
    * ヘッダーをマージ
@@ -62,17 +51,7 @@ const HttpCore = (function () {
    * @param {Object} override 上書きヘッダー
    * @returns {Object} マージされたヘッダー
    */
-  const mergeHeaders = (base, override) => {
-    const merged = cloneHeaders(base);
-    if (override) {
-      for (const k in override) {
-        if (Object.prototype.hasOwnProperty.call(override, k)) {
-          merged[k] = override[k];
-        }
-      }
-    }
-    return merged;
-  };
+  const mergeHeaders = (base, override) => ({ ...base, ...override });
 
   /**
    * ヘッダーの存在確認（大文字小文字を区別しない）
@@ -82,13 +61,11 @@ const HttpCore = (function () {
    * @returns {boolean} 存在する場合true
    */
   const hasHeader = (headers, key) => {
-    const needle = String(key).toLowerCase();
-    for (const k in headers) {
-      if (Object.prototype.hasOwnProperty.call(headers, k) && String(k).toLowerCase() === needle) {
-        return true;
-      }
+    if (!headers) {
+      return false;
     }
-    return false;
+    const needle = String(key).toLowerCase();
+    return Object.keys(headers).some(k => k.toLowerCase() === needle);
   };
 
   /**
@@ -394,17 +371,13 @@ const ApiClient = (function () {
         return '';
       }
       const parts = [];
-      for (const k in query) {
-        if (!Object.prototype.hasOwnProperty.call(query, k)) {
-          continue;
-        }
-        const v = query[k];
+      for (const [k, v] of Object.entries(query)) {
         if (v == null) {
           continue;
         }
         if (Array.isArray(v)) {
-          for (let i = 0; i < v.length; i++) {
-            parts.push(encodeKeyValue(k, v[i]));
+          for (const item of v) {
+            parts.push(encodeKeyValue(k, item));
           }
         } else {
           parts.push(encodeKeyValue(k, v));
@@ -422,7 +395,7 @@ const ApiClient = (function () {
         return url;
       }
 
-      const separator = url.indexOf('?') === -1 ? '?' : '&';
+      const separator = url.includes('?') ? '&' : '?';
       return url + separator + queryString;
     };
 
