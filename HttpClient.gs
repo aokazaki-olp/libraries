@@ -276,15 +276,15 @@ const ClientHelper = (function () {
    */
   const createHttpMethods = call => ({
     get: (endpoint, query, options) =>
-      call({ method: 'GET', endpoint, query, ...options }),
+      call({ ...options, method: 'GET', endpoint, query }),
     post: (endpoint, body, options) =>
-      call({ method: 'POST', endpoint, body, ...options }),
+      call({ ...options, method: 'POST', endpoint, body }),
     put: (endpoint, body, options) =>
-      call({ method: 'PUT', endpoint, body, ...options }),
+      call({ ...options, method: 'PUT', endpoint, body }),
     patch: (endpoint, body, options) =>
-      call({ method: 'PATCH', endpoint, body, ...options }),
+      call({ ...options, method: 'PATCH', endpoint, body }),
     delete: (endpoint, options) =>
-      call({ method: 'DELETE', endpoint, ...options })
+      call({ ...options, method: 'DELETE', endpoint })
   });
 
   /**
