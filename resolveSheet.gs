@@ -212,6 +212,6 @@ const resolveSheet = (source, options = {}) => {
     return getOrCreateSheet(spreadsheet, source);
   }
 
-  // それ以外は Sheet オブジェクトとして直接返す
-  return source;
+  // それ以外はサポート外の型
+  throw new TypeError(`source には string, Array, Object, または Sheet を指定してください (typeof: ${typeof source})`);
 };
