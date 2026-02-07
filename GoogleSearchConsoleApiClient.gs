@@ -11,7 +11,7 @@
  * 設計思想:
  *   - ApiClient の Decorator パターンを基盤とする
  *   - ScriptApp.getOAuthToken() で毎回動的にトークンを取得する（静的トークン設定とは異なる）
- *   - リトライは ApiClient.withRetry を再利用し、レートリミットに合わせて緩やかな設定にある
+ *   - リトライは HttpCore.withRetry を再利用し、レートリミットに合わせて緩やかな設定にする
  * 
  * 使用例:
  *   const client = GoogleSearchConsoleApiClient.create('https://example.com/', logger);
