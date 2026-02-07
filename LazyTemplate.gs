@@ -642,19 +642,15 @@ class LazyTemplate {
 }
 
 // エクスポート処理
-// GAS環境
-if (typeof global !== 'undefined' && global === this) {
-  global.LazyTemplate = LazyTemplate;
-}
-
-// Node.js/CommonJS環境
 if (typeof module !== 'undefined' && module.exports) {
+  // Node.js/CommonJS環境
   module.exports = LazyTemplate;
-}
-
-// ブラウザ環境
-if (typeof window !== 'undefined') {
+} else if (typeof window !== 'undefined') {
+  // ブラウザ環境
   window.LazyTemplate = LazyTemplate;
+} else if (typeof global !== 'undefined') {
+  // GAS環境 / その他
+  global.LazyTemplate = LazyTemplate;
 }
 
 })(this);
