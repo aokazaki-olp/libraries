@@ -438,7 +438,7 @@ const ApiClient = (function () {
      *
      * @param {Object} request リクエストオブジェクト
      * @param {string} request.endpoint エンドポイント
-     * @param {string} request.method HTTPメソッド（デフォルト: POST）
+     * @param {string} request.method HTTPメソッド（デフォルト: GET）
      * @param {Object} request.headers リクエストヘッダー
      * @param {Object} request.query クエリパラメータ
      * @param {Object} request.body リクエストボディ
@@ -446,7 +446,7 @@ const ApiClient = (function () {
      * @returns {Object} レスポンス
      */
     const call = request => {
-      const method = (request.method || 'POST').toUpperCase();
+      const method = (request.method || 'GET').toUpperCase();
 
       const url = buildUrl(baseUrl, request.endpoint, request.query);
 
