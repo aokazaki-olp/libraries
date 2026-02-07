@@ -7,17 +7,12 @@
  * @version 1.0.0
  * @author Arihiro OKAZAKI
  * @created 2026-01-28
- * @modified 2026-02-02
  *
  * 構成:
  *   HttpCore      - HTTP通信の共通基盤（Transport・デコレータ・ユーティリティ）
  *   ApiClient     - REST API用クライアント（baseUrl + endpoint 方式）
  *   WebhookClient - Webhook送信クライアント（フルURL方式）
  */
-
-// ============================================================================
-// HttpCore - HTTP通信の共通基盤
-// ============================================================================
 
 /**
  * HttpCore
@@ -40,8 +35,6 @@ const HttpCore = (function () {
     DEFAULT_MAX_RETRIES: 3,
     DEFAULT_BASE_DELAY_MS: 500
   });
-
-  // ─── ユーティリティ ─────────────────────────────────────────────
 
   /**
    * ヘッダーオブジェクトをクローン
@@ -134,8 +127,6 @@ const HttpCore = (function () {
     return { status, headers, body, text };
   };
 
-  // ─── Transport ──────────────────────────────────────────────────
-
   /**
    * 基本的なHTTP transportを作成
    *
@@ -144,8 +135,6 @@ const HttpCore = (function () {
   const createTransport = () => ({
     fetch: (url, options) => UrlFetchApp.fetch(url, options || {})
   });
-
-  // ─── Decorators ─────────────────────────────────────────────────
 
   /**
    * リトライ機能をtransportに追加
@@ -266,9 +255,86 @@ const HttpCore = (function () {
   };
 })();
 
-// ============================================================================
-// ApiClient - REST API用クライアント
-// ============================================================================
+/**
+ * ClientHelper
+ *
+ * @description クライアント拡張の共通ヘルパー
+ */
+const ClientHelper = (function () {
+
+  /**
+   * HTTP メソッドショートカットを生成
+   *
+   * @param {Function} call call 関数
+   * @returns {Object} { get, post, put, patch, delete }
+   */
+  const createHttpMethods = call => ({
+    get: (endpoint, query, options) =>
+      call({ method: 'GET', endpoint, query, ...options }),
+    post: (endpoint, body, options) =>
+      call({ method: 'POST', endpoint, body, ...options }),
+    put: (endpoint, body, options) =>
+      call({ method: 'PUT', endpoint, body, ...options }),
+    patch: (endpoint, body, options) =>
+      call({ method: 'PATCH', endpoint, body, ...options }),
+    delete: (endpoint, options) =>
+      call({ method: 'DELETE', endpoint, ...options })
+  });
+
+  /**
+   * use() 機能付きクライアントを作成
+   *
+   * @param {Function} call call 関数
+   * @param {Object} [options] オプション
+   * @param {Function} [options.extend] extend 関数
+   * @returns {Object} クライアント { call, use, get, post, put, patch, delete, [extend] }
+   */
+  const createClient = (call, clientOptions) => {
+    const methods = createHttpMethods(call);
+
+    const createExtended = additionalMethods => {
+      const client = { ...additionalMethods, call, ...methods };
+
+      if (clientOptions && clientOptions.extend) {
+        client.extend = clientOptions.extend;
+      }
+
+      /**
+       * Plugin を注入してクライアントを拡張
+       *
+       * @param {Function|string} pluginOrName - Plugin関数 or メソッド名
+       * @param {Function} [fn] - メソッド名の場合、メソッド定義関数
+       * @returns {Object} 拡張されたクライアント
+       *
+       * @example
+       * // Plugin パターン
+       * client.use(client => ({
+       *   myMethod: () => client.call({ ... })
+       * }))
+       *
+       * // 単体メソッドパターン
+       * client.use('myMethod', client => () => client.call({ ... }))
+       */
+      client.use = (pluginOrName, fn) => {
+        let newMethods;
+
+        if (typeof pluginOrName === 'string') {
+          newMethods = { [pluginOrName]: fn(client) };
+        } else {
+          newMethods = pluginOrName(client);
+        }
+
+        return createExtended({ ...additionalMethods, ...newMethods });
+      };
+
+      return client;
+    };
+
+    return createExtended({});
+  };
+
+  return { createHttpMethods, createClient };
+})();
 
 /**
  * ApiClient
@@ -310,11 +376,10 @@ const ApiClient = (function () {
    * @param {Object} config.transport トランスポートオブジェクト
    * @param {Object} config.logger ロガーインスタンス
    * @param {Object} config.headers デフォルトヘッダー
+   * @param {Function} config.responseHandler レスポンス後処理関数
    * @returns {Object} クライアント
    */
   const createClient = config => {
-    // ─── 内部ユーティリティ（API専用） ────────────────────────────
-
     const trimRightSlash = s => String(s).replace(/\/+$/, '');
     const trimLeftSlash = s => String(s).replace(/^\/+/, '');
     const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
@@ -344,26 +409,23 @@ const ApiClient = (function () {
     };
 
     const buildUrl = (baseUrl, endpoint, query) => {
-      const ep = `/${trimLeftSlash(endpoint || '')}`;
-      const url = baseUrl + ep;
+      const path = `/${trimLeftSlash(endpoint || '')}`;
+      const url = baseUrl + path;
 
-      const qs = buildQueryString(query);
-      if (!qs) {
+      const queryString = buildQueryString(query);
+      if (!queryString) {
         return url;
       }
 
       const separator = url.indexOf('?') === -1 ? '?' : '&';
-      return url + separator + qs;
+      return url + separator + queryString;
     };
-
-    // ─── 設定 ─────────────────────────────────────────────────────
 
     const baseUrl = trimRightSlash(config.baseUrl || '');
     const transport = config.transport || HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers || {};
-
-    // ─── 公開インターフェース ─────────────────────────────────────
+    const responseHandler = config.responseHandler || null;
 
     /**
      * HTTPリクエストを実行
@@ -408,8 +470,10 @@ const ApiClient = (function () {
         options.timeout = request.timeoutMs;
       }
 
-      const response = transport.fetch(url, options);
-      return HttpCore.interpretResponse(response, request);
+      const rawResponse = transport.fetch(url, options);
+      const response = HttpCore.interpretResponse(rawResponse, request);
+
+      return responseHandler ? responseHandler(response, request) : response;
     };
 
     /**
@@ -422,18 +486,15 @@ const ApiClient = (function () {
       baseUrl,
       logger: log,
       headers: HttpCore.cloneHeaders(headers),
-      transport: decorator(transport)
+      transport: decorator(transport),
+      responseHandler
     });
 
-    return { call, extend };
+    return ClientHelper.createClient(call, { extend });
   };
 
   return { withBearerAuth, createClient };
 })();
-
-// ============================================================================
-// WebhookClient - Webhook送信クライアント
-// ============================================================================
 
 /**
  * WebhookClient
@@ -469,23 +530,23 @@ const WebhookClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (webhookUrl, options) => {
-    const opts = options || {};
+    options = options || {};
 
     // Transport 構築
     let transport = HttpCore.createTransport();
 
     // リトライ機能（maxRetries: 0 で無効化可能）
-    if (opts.maxRetries !== 0) {
+    if (options.maxRetries !== 0) {
       transport = HttpCore.withRetry(transport, {
-        maxRetries: opts.maxRetries,
-        baseDelayMs: opts.baseDelayMs,
-        logger: opts.logger
+        maxRetries: options.maxRetries,
+        baseDelayMs: options.baseDelayMs,
+        logger: options.logger
       });
     }
 
     // ロギング機能
-    if (opts.logger) {
-      transport = HttpCore.withLogger(transport, opts.logger);
+    if (options.logger) {
+      transport = HttpCore.withLogger(transport, options.logger);
     }
 
     /**
@@ -497,7 +558,7 @@ const WebhookClient = (function () {
     const send = payload => {
       const headers = HttpCore.mergeHeaders(
         { 'Content-Type': 'application/json; charset=utf-8' },
-        opts.headers
+        options.headers
       );
 
       const fetchOptions = {
@@ -507,8 +568,8 @@ const WebhookClient = (function () {
         muteHttpExceptions: true
       };
 
-      if (typeof opts.timeoutMs === 'number') {
-        fetchOptions.timeout = opts.timeoutMs;
+      if (typeof options.timeoutMs === 'number') {
+        fetchOptions.timeout = options.timeoutMs;
       }
 
       const response = transport.fetch(webhookUrl, fetchOptions);

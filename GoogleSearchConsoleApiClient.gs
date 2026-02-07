@@ -40,6 +40,14 @@ const GoogleSearchConsoleApiClient = (function () {
   });
 
   /**
+   * レスポンスハンドラ（bodyのみ抽出）
+   *
+   * @param {Object} response レスポンスオブジェクト
+   * @returns {Object} レスポンスボディ
+   */
+  const gscResponseHandler = response => response.body;
+
+  /**
    * Google Search Console APIクライアントを作成
    *
    * @param {string} siteUrl サイトURL
@@ -47,7 +55,6 @@ const GoogleSearchConsoleApiClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (siteUrl, logger) => {
-    // サイトURLを正規化（sc-domain対応、末尾スラッシュ統一）
     const normalizeSiteUrl = url => {
       const s = String(url || '').trim();
       if (s.indexOf('sc-domain:') === 0) {
@@ -56,10 +63,11 @@ const GoogleSearchConsoleApiClient = (function () {
       return s.replace(/\/?$/, '/');
     };
 
-    const client = ApiClient.createClient({
+    return ApiClient.createClient({
       baseUrl: `${CONFIG.BASE_URL}/sites/${encodeURIComponent(normalizeSiteUrl(siteUrl))}`,
       transport: HttpCore.createTransport(),
-      logger
+      logger,
+      responseHandler: gscResponseHandler
     })
       .extend(withGoogleAuth)
       .extend(transport => HttpCore.withRetry(transport, {
@@ -67,27 +75,6 @@ const GoogleSearchConsoleApiClient = (function () {
         baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS
       }))
       .extend(transport => HttpCore.withLogger(transport, logger));
-
-    /**
-     * Google Search Console APIを呼び出し
-     *
-     * @param {Object} request リクエストオブジェクト
-     * @returns {Object} レスポンスボディ
-     */
-    const call = request => {
-      const response = client.call({
-        endpoint: request.endpoint,
-        method: request.method || 'POST',
-        headers: request.headers,
-        query: request.query,
-        body: request.body,
-        timeoutMs: request.timeoutMs
-      });
-
-      return response.body;
-    };
-
-    return { call };
   };
 
   return { withGoogleAuth, create };

@@ -7,17 +7,12 @@
  * @version 1.0.0
  * @author Arihiro OKAZAKI
  * @created 2026-01-28
- * @modified 2026-02-03
  *
  * 構成:
  *   SlackCore          - Slack用共通基盤（Retry-After対応リトライ）
  *   SlackApiClient     - Slack Web API用クライアント（Bearer Token認証）
  *   SlackWebhookClient - Slack Incoming Webhooks用クライアント（URL認証）
  */
-
-// ============================================================================
-// SlackCore - Slack用共通基盤
-// ============================================================================
 
 /**
  * SlackCore
@@ -124,10 +119,6 @@ const SlackCore = (function () {
   return { withRetry };
 })();
 
-// ============================================================================
-// SlackApiClient - Slack Web API用クライアント
-// ============================================================================
-
 /**
  * SlackApiClient
  *
@@ -149,6 +140,28 @@ const SlackApiClient = (function () {
   });
 
   /**
+   * Slack固有のレスポンスハンドラ
+   *
+   * @param {Object} response レスポンス
+   * @param {Object} request リクエスト
+   * @returns {Object} レスポンスボディ
+   * @throws {Error} Slack APIエラー
+   */
+  const slackResponseHandler = (response, request) => {
+    if (response.body && response.body.ok === false) {
+      const errorCode = response.body.error || 'slack_error';
+      const e = new Error(`Slack APIエラー: ${errorCode}`);
+      e.name = 'SlackError';
+      e.code = errorCode;
+      e.metadata = response.body.response_metadata;
+      e.response = response;
+      throw e;
+    }
+
+    return response.body;
+  };
+
+  /**
    * Slack APIクライアントを作成
    *
    * @param {string} token Slack APIトークン
@@ -156,54 +169,19 @@ const SlackApiClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (token, logger) => {
-    const client = ApiClient.createClient({
+    return ApiClient.createClient({
       baseUrl: CONFIG.BASE_URL,
       transport: HttpCore.createTransport(),
-      logger
+      logger,
+      responseHandler: slackResponseHandler
     })
       .extend(transport => ApiClient.withBearerAuth(transport, token))
       .extend(transport => SlackCore.withRetry(transport, { maxRetries: CONFIG.DEFAULT_MAX_RETRIES, logger }))
       .extend(transport => HttpCore.withLogger(transport, logger));
-
-    /**
-     * Slack APIを呼び出し
-     *
-     * @param {Object} request リクエストオブジェクト
-     * @returns {Object} レスポンスボディ
-     * @throws {Error} Slack APIエラー
-     */
-    const call = request => {
-      const response = client.call({
-        endpoint: request.endpoint,
-        method: request.method || 'POST',
-        headers: request.headers,
-        query: request.query,
-        body: request.body,
-        timeoutMs: request.timeoutMs
-      });
-
-      if (response.body && response.body.ok === false) {
-        const errorCode = response.body.error || 'slack_error';
-        const e = new Error(`Slack APIエラー: ${errorCode}`);
-        e.name = 'SlackError';
-        e.code = errorCode;
-        e.metadata = response.body.response_metadata;
-        e.response = response;
-        throw e;
-      }
-
-      return response.body;
-    };
-
-    return { call };
   };
 
   return { create };
 })();
-
-// ============================================================================
-// SlackWebhookClient - Slack Incoming Webhooks用クライアント
-// ============================================================================
 
 /**
  * SlackWebhookClient
@@ -245,18 +223,18 @@ const SlackWebhookClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (webhookUrl, options) => {
-    const opts = options || {};
-    const maxRetries = opts.maxRetries != null ? opts.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
+    options = options || {};
+    const maxRetries = options.maxRetries != null ? options.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
 
     // Transport 構築（Slack用リトライを使用）
     let transport = HttpCore.createTransport();
 
     if (maxRetries !== 0) {
-      transport = SlackCore.withRetry(transport, { maxRetries, logger: opts.logger });
+      transport = SlackCore.withRetry(transport, { maxRetries, logger: options.logger });
     }
 
-    if (opts.logger) {
-      transport = HttpCore.withLogger(transport, opts.logger);
+    if (options.logger) {
+      transport = HttpCore.withLogger(transport, options.logger);
     }
 
     /**
@@ -282,8 +260,8 @@ const SlackWebhookClient = (function () {
         muteHttpExceptions: true
       };
 
-      if (typeof opts.timeoutMs === 'number') {
-        fetchOptions.timeout = opts.timeoutMs;
+      if (typeof options.timeoutMs === 'number') {
+        fetchOptions.timeout = options.timeoutMs;
       }
 
       const response = transport.fetch(webhookUrl, fetchOptions);
