@@ -173,7 +173,9 @@ const HttpCore = (function () {
                 if (log) {
                   log.error(`[HTTP] ✖ RETRY exhausted status=${status} ${method} ${url}`);
                 }
-                throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                const retryError = new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                retryError.name = 'RetryExhaustedError';
+                throw retryError;
               }
               const delay = sleepWithBackoff(attempt, delayMs);
               if (log) {
@@ -185,6 +187,10 @@ const HttpCore = (function () {
             return response;
 
           } catch (e) {
+            // リトライ上限エラーは再スローする（二重ログを防ぐ）
+            if (e.name === 'RetryExhaustedError') {
+              throw e;
+            }
             lastError = e;
             if (attempt === maxRetries) {
               if (log) {

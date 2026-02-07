@@ -65,7 +65,9 @@ const SlackCore = (function () {
                 if (log) {
                   log.error(`[Slack] ✖ RETRY exhausted status=${status} Retry-After=${delaySeconds}s ${method} ${url}`);
                 }
-                throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                const retryError = new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                retryError.name = 'RetryExhaustedError';
+                throw retryError;
               }
 
               if (log) {
@@ -80,7 +82,9 @@ const SlackCore = (function () {
                 if (log) {
                   log.error(`[Slack] ✖ RETRY exhausted status=${status} ${method} ${url}`);
                 }
-                throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                const retryError = new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                retryError.name = 'RetryExhaustedError';
+                throw retryError;
               }
               const delay = sleepWithBackoff(attempt);
               if (log) {
@@ -93,7 +97,7 @@ const SlackCore = (function () {
 
           } catch (e) {
             // リトライ上限エラーは再スローする（二重ログを防ぐ）
-            if (e.message && e.message.includes('リトライ回数上限')) {
+            if (e.name === 'RetryExhaustedError') {
               throw e;
             }
 
@@ -151,7 +155,7 @@ const SlackApiClient = (function () {
     if (response.body && response.body.ok === false) {
       const errorCode = response.body.error || 'slack_error';
       const e = new Error(`Slack APIエラー: ${errorCode}`);
-      e.name = 'SlackError';
+      e.name = 'SlackApiError';
       e.code = errorCode;
       e.metadata = response.body.response_metadata;
       e.response = response;
