@@ -1,29 +1,10 @@
 'use strict';
 
-/**
- * loadFromSheetAsObjects.test.gs
- *
- * @description loadFromSheetAsObjects のテストスイート（GAS モック使用）
- * @version 1.1.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-07
- *
- * 実行方法:
- *   GAS エディタから runAllLoadFromSheetAsObjectsTests() を実行
- */
-
 // ============================================================================
 // モック Sheet
 // ============================================================================
 
 const MockSheet = (function () {
-  /**
-   * モック Sheet を作成
-   *
-   * @param {Array} header ヘッダー行
-   * @param {Array<Array>} rows データ行
-   * @returns {Object} モック Sheet
-   */
   const create = (header, rows = []) => {
     const lastRow = rows.length > 0 ? 1 + rows.length : (header.length > 0 ? 1 : 0);
     const lastColumn = header.length;
@@ -34,11 +15,9 @@ const MockSheet = (function () {
       getRange: (row, column, numRows, numColumns) => ({
         getValues: () => {
           if (row === 1 && numRows === 1) {
-            // ヘッダー行
             return [header.slice(column - 1, column - 1 + numColumns)];
           }
-          // データ行
-          const startIdx = row - 2; // row=2 → index=0
+          const startIdx = row - 2;
           return rows.slice(startIdx, startIdx + numRows).map(r =>
             r.slice(column - 1, column - 1 + numColumns)
           );
@@ -49,9 +28,6 @@ const MockSheet = (function () {
     };
   };
 
-  /**
-   * 空のモック Sheet を作成
-   */
   const empty = () => ({
     getLastRow: () => 0,
     getLastColumn: () => 0,
@@ -60,9 +36,6 @@ const MockSheet = (function () {
     getName: () => 'EmptySheet'
   });
 
-  /**
-   * ヘッダーのみのモック Sheet を作成
-   */
   const headerOnly = header => ({
     getLastRow: () => 1,
     getLastColumn: () => header.length,
@@ -81,22 +54,11 @@ const MockSheet = (function () {
 // ============================================================================
 
 const MockRange = (function () {
-  /**
-   * モック Range を作成
-   *
-   * @param {Array} header ヘッダー行
-   * @param {Array<Array>} rows データ行
-   * @param {Object} [options] オプション
-   * @param {number} [options.startRow=1] Range の開始行（シート上の絶対位置）
-   * @param {number} [options.startColumn=1] Range の開始列（シート上の絶対位置）
-   * @returns {Object} モック Range（getSheetId なし）
-   */
   const create = (header, rows = [], { startRow = 1, startColumn = 1 } = {}) => {
     const allRows = [header, ...rows];
     const numRows = allRows.length;
     const numColumns = header.length;
 
-    // 親 Sheet（getRange で部分取得をサポート）
     const parentSheet = {
       getRange: (row, column, nRows, nColumns) => ({
         getValues: () => {
@@ -123,7 +85,6 @@ const MockRange = (function () {
       getColumn: () => startColumn,
       getNumRows: () => numRows,
       getNumColumns: () => numColumns
-      // getSheetId なし → isRange 判定で true
     };
   };
 
@@ -337,13 +298,7 @@ const runLoadArraySuffixTests = () => {
       ['user.tags[]', 'user.tags[]'],
       [['a', 'b']]
     );
-    const result = loadFromSheetAsObjects(sheet, key => {
-      const parts = key.split('.');
-      return parts;
-    });
-    // The last key segment has [], so it should create an array
-    // Actually, the fn splits 'user.tags[]' into ['user', 'tags[]']
-    // setNested processes the last key with parseSuffix
+    const result = loadFromSheetAsObjects(sheet, key => key.split('.'));
     assertDeepEqual(result[0].user.tags, ['a', 'b']);
   });
 };
@@ -406,15 +361,12 @@ const runLoadEdgeCaseTests = () => {
       ['a', 'a.b'],
       [['flat', 'nested']]
     );
-    // まず a = 'flat'（フラット）が設定される
-    // 次に fn が ['a', 'b'] を返すと setNested が a を {} に上書きしてから a.b = 'nested' を設定する
     const result = loadFromSheetAsObjects(sheet, key => {
       if (key === 'a.b') {
         return ['a', 'b'];
       }
       return key;
     });
-    // a は上書きされて { b: 'nested' } になるはず
     assertEqual(result[0].a.b, 'nested');
   });
 
@@ -423,7 +375,6 @@ const runLoadEdgeCaseTests = () => {
       ['name'],
       [['Alice'], ['Bob'], ['Charlie']]
     );
-    // offset, limit, fn の順で渡しても正しく処理される
     const result = loadFromSheetAsObjects(sheet, 1, 1, key => key.toUpperCase());
     assertEqual(result.length, 1);
     assertEqual(result[0].NAME, 'Bob');
@@ -658,25 +609,12 @@ const runLoadRangeStringFallbackTests = () => {
 function runAllLoadFromSheetAsObjectsTests() {
   TestRunner.reset();
 
-  console.log('Running loadFromSheetAsObjects Basic tests...');
   runLoadBasicTests();
-
-  console.log('Running loadFromSheetAsObjects Mapper tests...');
   runLoadMapperTests();
-
-  console.log('Running loadFromSheetAsObjects Limit/Offset tests...');
   runLoadLimitOffsetTests();
-
-  console.log('Running loadFromSheetAsObjects Array Suffix tests...');
   runLoadArraySuffixTests();
-
-  console.log('Running loadFromSheetAsObjects Edge Case tests...');
   runLoadEdgeCaseTests();
-
-  console.log('Running loadFromSheetAsObjects Range Object tests...');
   runLoadRangeObjectTests();
-
-  console.log('Running loadFromSheetAsObjects Range String Fallback tests...');
   runLoadRangeStringFallbackTests();
 
   return TestRunner.run();
