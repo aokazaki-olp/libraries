@@ -50,14 +50,26 @@ const TestRunner = (function () {
 
   const assertDeepEqual = (actual, expected, message) => {
     const deepEqual = (a, b) => {
-      if (a === b) return true;
-      if (a == null || b == null) return a === b;
-      if (typeof a !== typeof b) return false;
-      if (typeof a !== 'object') return false;
-      if (Array.isArray(a) !== Array.isArray(b)) return false;
+      if (a === b) {
+        return true;
+      }
+      if (a == null || b == null) {
+        return a === b;
+      }
+      if (typeof a !== typeof b) {
+        return false;
+      }
+      if (typeof a !== 'object') {
+        return false;
+      }
+      if (Array.isArray(a) !== Array.isArray(b)) {
+        return false;
+      }
       const keysA = Object.keys(a);
       const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
+      if (keysA.length !== keysB.length) {
+        return false;
+      }
       return keysA.every(k => deepEqual(a[k], b[k]));
     };
     if (!deepEqual(actual, expected)) {

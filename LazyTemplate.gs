@@ -569,14 +569,18 @@ class LazyTemplate {
       return data => {
         let accumulator = data;
         for (const key of path) {
-          if (accumulator == null) return undefined;
+          if (accumulator == null) {
+            return undefined;
+          }
           const type = typeof accumulator;
           if (type !== 'object' && type !== 'function') {
             return undefined;
           }
 
           const value = accumulator[key];
-          if (value === undefined) return undefined;
+          if (value === undefined) {
+            return undefined;
+          }
           accumulator = value;
         }
         return this.applyFilters(accumulator, filters);
