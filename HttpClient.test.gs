@@ -1257,6 +1257,17 @@ const runEdgeCaseTests = () => {
     assertTrue(!call.options.payload);
   });
 
+  test('DELETE リクエストで body は無視される（RFC 9110 Section 9.3.5）', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users/1', method: 'DELETE', body: { reason: 'test' } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(!call.options.payload);
+  });
+
   test('カスタム Content-Type は上書きされない', () => {
     const mockTransport = MockTransport.success({ ok: true });
     const client = ApiClient.createClient({

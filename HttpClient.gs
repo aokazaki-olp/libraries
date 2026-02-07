@@ -435,7 +435,7 @@ const ApiClient = (function () {
       };
 
       const hasBody = request.body != null;
-      const canHaveBody = !/^(GET|HEAD)$/.test(method);
+      const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
       if (hasBody) {
         if (canHaveBody) {
@@ -444,7 +444,7 @@ const ApiClient = (function () {
             mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
           }
         } else if (log) {
-          log.warn(`[HTTP] ⚠ GETまたはHEADリクエストでbodyが検出されました。無視されます。 method=${method}, url=${url}`);
+          log.warn(`[HTTP] ⚠ ${method}リクエストでbodyが検出されました。無視されます。 url=${url}`);
         }
       }
 
