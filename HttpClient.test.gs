@@ -49,7 +49,30 @@ const TestRunner = (function () {
   };
 
   const assertDeepEqual = (actual, expected, message) => {
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    const deepEqual = (a, b) => {
+      if (a === b) {
+        return true;
+      }
+      if (a == null || b == null) {
+        return a === b;
+      }
+      if (typeof a !== typeof b) {
+        return false;
+      }
+      if (typeof a !== 'object') {
+        return false;
+      }
+      if (Array.isArray(a) !== Array.isArray(b)) {
+        return false;
+      }
+      const keysA = Object.keys(a);
+      const keysB = Object.keys(b);
+      if (keysA.length !== keysB.length) {
+        return false;
+      }
+      return keysA.every(k => deepEqual(a[k], b[k]));
+    };
+    if (!deepEqual(actual, expected)) {
       throw new Error(`${message || 'Assertion failed'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
     }
   };
@@ -139,7 +162,7 @@ const MockTransport = (function () {
   const createMockResponse = (statusCode, body, headers) => ({
     getResponseCode: () => statusCode,
     getContentText: () => typeof body === 'string' ? body : JSON.stringify(body),
-    getAllHeaders: () => headers || {}
+    getAllHeaders: () => headers ?? {}
   });
 
   /**
@@ -397,6 +420,44 @@ const runHttpCoreTests = () => {
       () => retryTransport.fetch('http://example.com', {}),
       'リトライ回数上限'
     );
+  });
+
+  test('リトライ上限エラーの e.name が RetryExhaustedError である', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 500, body: {} },
+      { status: 500, body: {} }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 1, baseDelayMs: 1 });
+    try {
+      retryTransport.fetch('http://example.com', {});
+      throw new Error('Should not reach here');
+    } catch (e) {
+      assertEqual(e.name, 'RetryExhaustedError');
+      assertTrue(e.message.includes('リトライ回数上限'));
+    }
+  });
+
+  test('リトライ上限エラーは二重ログを防ぐために再スローされる', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} },
+      { status: 429, body: {} }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 1, baseDelayMs: 1, logger: mockLogger });
+
+    try {
+      retryTransport.fetch('http://example.com', {});
+    } catch (e) {
+      assertEqual(e.name, 'RetryExhaustedError');
+    }
+
+    // error ログは1回のみ（二重ログなし）
+    const errorLogs = logs.filter(l => l.level === 'error');
+    assertEqual(errorLogs.length, 1);
   });
 
   test('例外発生時もリトライする', () => {
@@ -1196,6 +1257,17 @@ const runEdgeCaseTests = () => {
     assertTrue(!call.options.payload);
   });
 
+  test('DELETE リクエストで body は無視される（RFC 9110 Section 9.3.5）', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users/1', method: 'DELETE', body: { reason: 'test' } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(!call.options.payload);
+  });
+
   test('カスタム Content-Type は上書きされない', () => {
     const mockTransport = MockTransport.success({ ok: true });
     const client = ApiClient.createClient({
@@ -1212,15 +1284,15 @@ const runEdgeCaseTests = () => {
     assertEqual(call.options.headers['Content-Type'], 'text/plain');
   });
 
-  test('method が指定されない場合 POST がデフォルト', () => {
+  test('method が指定されない場合 GET がデフォルト', () => {
     const mockTransport = MockTransport.success({ ok: true });
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport: mockTransport
     });
-    client.call({ endpoint: '/users', body: { name: 'test' } });
+    client.call({ endpoint: '/users' });
     const call = mockTransport.getCalls()[0];
-    assertEqual(call.options.method, 'POST');
+    assertEqual(call.options.method, 'GET');
   });
 
   test('method は大文字に正規化される', () => {
@@ -1356,6 +1428,66 @@ const runEdgeCaseTests = () => {
     assertEqual(extended.method1(), 1);
     assertEqual(extended.method2(), 2);
     assertEqual(extended.method3(), 3);
+  });
+
+  test('use() で null を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => null),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で配列を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => ['method']),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で文字列を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => 'invalid'),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で undefined を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => undefined),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で数値を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => 42),
+      'Plugin は Object を返す必要があります'
+    );
   });
 
   test('Plugin から extend を呼び出せる', () => {

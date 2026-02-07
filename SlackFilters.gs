@@ -266,7 +266,9 @@ const SlackFilters = (function () {
    */
   const slackMail = v => {
     const s = toString(v);
-    if (s === '') return '';
+    if (s === '') {
+      return '';
+    }
     const pipeIdx = s.indexOf('|');
     if (pipeIdx === -1) {
       return `<mailto:${s}>`;
@@ -304,8 +306,11 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDate = v => {
+    if (v == null) return '';
     const n = Number(v);
-    if (!Number.isFinite(n)) return toString(v);
+    if (!Number.isFinite(n)) {
+      return toString(v);
+    }
     return `<!date^${Math.floor(n)}^{date_short_time}|${toString(v)}>`;
   };
 
@@ -327,17 +332,22 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDateFmt = v => {
+    if (v == null) return '';
     const s = toString(v);
     const pipeIdx = s.indexOf('|');
 
     // "|" なし → slackDate と同一動作
-    if (pipeIdx === -1) return slackDate(v);
+    if (pipeIdx === -1) {
+      return slackDate(v);
+    }
 
     const rawTs = s.slice(0, pipeIdx);
     const fmt   = s.slice(pipeIdx + 1);
     const n     = Number(rawTs);
 
-    if (!Number.isFinite(n)) return s;
+    if (!Number.isFinite(n)) {
+      return s;
+    }
     return `<!date^${Math.floor(n)}^${fmt}|${rawTs}>`;
   };
 
@@ -406,9 +416,13 @@ const SlackFilters = (function () {
    */
   const slackNumbered = v => {
     const s = toString(v);
-    if (s === '') return '';
+    if (s === '') {
+      return '';
+    }
     const pipeIdx = s.indexOf('|');
-    if (pipeIdx === -1) return `1. ${s}`;
+    if (pipeIdx === -1) {
+      return `1. ${s}`;
+    }
     const num  = s.slice(0, pipeIdx);
     const text = s.slice(pipeIdx + 1);
     return `${num}. ${text}`;

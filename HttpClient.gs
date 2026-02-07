@@ -42,18 +42,7 @@ const HttpCore = (function () {
    * @param {Object} headers クローン元ヘッダー
    * @returns {Object} クローンされたヘッダー
    */
-  const cloneHeaders = headers => {
-    const cloned = {};
-    if (!headers) {
-      return cloned;
-    }
-    for (const k in headers) {
-      if (Object.prototype.hasOwnProperty.call(headers, k)) {
-        cloned[k] = headers[k];
-      }
-    }
-    return cloned;
-  };
+  const cloneHeaders = headers => ({ ...headers });
 
   /**
    * ヘッダーをマージ
@@ -62,17 +51,7 @@ const HttpCore = (function () {
    * @param {Object} override 上書きヘッダー
    * @returns {Object} マージされたヘッダー
    */
-  const mergeHeaders = (base, override) => {
-    const merged = cloneHeaders(base);
-    if (override) {
-      for (const k in override) {
-        if (Object.prototype.hasOwnProperty.call(override, k)) {
-          merged[k] = override[k];
-        }
-      }
-    }
-    return merged;
-  };
+  const mergeHeaders = (base, override) => ({ ...base, ...override });
 
   /**
    * ヘッダーの存在確認（大文字小文字を区別しない）
@@ -82,13 +61,11 @@ const HttpCore = (function () {
    * @returns {boolean} 存在する場合true
    */
   const hasHeader = (headers, key) => {
-    const needle = String(key).toLowerCase();
-    for (const k in headers) {
-      if (String(k).toLowerCase() === needle) {
-        return true;
-      }
+    if (!headers) {
+      return false;
     }
-    return false;
+    const needle = String(key).toLowerCase();
+    return Object.keys(headers).some(k => k.toLowerCase() === needle);
   };
 
   /**
@@ -133,7 +110,7 @@ const HttpCore = (function () {
    * @returns {Object} トランスポートオブジェクト
    */
   const createTransport = () => ({
-    fetch: (url, options) => UrlFetchApp.fetch(url, options || {})
+    fetch: (url, options = {}) => UrlFetchApp.fetch(url, options)
   });
 
   /**
@@ -146,11 +123,10 @@ const HttpCore = (function () {
    * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
    */
-  const withRetry = (transport, retryOptions) => {
-    const config = retryOptions || {};
-    const maxRetries = config.maxRetries != null ? config.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
-    const delayMs = config.baseDelayMs != null ? config.baseDelayMs : CONFIG.DEFAULT_BASE_DELAY_MS;
-    const log = LoggerFacade.createLogger(config.logger);
+  const withRetry = (transport, retryOptions = {}) => {
+    const maxRetries = retryOptions.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
+    const delayMs = retryOptions.baseDelayMs ?? CONFIG.DEFAULT_BASE_DELAY_MS;
+    const log = LoggerFacade.createLogger(retryOptions.logger);
 
     const sleepWithBackoff = (attempt, baseDelayMs) => {
       const delay = Math.pow(2, attempt) * baseDelayMs;
@@ -160,7 +136,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options && options.method ? options.method : 'GET';
+        const method = options?.method || 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -173,7 +149,9 @@ const HttpCore = (function () {
                 if (log) {
                   log.error(`[HTTP] ✖ RETRY exhausted status=${status} ${method} ${url}`);
                 }
-                throw new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                const retryError = new Error(`リトライ回数上限に達しました (HTTP ${status})`);
+                retryError.name = 'RetryExhaustedError';
+                throw retryError;
               }
               const delay = sleepWithBackoff(attempt, delayMs);
               if (log) {
@@ -185,6 +163,10 @@ const HttpCore = (function () {
             return response;
 
           } catch (e) {
+            // リトライ上限エラーは再スローする（二重ログを防ぐ）
+            if (e.name === 'RetryExhaustedError') {
+              throw e;
+            }
             lastError = e;
             if (attempt === maxRetries) {
               if (log) {
@@ -219,7 +201,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options && options.method ? options.method : 'GET';
+        const method = options?.method || 'GET';
         const startMs = Date.now();
 
         log.debug(`[HTTP] → ${method} ${url}`);
@@ -270,15 +252,15 @@ const ClientHelper = (function () {
    */
   const createHttpMethods = call => ({
     get: (endpoint, query, options) =>
-      call({ method: 'GET', endpoint, query, ...options }),
+      call({ ...options, method: 'GET', endpoint, query }),
     post: (endpoint, body, options) =>
-      call({ method: 'POST', endpoint, body, ...options }),
+      call({ ...options, method: 'POST', endpoint, body }),
     put: (endpoint, body, options) =>
-      call({ method: 'PUT', endpoint, body, ...options }),
+      call({ ...options, method: 'PUT', endpoint, body }),
     patch: (endpoint, body, options) =>
-      call({ method: 'PATCH', endpoint, body, ...options }),
+      call({ ...options, method: 'PATCH', endpoint, body }),
     delete: (endpoint, options) =>
-      call({ method: 'DELETE', endpoint, ...options })
+      call({ ...options, method: 'DELETE', endpoint })
   });
 
   /**
@@ -295,7 +277,7 @@ const ClientHelper = (function () {
     const createExtended = additionalMethods => {
       const client = { ...additionalMethods, call, ...methods };
 
-      if (clientOptions && clientOptions.extend) {
+      if (clientOptions?.extend) {
         client.extend = clientOptions.extend;
       }
 
@@ -322,6 +304,9 @@ const ClientHelper = (function () {
           newMethods = { [pluginOrName]: fn(client) };
         } else {
           newMethods = pluginOrName(client);
+          if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
+            throw new TypeError('Plugin は Object を返す必要があります');
+          }
         }
 
         return createExtended({ ...additionalMethods, ...newMethods });
@@ -353,6 +338,44 @@ const ClientHelper = (function () {
  */
 const ApiClient = (function () {
 
+  // URL・クエリ文字列ユーティリティ（純粋関数、config 非依存）
+  const trimRightSlash = s => String(s).replace(/\/+$/, '');
+  const trimLeftSlash = s => String(s).replace(/^\/+/, '');
+  const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
+
+  const buildQueryString = query => {
+    if (!query) {
+      return '';
+    }
+    const parts = [];
+    for (const [k, v] of Object.entries(query)) {
+      if (v == null) {
+        continue;
+      }
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          parts.push(encodeKeyValue(k, item));
+        }
+      } else {
+        parts.push(encodeKeyValue(k, v));
+      }
+    }
+    return parts.join('&');
+  };
+
+  const buildUrl = (baseUrl, endpoint, query) => {
+    const path = `/${trimLeftSlash(endpoint || '')}`;
+    const url = baseUrl + path;
+
+    const queryString = buildQueryString(query);
+    if (!queryString) {
+      return url;
+    }
+
+    const separator = url.includes('?') ? '&' : '?';
+    return url + separator + queryString;
+  };
+
   /**
    * Bearer認証をtransportに追加
    *
@@ -362,7 +385,7 @@ const ApiClient = (function () {
    */
   const withBearerAuth = (transport, token) => ({
     fetch: (url, options) => {
-      const headers = HttpCore.cloneHeaders(options && options.headers);
+      const headers = HttpCore.cloneHeaders(options?.headers);
       headers.Authorization = `Bearer ${token}`;
       return transport.fetch(url, { ...options, headers });
     }
@@ -380,59 +403,18 @@ const ApiClient = (function () {
    * @returns {Object} クライアント
    */
   const createClient = config => {
-    const trimRightSlash = s => String(s).replace(/\/+$/, '');
-    const trimLeftSlash = s => String(s).replace(/^\/+/, '');
-    const encodeKeyValue = (key, value) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
-
-    const buildQueryString = query => {
-      if (!query) {
-        return '';
-      }
-      const parts = [];
-      for (const k in query) {
-        if (!Object.prototype.hasOwnProperty.call(query, k)) {
-          continue;
-        }
-        const v = query[k];
-        if (v == null) {
-          continue;
-        }
-        if (Array.isArray(v)) {
-          for (let i = 0; i < v.length; i++) {
-            parts.push(encodeKeyValue(k, v[i]));
-          }
-        } else {
-          parts.push(encodeKeyValue(k, v));
-        }
-      }
-      return parts.join('&');
-    };
-
-    const buildUrl = (baseUrl, endpoint, query) => {
-      const path = `/${trimLeftSlash(endpoint || '')}`;
-      const url = baseUrl + path;
-
-      const queryString = buildQueryString(query);
-      if (!queryString) {
-        return url;
-      }
-
-      const separator = url.indexOf('?') === -1 ? '?' : '&';
-      return url + separator + queryString;
-    };
-
-    const baseUrl = trimRightSlash(config.baseUrl || '');
-    const transport = config.transport || HttpCore.createTransport();
+    const baseUrl = trimRightSlash(config.baseUrl ?? '');
+    const transport = config.transport ?? HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
-    const headers = config.headers || {};
-    const responseHandler = config.responseHandler || null;
+    const headers = config.headers ?? {};
+    const responseHandler = config.responseHandler ?? null;
 
     /**
      * HTTPリクエストを実行
      *
      * @param {Object} request リクエストオブジェクト
      * @param {string} request.endpoint エンドポイント
-     * @param {string} request.method HTTPメソッド（デフォルト: POST）
+     * @param {string} request.method HTTPメソッド（デフォルト: GET）
      * @param {Object} request.headers リクエストヘッダー
      * @param {Object} request.query クエリパラメータ
      * @param {Object} request.body リクエストボディ
@@ -440,7 +422,7 @@ const ApiClient = (function () {
      * @returns {Object} レスポンス
      */
     const call = request => {
-      const method = (request.method || 'POST').toUpperCase();
+      const method = (request.method || 'GET').toUpperCase();
 
       const url = buildUrl(baseUrl, request.endpoint, request.query);
 
@@ -453,7 +435,7 @@ const ApiClient = (function () {
       };
 
       const hasBody = request.body != null;
-      const canHaveBody = !/^(GET|HEAD)$/.test(method);
+      const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
       if (hasBody) {
         if (canHaveBody) {
@@ -462,7 +444,7 @@ const ApiClient = (function () {
             mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
           }
         } else if (log) {
-          log.warn(`[HTTP] ⚠ GETまたはHEADリクエストでbodyが検出されました。無視されます。 method=${method}, url=${url}`);
+          log.warn(`[HTTP] ⚠ ${method}リクエストでbodyが検出されました。無視されます。 url=${url}`);
         }
       }
 
@@ -484,7 +466,7 @@ const ApiClient = (function () {
      */
     const extend = decorator => createClient({
       baseUrl,
-      logger: log,
+      logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport),
       responseHandler
@@ -529,9 +511,7 @@ const WebhookClient = (function () {
    * @param {Object} options.headers カスタムヘッダー
    * @returns {Object} クライアント
    */
-  const create = (webhookUrl, options) => {
-    options = options || {};
-
+  const create = (webhookUrl, options = {}) => {
     // Transport 構築
     let transport = HttpCore.createTransport();
 

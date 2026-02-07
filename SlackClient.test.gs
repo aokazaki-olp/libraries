@@ -357,6 +357,19 @@ const runSlackEdgeCaseTests = () => {
     assertEqual(response.getResponseCode(), 200);
   });
 
+  test('429 で Retry-After が非数値の場合 NaN にならず待機する', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {}, headers: { 'Retry-After': 'Thu, 01 Dec 2026 16:00:00 GMT' } },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    // parseInt('Thu...') => NaN → NaN * 1000 = NaN → Utilities.sleep(NaN)
+    // このテストは現状の実装で NaN が発生する問題を検出する
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+    assertEqual(mockTransport.getCallCount(), 2);
+  });
+
   test('4xx（429以外）はリトライしない', () => {
     const mockTransport = MockTransport.sequence([
       { status: 400, body: {} }
@@ -404,6 +417,7 @@ const runSlackEdgeCaseTests = () => {
     try {
       retryTransport.fetch('http://example.com', {});
     } catch (e) {
+      assertEqual(e.name, 'RetryExhaustedError');
       assertTrue(e.message.includes('リトライ回数上限'));
     }
 
@@ -458,75 +472,80 @@ const runSlackEdgeCaseTests = () => {
     assertTrue(logs[0].args[0].includes('GET'));
   });
 
-  // ─── slackResponseHandler エッジケース ─────────────────────────────
+  // ─── slackResponseHandler エッジケース（実ハンドラ経由） ──────────
 
   suite('slackResponseHandler エッジケース');
 
-  test('ok: true のレスポンスはそのまま返す', () => {
-    // slackResponseHandler を直接テストするためのモック
-    const response = {
-      status: 200,
-      body: { ok: true, channel: 'C123', ts: '123.456' }
-    };
-    // SlackApiClient内部のハンドラと同等のロジック
-    if (response.body && response.body.ok === false) {
-      throw new Error('Should not reach here');
-    }
-    assertEqual(response.body.ok, true);
-    assertEqual(response.body.channel, 'C123');
+  /**
+   * responseHandler を経由するテスト用クライアントを作成
+   * SlackApiClient.create() は実際のトークン認証を必要とするため、
+   * ApiClient.createClient に slackResponseHandler 相当の responseHandler を渡して検証する
+   */
+  const createSlackTestClient = mockTransport => {
+    return ApiClient.createClient({
+      baseUrl: 'https://slack.com/api',
+      transport: mockTransport,
+      responseHandler: (response, request) => {
+        if (response.body && response.body.ok === false) {
+          const errorCode = response.body.error || 'slack_error';
+          const e = new Error(`Slack APIエラー: ${errorCode}`);
+          e.name = 'SlackApiError';
+          e.code = errorCode;
+          e.metadata = response.body.response_metadata;
+          e.response = response;
+          throw e;
+        }
+        return response.body;
+      }
+    });
+  };
+
+  test('ok: true のレスポンスはボディを返す', () => {
+    const mockTransport = MockTransport.success({ ok: true, channel: 'C123', ts: '123.456' });
+    const client = createSlackTestClient(mockTransport);
+    const result = client.call({ endpoint: 'chat.postMessage', method: 'POST' });
+    assertEqual(result.ok, true);
+    assertEqual(result.channel, 'C123');
+    assertEqual(result.ts, '123.456');
   });
 
-  test('ok: false で error コードがある場合', () => {
-    const response = {
-      status: 200,
-      body: { ok: false, error: 'channel_not_found' }
-    };
+  test('ok: false で SlackApiError がスローされる', () => {
+    const mockTransport = MockTransport.success({ ok: false, error: 'channel_not_found' });
+    const client = createSlackTestClient(mockTransport);
     try {
-      if (response.body && response.body.ok === false) {
-        const errorCode = response.body.error || 'slack_error';
-        const e = new Error(`Slack APIエラー: ${errorCode}`);
-        e.code = errorCode;
-        throw e;
-      }
+      client.call({ endpoint: 'chat.postMessage', method: 'POST' });
+      throw new Error('Should not reach here');
     } catch (e) {
+      assertEqual(e.name, 'SlackApiError');
       assertEqual(e.code, 'channel_not_found');
       assertTrue(e.message.includes('channel_not_found'));
     }
   });
 
   test('ok: false で error コードがない場合デフォルトエラー', () => {
-    const response = {
-      status: 200,
-      body: { ok: false }
-    };
+    const mockTransport = MockTransport.success({ ok: false });
+    const client = createSlackTestClient(mockTransport);
     try {
-      if (response.body && response.body.ok === false) {
-        const errorCode = response.body.error || 'slack_error';
-        const e = new Error(`Slack APIエラー: ${errorCode}`);
-        e.code = errorCode;
-        throw e;
-      }
+      client.call({ endpoint: 'chat.postMessage', method: 'POST' });
+      throw new Error('Should not reach here');
     } catch (e) {
+      assertEqual(e.name, 'SlackApiError');
       assertEqual(e.code, 'slack_error');
     }
   });
 
-  test('ok: false で response_metadata がある場合', () => {
-    const response = {
-      status: 200,
-      body: {
-        ok: false,
-        error: 'invalid_arguments',
-        response_metadata: { messages: ['[ERROR] invalid channel'] }
-      }
-    };
+  test('ok: false で response_metadata が伝播する', () => {
+    const mockTransport = MockTransport.success({
+      ok: false,
+      error: 'invalid_arguments',
+      response_metadata: { messages: ['[ERROR] invalid channel'] }
+    });
+    const client = createSlackTestClient(mockTransport);
     try {
-      if (response.body && response.body.ok === false) {
-        const e = new Error(`Slack APIエラー: ${response.body.error}`);
-        e.metadata = response.body.response_metadata;
-        throw e;
-      }
+      client.call({ endpoint: 'chat.postMessage', method: 'POST' });
+      throw new Error('Should not reach here');
     } catch (e) {
+      assertEqual(e.name, 'SlackApiError');
       assertDeepEqual(e.metadata.messages, ['[ERROR] invalid channel']);
     }
   });
@@ -571,17 +590,13 @@ const runSlackEdgeCaseTests = () => {
 
   slackErrors.forEach(errorCode => {
     test(`エラーコード: ${errorCode} を正しくハンドリング`, () => {
-      const response = {
-        status: 200,
-        body: { ok: false, error: errorCode }
-      };
+      const mockTransport = MockTransport.success({ ok: false, error: errorCode });
+      const client = createSlackTestClient(mockTransport);
       try {
-        if (response.body && response.body.ok === false) {
-          const e = new Error(`Slack APIエラー: ${response.body.error}`);
-          e.code = response.body.error;
-          throw e;
-        }
+        client.call({ endpoint: 'chat.postMessage', method: 'POST' });
+        throw new Error('Should not reach here');
       } catch (e) {
+        assertEqual(e.name, 'SlackApiError');
         assertEqual(e.code, errorCode);
       }
     });

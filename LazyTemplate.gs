@@ -557,7 +557,9 @@ class LazyTemplate {
         const rest = term
           .replace(LazyTemplate.KEY_SEGMENT_PATTERN, '')
           .replace(/[.\s]/g, '');
-        if (rest.length !== 0) valid = false;
+        if (rest.length !== 0) {
+          valid = false;
+        }
       }
 
       if (!valid || path.length === 0) {
@@ -567,14 +569,18 @@ class LazyTemplate {
       return data => {
         let accumulator = data;
         for (const key of path) {
-          if (accumulator == null) return undefined;
+          if (accumulator == null) {
+            return undefined;
+          }
           const type = typeof accumulator;
           if (type !== 'object' && type !== 'function') {
             return undefined;
           }
 
           const value = accumulator[key];
-          if (value === undefined) return undefined;
+          if (value === undefined) {
+            return undefined;
+          }
           accumulator = value;
         }
         return this.applyFilters(accumulator, filters);
@@ -642,19 +648,15 @@ class LazyTemplate {
 }
 
 // エクスポート処理
-// GAS環境
-if (typeof global !== 'undefined' && global === this) {
-  global.LazyTemplate = LazyTemplate;
-}
-
-// Node.js/CommonJS環境
 if (typeof module !== 'undefined' && module.exports) {
+  // Node.js/CommonJS環境
   module.exports = LazyTemplate;
-}
-
-// ブラウザ環境
-if (typeof window !== 'undefined') {
+} else if (typeof window !== 'undefined') {
+  // ブラウザ環境
   window.LazyTemplate = LazyTemplate;
+} else if (typeof global !== 'undefined') {
+  // GAS環境 / その他
+  global.LazyTemplate = LazyTemplate;
 }
 
 })(this);
