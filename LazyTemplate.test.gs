@@ -166,8 +166,8 @@ const runLazyTemplateEvaluateTests = () => {
 
   test('数値リテラルのフォールバック', () => {
     const t = new LazyTemplate('{{{count || 0}}}');
-    // 0 is falsy, so falls through
-    assertEqual(t.evaluate({}), '');
+    // テンプレートエンジンは undefined/null/'' のみスキップ。0 は有効な値として返される
+    assertEqual(t.evaluate({}), '0');
   });
 
   test('正の数値リテラルのフォールバック', () => {

@@ -42,6 +42,43 @@ const MockScriptApp = (function () {
   return { setup };
 })();
 
+/**
+ * UrlFetchApp グローバルモック
+ *
+ * GoogleSearchConsoleApiClient.create() は内部で HttpCore.createTransport() を使用するため
+ * UrlFetchApp.fetch をグローバルにモックしてリクエストを捕捉する
+ */
+const MockUrlFetchApp = (function () {
+  const setup = (statusCode = 200, body = {}, headers = {}) => {
+    const original = typeof UrlFetchApp !== 'undefined' ? UrlFetchApp : undefined;
+    const calls = [];
+
+    globalThis.UrlFetchApp = {
+      fetch: (url, options) => {
+        calls.push({ url, options });
+        return {
+          getResponseCode: () => statusCode,
+          getContentText: () => typeof body === 'string' ? body : JSON.stringify(body),
+          getAllHeaders: () => headers
+        };
+      }
+    };
+
+    return {
+      getCalls: () => calls,
+      restore: () => {
+        if (original === undefined) {
+          delete globalThis.UrlFetchApp;
+        } else {
+          globalThis.UrlFetchApp = original;
+        }
+      }
+    };
+  };
+
+  return { setup };
+})();
+
 // ============================================================================
 // GoogleSearchConsoleApiClient テスト
 // ============================================================================
@@ -135,70 +172,75 @@ const runGscNormalizeSiteUrlTests = () => {
 
   test('通常の URL に末尾スラッシュを追加する', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { ok: true });
     try {
-      const mockTransport = MockTransport.success({ ok: true });
       const client = GoogleSearchConsoleApiClient.create('https://example.com', null);
       client.call({ endpoint: '/searchAnalytics/query', method: 'POST', body: {} });
 
-      const call = mockTransport.getCalls()[0];
+      const call = fetchMock.getCalls()[0];
       // URL should contain encoded "https://example.com/"
       assertTrue(call.url.includes(encodeURIComponent('https://example.com/')));
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
 
   test('既に末尾スラッシュがある URL はそのまま', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { ok: true });
     try {
-      const mockTransport = MockTransport.success({ ok: true });
       const client = GoogleSearchConsoleApiClient.create('https://example.com/', null);
       client.call({ endpoint: '/searchAnalytics/query', method: 'POST', body: {} });
 
-      const call = mockTransport.getCalls()[0];
+      const call = fetchMock.getCalls()[0];
       assertTrue(call.url.includes(encodeURIComponent('https://example.com/')));
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
 
   test('sc-domain: プレフィックスはそのまま使用する', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { ok: true });
     try {
-      const mockTransport = MockTransport.success({ ok: true });
       const client = GoogleSearchConsoleApiClient.create('sc-domain:example.com', null);
       client.call({ endpoint: '/searchAnalytics/query', method: 'POST', body: {} });
 
-      const call = mockTransport.getCalls()[0];
+      const call = fetchMock.getCalls()[0];
       assertTrue(call.url.includes(encodeURIComponent('sc-domain:example.com')));
       // sc-domain にはスラッシュが追加されないこと
       assertTrue(!call.url.includes(encodeURIComponent('sc-domain:example.com/')));
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
 
   test('空文字の siteUrl でもエラーにならない', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { ok: true });
     try {
-      const mockTransport = MockTransport.success({ ok: true });
       const client = GoogleSearchConsoleApiClient.create('', null);
       client.call({ endpoint: '/test', method: 'GET' });
       // エラーにならなければ成功
       assertTrue(true);
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
 
   test('null の siteUrl でもエラーにならない', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { ok: true });
     try {
-      const mockTransport = MockTransport.success({ ok: true });
       const client = GoogleSearchConsoleApiClient.create(null, null);
       client.call({ endpoint: '/test', method: 'GET' });
       assertTrue(true);
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
@@ -211,8 +253,8 @@ const runGscResponseHandlerTests = () => {
 
   test('レスポンスハンドラが body のみを返す', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(200, { rows: [{ keys: ['query1'], clicks: 100 }] });
     try {
-      const mockTransport = MockTransport.success({ rows: [{ keys: ['query1'], clicks: 100 }] });
       const client = GoogleSearchConsoleApiClient.create('https://example.com', null);
       const result = client.call({ endpoint: '/searchAnalytics/query', method: 'POST', body: {} });
 
@@ -220,20 +262,22 @@ const runGscResponseHandlerTests = () => {
       assertTrue(Array.isArray(result.rows));
       assertEqual(result.rows[0].clicks, 100);
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
 
   test('HTTP エラー時は HttpError がスローされる', () => {
     const scriptMock = MockScriptApp.setup();
+    const fetchMock = MockUrlFetchApp.setup(403, { error: { message: 'Forbidden' } });
     try {
-      const mockTransport = MockTransport.error(403, { error: { message: 'Forbidden' } });
       const client = GoogleSearchConsoleApiClient.create('https://example.com', null);
       assertThrows(
         () => client.call({ endpoint: '/searchAnalytics/query', method: 'POST', body: {} }),
         'HTTPエラー 403'
       );
     } finally {
+      fetchMock.restore();
       scriptMock.restore();
     }
   });
