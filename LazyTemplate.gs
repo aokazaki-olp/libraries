@@ -557,7 +557,9 @@ class LazyTemplate {
         const rest = term
           .replace(LazyTemplate.KEY_SEGMENT_PATTERN, '')
           .replace(/[.\s]/g, '');
-        if (rest.length !== 0) valid = false;
+        if (rest.length !== 0) {
+          valid = false;
+        }
       }
 
       if (!valid || path.length === 0) {
