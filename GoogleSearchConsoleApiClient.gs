@@ -72,7 +72,8 @@ const GoogleSearchConsoleApiClient = (function () {
       .extend(withGoogleAuth)
       .extend(transport => HttpCore.withRetry(transport, {
         maxRetries: CONFIG.DEFAULT_MAX_RETRIES,
-        baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS
+        baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS,
+        logger
       }))
       .extend(transport => HttpCore.withLogger(transport, logger));
   };
