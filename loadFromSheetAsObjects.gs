@@ -197,13 +197,13 @@ const loadFromSheetAsObjects = (function () {
    * @returns {{header:Array, values:Array<Array>}|null} ヘッダーとデータ行、データなしなら null
    */
   const getFromRange = (range, limit, offset) => {
-    const sheet    = range.getSheet();
+    const sheet = range.getSheet();
     const startRow = range.getRow();
-    const startCol = range.getColumn();
-    const numRows  = range.getNumRows();
-    const numCols  = range.getNumColumns();
+    const startColumn = range.getColumn();
+    const numRows = range.getNumRows();
+    const numColumns = range.getNumColumns();
 
-    if (numRows < 1 || numCols < 1) {
+    if (numRows < 1 || numColumns < 1) {
       return null;
     }
 
@@ -217,8 +217,8 @@ const loadFromSheetAsObjects = (function () {
       return null;
     }
 
-    const header = sheet.getRange(startRow, startCol, 1, numCols).getValues()[0];
-    const values = sheet.getRange(startRow + 1 + offset, startCol, rowCount, numCols).getValues();
+    const header = sheet.getRange(startRow, startColumn, 1, numColumns).getValues()[0];
+    const values = sheet.getRange(startRow + 1 + offset, startColumn, rowCount, numColumns).getValues();
 
     return { header, values };
   };
@@ -232,7 +232,7 @@ const loadFromSheetAsObjects = (function () {
    * @returns {{header:Array, values:Array<Array>}|null} ヘッダーとデータ行、データなしなら null
    */
   const getFromSheet = (sheet, limit, offset) => {
-    const lastRow    = sheet.getLastRow();
+    const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
 
     if (lastRow < 1 || lastColumn < 1) {

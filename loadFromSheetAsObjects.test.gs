@@ -31,16 +31,16 @@ const MockSheet = (function () {
     return {
       getLastRow: () => lastRow,
       getLastColumn: () => lastColumn,
-      getRange: (row, col, numRows, numCols) => ({
+      getRange: (row, column, numRows, numColumns) => ({
         getValues: () => {
           if (row === 1 && numRows === 1) {
             // ヘッダー行
-            return [header.slice(col - 1, col - 1 + numCols)];
+            return [header.slice(column - 1, column - 1 + numColumns)];
           }
           // データ行
           const startIdx = row - 2; // row=2 → index=0
           return rows.slice(startIdx, startIdx + numRows).map(r =>
-            r.slice(col - 1, col - 1 + numCols)
+            r.slice(column - 1, column - 1 + numColumns)
           );
         }
       }),
@@ -66,8 +66,8 @@ const MockSheet = (function () {
   const headerOnly = header => ({
     getLastRow: () => 1,
     getLastColumn: () => header.length,
-    getRange: (row, col, numRows, numCols) => ({
-      getValues: () => [header.slice(col - 1, col - 1 + numCols)]
+    getRange: (row, column, numRows, numColumns) => ({
+      getValues: () => [header.slice(column - 1, column - 1 + numColumns)]
     }),
     getSheetId: () => 0,
     getName: () => 'HeaderOnlySheet'
@@ -88,24 +88,24 @@ const MockRange = (function () {
    * @param {Array<Array>} rows データ行
    * @param {Object} [options] オプション
    * @param {number} [options.startRow=1] Range の開始行（シート上の絶対位置）
-   * @param {number} [options.startCol=1] Range の開始列（シート上の絶対位置）
+   * @param {number} [options.startColumn=1] Range の開始列（シート上の絶対位置）
    * @returns {Object} モック Range（getSheetId なし）
    */
-  const create = (header, rows = [], { startRow = 1, startCol = 1 } = {}) => {
+  const create = (header, rows = [], { startRow = 1, startColumn = 1 } = {}) => {
     const allRows = [header, ...rows];
     const numRows = allRows.length;
-    const numCols = header.length;
+    const numColumns = header.length;
 
     // 親 Sheet（getRange で部分取得をサポート）
     const parentSheet = {
-      getRange: (row, col, nRows, nCols) => ({
+      getRange: (row, column, nRows, nColumns) => ({
         getValues: () => {
           const results = [];
           for (let r = 0; r < nRows; r++) {
             const dataRowIndex = (row - startRow) + r;
             if (dataRowIndex >= 0 && dataRowIndex < allRows.length) {
               results.push(
-                allRows[dataRowIndex].slice(col - startCol, col - startCol + nCols)
+                allRows[dataRowIndex].slice(column - startColumn, column - startColumn + nColumns)
               );
             }
           }
@@ -117,12 +117,12 @@ const MockRange = (function () {
     };
 
     return {
-      getA1Notation: () => `R${startRow}C${startCol}:R${startRow + numRows - 1}C${startCol + numCols - 1}`,
+      getA1Notation: () => `R${startRow}C${startColumn}:R${startRow + numRows - 1}C${startColumn + numColumns - 1}`,
       getSheet: () => parentSheet,
       getRow: () => startRow,
-      getColumn: () => startCol,
+      getColumn: () => startColumn,
       getNumRows: () => numRows,
-      getNumColumns: () => numCols
+      getNumColumns: () => numColumns
       // getSheetId なし → isRange 判定で true
     };
   };
@@ -509,7 +509,7 @@ const runLoadRangeObjectTests = () => {
     const range = MockRange.create(
       ['name', 'score'],
       [['Alice', 100], ['Bob', 90]],
-      { startRow: 3, startCol: 2 }
+      { startRow: 3, startColumn: 2 }
     );
     const result = loadFromSheetAsObjects(range);
     assertEqual(result.length, 2);
