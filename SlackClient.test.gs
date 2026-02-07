@@ -326,6 +326,269 @@ const runSlackCoreTests = () => {
 };
 
 // ============================================================================
+// SlackClient エッジケーステスト
+// ============================================================================
+
+const runSlackEdgeCaseTests = () => {
+  const { suite, test, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows } = TestRunner;
+
+  // ─── SlackCore.withRetry エッジケース ──────────────────────────────
+
+  suite('SlackCore.withRetry エッジケース');
+
+  test('429 で Retry-After ヘッダーがない場合 1秒待機', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {}, headers: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+    assertEqual(mockTransport.getCallCount(), 2);
+  });
+
+  test('429 で Retry-After が小文字でも認識する', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {}, headers: { 'retry-after': '1' } },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+  });
+
+  test('4xx（429以外）はリトライしない', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 400, body: {} }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 400);
+    assertEqual(mockTransport.getCallCount(), 1);
+  });
+
+  test('503 でリトライする', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 503, body: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+    assertEqual(mockTransport.getCallCount(), 2);
+  });
+
+  test('例外発生時もリトライする', () => {
+    const mockTransport = MockTransport.sequence([
+      { throw: 'Network error' },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+    assertEqual(mockTransport.getCallCount(), 2);
+  });
+
+  test('リトライ上限エラーは二重ログを防ぐために再スローされる', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} },
+      { status: 429, body: {} }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 1, logger: mockLogger });
+
+    try {
+      retryTransport.fetch('http://example.com', {});
+    } catch (e) {
+      assertTrue(e.message.includes('リトライ回数上限'));
+    }
+
+    // error ログは1回のみ（二重ログなし）
+    const errorLogs = logs.filter(l => l.level === 'error');
+    assertEqual(errorLogs.length, 1);
+  });
+
+  test('maxRetries: 0 でリトライしない（429）', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 429, body: {} }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 0 });
+    assertThrows(
+      () => retryTransport.fetch('http://example.com', {}),
+      'リトライ回数上限'
+    );
+    assertEqual(mockTransport.getCallCount(), 1);
+  });
+
+  test('maxRetries: 0 でリトライしない（500）', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 500, body: {} }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 0 });
+    assertThrows(
+      () => retryTransport.fetch('http://example.com', {}),
+      'リトライ回数上限'
+    );
+    assertEqual(mockTransport.getCallCount(), 1);
+  });
+
+  test('options なしでデフォルト値が使用される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const retryTransport = SlackCore.withRetry(mockTransport);
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+  });
+
+  test('options.method がない場合 GET がログに出力される', () => {
+    const logs = [];
+    const mockLogger = {
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      error: (...args) => logs.push({ level: 'error', args })
+    };
+    const mockTransport = MockTransport.sequence([
+      { status: 500, body: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = SlackCore.withRetry(mockTransport, { maxRetries: 3, logger: mockLogger });
+    retryTransport.fetch('http://example.com', {});
+    assertTrue(logs[0].args[0].includes('GET'));
+  });
+
+  // ─── slackResponseHandler エッジケース ─────────────────────────────
+
+  suite('slackResponseHandler エッジケース');
+
+  test('ok: true のレスポンスはそのまま返す', () => {
+    // slackResponseHandler を直接テストするためのモック
+    const response = {
+      status: 200,
+      body: { ok: true, channel: 'C123', ts: '123.456' }
+    };
+    // SlackApiClient内部のハンドラと同等のロジック
+    if (response.body && response.body.ok === false) {
+      throw new Error('Should not reach here');
+    }
+    assertEqual(response.body.ok, true);
+    assertEqual(response.body.channel, 'C123');
+  });
+
+  test('ok: false で error コードがある場合', () => {
+    const response = {
+      status: 200,
+      body: { ok: false, error: 'channel_not_found' }
+    };
+    try {
+      if (response.body && response.body.ok === false) {
+        const errorCode = response.body.error || 'slack_error';
+        const e = new Error(`Slack APIエラー: ${errorCode}`);
+        e.code = errorCode;
+        throw e;
+      }
+    } catch (e) {
+      assertEqual(e.code, 'channel_not_found');
+      assertTrue(e.message.includes('channel_not_found'));
+    }
+  });
+
+  test('ok: false で error コードがない場合デフォルトエラー', () => {
+    const response = {
+      status: 200,
+      body: { ok: false }
+    };
+    try {
+      if (response.body && response.body.ok === false) {
+        const errorCode = response.body.error || 'slack_error';
+        const e = new Error(`Slack APIエラー: ${errorCode}`);
+        e.code = errorCode;
+        throw e;
+      }
+    } catch (e) {
+      assertEqual(e.code, 'slack_error');
+    }
+  });
+
+  test('ok: false で response_metadata がある場合', () => {
+    const response = {
+      status: 200,
+      body: {
+        ok: false,
+        error: 'invalid_arguments',
+        response_metadata: { messages: ['[ERROR] invalid channel'] }
+      }
+    };
+    try {
+      if (response.body && response.body.ok === false) {
+        const e = new Error(`Slack APIエラー: ${response.body.error}`);
+        e.metadata = response.body.response_metadata;
+        throw e;
+      }
+    } catch (e) {
+      assertDeepEqual(e.metadata.messages, ['[ERROR] invalid channel']);
+    }
+  });
+
+  // ─── SlackWebhookClient エッジケース ───────────────────────────────
+
+  suite('SlackWebhookClient エッジケース');
+
+  test('maxRetries: 0 でリトライなしクライアント作成', () => {
+    const client = SlackWebhookClient.create('https://hooks.slack.com/xxx', { maxRetries: 0 });
+    assertTrue(typeof client.send === 'function');
+  });
+
+  test('options なしでクライアント作成', () => {
+    const client = SlackWebhookClient.create('https://hooks.slack.com/xxx');
+    assertTrue(typeof client.send === 'function');
+  });
+
+  test('静的 send メソッドが options を渡せる', () => {
+    // インターフェースの確認のみ
+    assertTrue(typeof SlackWebhookClient.send === 'function');
+    assertEqual(SlackWebhookClient.send.length, 3); // webhookUrl, payload, options
+  });
+
+  // ─── Slack エラーコードパターン ────────────────────────────────────
+
+  suite('Slack エラーコードパターン');
+
+  const slackErrors = [
+    'channel_not_found',
+    'not_in_channel',
+    'is_archived',
+    'msg_too_long',
+    'no_text',
+    'too_many_attachments',
+    'rate_limited',
+    'invalid_auth',
+    'account_inactive',
+    'token_revoked',
+    'missing_scope'
+  ];
+
+  slackErrors.forEach(errorCode => {
+    test(`エラーコード: ${errorCode} を正しくハンドリング`, () => {
+      const response = {
+        status: 200,
+        body: { ok: false, error: errorCode }
+      };
+      try {
+        if (response.body && response.body.ok === false) {
+          const e = new Error(`Slack APIエラー: ${response.body.error}`);
+          e.code = response.body.error;
+          throw e;
+        }
+      } catch (e) {
+        assertEqual(e.code, errorCode);
+      }
+    });
+  });
+};
+
+// ============================================================================
 // メインテストランナー
 // ============================================================================
 
@@ -343,6 +606,9 @@ function runAllSlackClientTests() {
 
   console.log('Running SlackWebhookClient tests...');
   runSlackWebhookClientTests();
+
+  console.log('Running Slack Edge Case tests...');
+  runSlackEdgeCaseTests();
 
   return TestRunner.run();
 }

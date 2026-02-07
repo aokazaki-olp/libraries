@@ -962,6 +962,424 @@ const runWebhookClientTests = () => {
 };
 
 // ============================================================================
+// エッジケーステスト
+// ============================================================================
+
+const runEdgeCaseTests = () => {
+  const { suite, test, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows } = TestRunner;
+
+  // ─── HttpCore エッジケース ─────────────────────────────────────────
+
+  suite('HttpCore エッジケース');
+
+  test('cloneHeaders: 空オブジェクトを正しくクローンする', () => {
+    const result = HttpCore.cloneHeaders({});
+    assertDeepEqual(result, {});
+  });
+
+  test('mergeHeaders: 両方 null の場合空オブジェクトを返す', () => {
+    const result = HttpCore.mergeHeaders(null, null);
+    assertDeepEqual(result, {});
+  });
+
+  test('mergeHeaders: 両方 undefined の場合空オブジェクトを返す', () => {
+    const result = HttpCore.mergeHeaders(undefined, undefined);
+    assertDeepEqual(result, {});
+  });
+
+  test('hasHeader: 空オブジェクトで false を返す', () => {
+    assertFalse(HttpCore.hasHeader({}, 'Content-Type'));
+  });
+
+  test('hasHeader: null headers で false を返す', () => {
+    // hasHeader は null を受け取ると for...in が動かないので false
+    assertFalse(HttpCore.hasHeader(null, 'Content-Type'));
+  });
+
+  test('interpretResponse: 201 Created を正常として扱う', () => {
+    const mockResponse = MockTransport.createMockResponse(201, { id: 123 });
+    const result = HttpCore.interpretResponse(mockResponse, {});
+    assertEqual(result.status, 201);
+    assertDeepEqual(result.body, { id: 123 });
+  });
+
+  test('interpretResponse: 204 No Content を正常として扱う', () => {
+    const mockResponse = {
+      getResponseCode: () => 204,
+      getContentText: () => '',
+      getAllHeaders: () => ({})
+    };
+    const result = HttpCore.interpretResponse(mockResponse, {});
+    assertEqual(result.status, 204);
+    assertEqual(result.body, null);
+  });
+
+  test('interpretResponse: 299 を正常として扱う', () => {
+    const mockResponse = MockTransport.createMockResponse(299, { ok: true });
+    const result = HttpCore.interpretResponse(mockResponse, {});
+    assertEqual(result.status, 299);
+  });
+
+  test('interpretResponse: 300 リダイレクトをエラーとして扱う', () => {
+    const mockResponse = MockTransport.createMockResponse(301, 'Moved');
+    assertThrows(
+      () => HttpCore.interpretResponse(mockResponse, {}),
+      'HTTPエラー 301'
+    );
+  });
+
+  test('interpretResponse: 不正な JSON はテキストとして扱う', () => {
+    const mockResponse = {
+      getResponseCode: () => 200,
+      getContentText: () => '{invalid json}',
+      getAllHeaders: () => ({})
+    };
+    const result = HttpCore.interpretResponse(mockResponse, {});
+    assertEqual(result.body, '{invalid json}');
+  });
+
+  test('withRetry: 4xx（429以外）はリトライしない', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 400, body: {} }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 3, baseDelayMs: 1 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 400);
+    assertEqual(mockTransport.getCallCount(), 1);
+  });
+
+  test('withRetry: 503 でリトライする', () => {
+    const mockTransport = MockTransport.sequence([
+      { status: 503, body: {} },
+      { status: 200, body: { ok: true } }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 3, baseDelayMs: 1 });
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+    assertEqual(mockTransport.getCallCount(), 2);
+  });
+
+  test('withRetry: options なしでも動作する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const retryTransport = HttpCore.withRetry(mockTransport);
+    const response = retryTransport.fetch('http://example.com', {});
+    assertEqual(response.getResponseCode(), 200);
+  });
+
+  test('withRetry: リトライ上限エラーを正しくスローする', () => {
+    const mockTransport = MockTransport.sequence([
+      { throw: 'Error 1' },
+      { throw: 'Error 2' }
+    ]);
+    const retryTransport = HttpCore.withRetry(mockTransport, { maxRetries: 1, baseDelayMs: 1 });
+    assertThrows(
+      () => retryTransport.fetch('http://example.com', {}),
+      'Error 2'
+    );
+  });
+
+  // ─── ApiClient エッジケース ────────────────────────────────────────
+
+  suite('ApiClient エッジケース');
+
+  test('空のクエリオブジェクトはクエリ文字列を追加しない', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET', query: {} });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, 'https://api.example.com/users');
+  });
+
+  test('クエリ値が null/undefined はスキップされる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET', query: { a: 1, b: null, c: undefined, d: 2 } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(call.url.includes('a=1'));
+    assertTrue(call.url.includes('d=2'));
+    assertFalse(call.url.includes('b='));
+    assertFalse(call.url.includes('c='));
+  });
+
+  test('クエリ値に特殊文字がエンコードされる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/search', method: 'GET', query: { q: 'hello world', tag: 'a&b' } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(call.url.includes('q=hello%20world'));
+    assertTrue(call.url.includes('tag=a%26b'));
+  });
+
+  test('空の配列クエリは何も追加しない', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET', query: { ids: [] } });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, 'https://api.example.com/users');
+  });
+
+  test('endpoint が空文字でもルートパスになる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '', method: 'GET' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, 'https://api.example.com/');
+  });
+
+  test('endpoint が undefined でもルートパスになる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ method: 'GET' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, 'https://api.example.com/');
+  });
+
+  test('baseUrl が空でも動作する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: '',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, '/users');
+  });
+
+  test('複数のスラッシュが正規化される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com///',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '///users', method: 'GET' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.url, 'https://api.example.com/users');
+  });
+
+  test('GET リクエストで body は無視される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET', body: { ignored: true } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(!call.options.payload);
+  });
+
+  test('HEAD リクエストで body は無視される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'HEAD', body: { ignored: true } });
+    const call = mockTransport.getCalls()[0];
+    assertTrue(!call.options.payload);
+  });
+
+  test('カスタム Content-Type は上書きされない', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({
+      endpoint: '/upload',
+      method: 'POST',
+      body: { data: 'test' },
+      headers: { 'Content-Type': 'text/plain' }
+    });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.headers['Content-Type'], 'text/plain');
+  });
+
+  test('method が指定されない場合 POST がデフォルト', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', body: { name: 'test' } });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'POST');
+  });
+
+  test('method は大文字に正規化される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'get' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.method, 'GET');
+  });
+
+  test('timeoutMs が設定される', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    client.call({ endpoint: '/users', method: 'GET', timeoutMs: 5000 });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.timeout, 5000);
+  });
+
+  test('responseHandler が呼ばれる', () => {
+    const mockTransport = MockTransport.success({ data: 'original' });
+    let handlerCalled = false;
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport,
+      responseHandler: (response, request) => {
+        handlerCalled = true;
+        return { modified: true, original: response.body };
+      }
+    });
+    const result = client.call({ endpoint: '/users', method: 'GET' });
+    assertTrue(handlerCalled);
+    assertTrue(result.modified);
+    assertDeepEqual(result.original, { data: 'original' });
+  });
+
+  test('responseHandler がエラーをスローできる', () => {
+    const mockTransport = MockTransport.success({ ok: false, error: 'custom_error' });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport,
+      responseHandler: (response) => {
+        if (response.body.ok === false) {
+          throw new Error(`Custom error: ${response.body.error}`);
+        }
+        return response;
+      }
+    });
+    assertThrows(
+      () => client.call({ endpoint: '/users', method: 'GET' }),
+      'Custom error: custom_error'
+    );
+  });
+
+  // ─── ClientHelper エッジケース ─────────────────────────────────────
+
+  suite('ClientHelper エッジケース');
+
+  test('use() で同名メソッドを上書きできる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const Plugin1 = () => ({ myMethod: () => 'first' });
+    const Plugin2 = () => ({ myMethod: () => 'second' });
+
+    const extended = client.use(Plugin1).use(Plugin2);
+    assertEqual(extended.myMethod(), 'second');
+  });
+
+  test('use() で空オブジェクトを返すプラグインも動作する', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const EmptyPlugin = () => ({});
+    const extended = client.use(EmptyPlugin);
+
+    assertTrue(typeof extended.call === 'function');
+    assertTrue(typeof extended.use === 'function');
+  });
+
+  test('use() チェーン後も元のクライアントは変更されない', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const Plugin = () => ({ newMethod: () => 'new' });
+    client.use(Plugin);
+
+    assertFalse('newMethod' in client);
+  });
+
+  test('use() 単体メソッドパターンで正しくメソッドが追加される', () => {
+    const mockTransport = MockTransport.success({ id: 42 });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const extended = client
+      .use('getUser', ({ get }) => (id) => get(`/users/${id}`))
+      .use('createUser', ({ post }) => (data) => post('/users', data));
+
+    assertTrue(typeof extended.getUser === 'function');
+    assertTrue(typeof extended.createUser === 'function');
+  });
+
+  test('3つ以上のプラグインをチェーンできる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const Plugin1 = () => ({ method1: () => 1 });
+    const Plugin2 = () => ({ method2: () => 2 });
+    const Plugin3 = () => ({ method3: () => 3 });
+
+    const extended = client.use(Plugin1).use(Plugin2).use(Plugin3);
+
+    assertEqual(extended.method1(), 1);
+    assertEqual(extended.method2(), 2);
+    assertEqual(extended.method3(), 3);
+  });
+
+  test('Plugin から extend を呼び出せる', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const Plugin = ({ extend }) => ({
+      addAuth: (token) => extend(t => ApiClient.withBearerAuth(t, token))
+    });
+
+    const extended = client.use(Plugin);
+    assertTrue(typeof extended.addAuth === 'function');
+
+    const authed = extended.addAuth('my-token');
+    authed.call({ endpoint: '/users', method: 'GET' });
+    const call = mockTransport.getCalls()[0];
+    assertEqual(call.options.headers.Authorization, 'Bearer my-token');
+  });
+};
+
+// ============================================================================
 // インテグレーションテスト（実際のHTTP通信が必要）
 // ============================================================================
 
@@ -1033,6 +1451,9 @@ function runAllHttpClientTests() {
   console.log('Running WebhookClient tests...');
   runWebhookClientTests();
 
+  console.log('Running Edge Case tests...');
+  runEdgeCaseTests();
+
   console.log('Running Integration tests...');
   runIntegrationTests();
 
@@ -1053,6 +1474,9 @@ function runUnitTestsOnly() {
 
   console.log('Running WebhookClient tests...');
   runWebhookClientTests();
+
+  console.log('Running Edge Case tests...');
+  runEdgeCaseTests();
 
   return TestRunner.run();
 }
