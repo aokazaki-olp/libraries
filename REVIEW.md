@@ -400,28 +400,17 @@ const extend = decorator => createClient({
 
 ---
 
-#### N-4: delete HTTP メソッドショートカットが body を受け付けない
+#### N-4: DELETE リクエストの body 取り扱い
 
-**ファイル**: `HttpClient.gs:262-263`
-**重要度**: **L (Low)**
+**ファイル**: `HttpClient.gs:262-263`, `HttpClient.gs:438`
+**重要度**: **L (Low)** — **修正済み**
 
-```javascript
-delete: (endpoint, options) =>
-  call({ ...options, method: 'DELETE', endpoint })
-```
+RFC 9110 Section 9.3.5 において DELETE リクエストボディの意味は未定義であり、GET/HEAD と同等の扱いが適切。
 
-`put`, `patch`, `post` は第2引数に `body` を受け付けるが、`delete` は受け付けない。HTTP 仕様上 DELETE with body は非推奨だが、一部 API（Elasticsearch, GitHub API 等）で使用される。
-
-**緩和**: `call()` で直接 body を指定すれば対応可能。
-```javascript
-client.call({ method: 'DELETE', endpoint: '/resource', body: { id: 123 } });
-```
-
-**修正案（任意）**:
-```javascript
-delete: (endpoint, body, options) =>
-  call({ ...options, method: 'DELETE', endpoint, body })
-```
+**修正内容**:
+1. `canHaveBody` の除外リストに DELETE を追加（`/^(GET|HEAD|DELETE)$/`）
+2. DELETE + body の場合、GET/HEAD と同様に警告ログを出力し payload を送信しない
+3. ショートカットの `delete(endpoint, options)` シグネチャは body パラメータなしを維持（RFC 準拠）
 
 ---
 
@@ -550,7 +539,7 @@ const slackDate = v => {
 | N-1 | Low | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通）— 検討事項 |
 | N-2 | — | SlackWebhookClient | WebhookClient.send とのレスポンス形式不一致 | ベストプラクティスによりクローズ |
 | N-3 | Low | ApiClient | extend() で logger が二重ラップされる | **修正済み** |
-| N-4 | Low | ClientHelper | delete ショートカットが body を受け付けない |
+| N-4 | Low | ApiClient | DELETE リクエストの body 取り扱い | **修正済み** |
 | N-5 | Low | ApiClient | createClient 内部の純粋関数が毎回再定義 | **修正済み** |
 | N-6 | Low | SlackFilters | slackDate(null) と slackDate(undefined) の非対称挙動 | **修正済み** |
 
@@ -558,10 +547,10 @@ const slackDate = v => {
 
 | 区分 | High | Medium | Low | 合計 |
 |---|---|---|---|---|
-| 今回新規（残存） | 0 | 0 | 2 (N-1, N-4) | 2 |
-| 修正済み | 0 | 0 | 3 (N-3, N-5, N-6) | — |
+| 今回新規（残存） | 0 | 0 | 1 (N-1) | 1 |
+| 修正済み | 0 | 0 | 4 (N-3, N-4, N-5, N-6) | — |
 | クローズ済み | 0 | 2 (M-5, M-7) | 1 (N-2) | — |
-| **合計（要対応）** | **0** | **0** | **2** | **2** |
+| **合計（要対応）** | **0** | **0** | **1** | **1** |
 
 ---
 
@@ -569,7 +558,6 @@ const slackDate = v => {
 
 ### 継続改善（Low）
 1. N-1: withRetry 統合 — 新規 API クライアント追加時に検討
-2. N-4, N-6: ドキュメントまたは JSDoc での明記
 
 ---
 
@@ -584,4 +572,4 @@ const slackDate = v => {
 - **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
 - GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
 
-残存する指摘は Low 2件のみであり、いずれも機能的な影響は限定的。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。N-1（withRetry の重複統一）は新規 API クライアント追加時の検討事項として残す。
+残存する指摘は Low 1件（N-1: withRetry 重複統一の検討事項）のみであり、機能的な影響はない。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。N-1（withRetry の重複統一）は新規 API クライアント追加時の検討事項として残す。
