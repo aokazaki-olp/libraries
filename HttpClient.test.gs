@@ -1273,15 +1273,15 @@ const runEdgeCaseTests = () => {
     assertEqual(call.options.headers['Content-Type'], 'text/plain');
   });
 
-  test('method が指定されない場合 POST がデフォルト', () => {
+  test('method が指定されない場合 GET がデフォルト', () => {
     const mockTransport = MockTransport.success({ ok: true });
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport: mockTransport
     });
-    client.call({ endpoint: '/users', body: { name: 'test' } });
+    client.call({ endpoint: '/users' });
     const call = mockTransport.getCalls()[0];
-    assertEqual(call.options.method, 'POST');
+    assertEqual(call.options.method, 'GET');
   });
 
   test('method は大文字に正規化される', () => {
@@ -1417,6 +1417,66 @@ const runEdgeCaseTests = () => {
     assertEqual(extended.method1(), 1);
     assertEqual(extended.method2(), 2);
     assertEqual(extended.method3(), 3);
+  });
+
+  test('use() で null を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => null),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で配列を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => ['method']),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で文字列を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => 'invalid'),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で undefined を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => undefined),
+      'Plugin は Object を返す必要があります'
+    );
+  });
+
+  test('use() で数値を返すプラグインは TypeError', () => {
+    const mockTransport = MockTransport.success({ ok: true });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+    assertThrows(
+      () => client.use(() => 42),
+      'Plugin は Object を返す必要があります'
+    );
   });
 
   test('Plugin から extend を呼び出せる', () => {
