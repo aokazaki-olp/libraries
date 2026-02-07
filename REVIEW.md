@@ -549,18 +549,19 @@ const slackDate = v => {
 |---|---|---|---|
 | N-1 | Low | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通）— 検討事項 |
 | N-2 | — | SlackWebhookClient | WebhookClient.send とのレスポンス形式不一致 | ベストプラクティスによりクローズ |
-| N-3 | Low | ApiClient | extend() で logger が二重ラップされる |
+| N-3 | Low | ApiClient | extend() で logger が二重ラップされる | **修正済み** |
 | N-4 | Low | ClientHelper | delete ショートカットが body を受け付けない |
-| N-5 | Low | ApiClient | createClient 内部の純粋関数が毎回再定義 |
+| N-5 | Low | ApiClient | createClient 内部の純粋関数が毎回再定義 | **修正済み** |
 | N-6 | Low | SlackFilters | slackDate(null) と slackDate(undefined) の非対称挙動 |
 
 ### 現在の総計
 
 | 区分 | High | Medium | Low | 合計 |
 |---|---|---|---|---|
-| 今回新規 | 0 | 0 | 5 (N-1, N-3〜N-6) | 5 |
+| 今回新規（残存） | 0 | 0 | 3 (N-1, N-4, N-6) | 3 |
+| 修正済み | 0 | 0 | 2 (N-3, N-5) | — |
 | クローズ済み | 0 | 2 (M-5, M-7) | 1 (N-2) | — |
-| **合計（要対応）** | **0** | **0** | **5** | **5** |
+| **合計（要対応）** | **0** | **0** | **3** | **3** |
 
 ---
 
@@ -568,9 +569,7 @@ const slackDate = v => {
 
 ### 継続改善（Low）
 1. N-1: withRetry 統合 — 新規 API クライアント追加時に検討
-2. N-3: ApiClient.extend の logger 二重ラップ解消
-3. N-5: ApiClient.createClient の純粋関数を IIFE スコープに移動
-4. N-4, N-6: ドキュメントまたは JSDoc での明記
+2. N-4, N-6: ドキュメントまたは JSDoc での明記
 
 ---
 
@@ -585,4 +584,4 @@ const slackDate = v => {
 - **「切るだけ」設計原則**（loadFromSheetAsObjects）が明確に定義・徹底されている
 - GAS V8 ランタイムの制約内で、テスタビリティと拡張性のバランスが取れている
 
-残存する指摘は Low 5件のみであり、いずれも機能的な影響は限定的。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。N-1（withRetry の重複統一）は新規 API クライアント追加時の検討事項として残す。
+残存する指摘は Low 3件のみであり、いずれも機能的な影響は限定的。High・Medium の指摘はすべて解消済みまたは設計意図によりクローズ。N-1（withRetry の重複統一）は新規 API クライアント追加時の検討事項として残す。
