@@ -57,7 +57,7 @@ const SlackCore = (function () {
             if (status === 429) {
               const headers = response.getAllHeaders();
               const retryAfter = headers['Retry-After'] || headers['retry-after'];
-              const delaySeconds = retryAfter ? parseInt(retryAfter, 10) : 1;
+              const delaySeconds = parseInt(retryAfter, 10) || 1;
               const delayMs = delaySeconds * 1000;
 
               if (attempt === maxRetries) {
