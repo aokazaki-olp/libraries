@@ -304,15 +304,14 @@ const ClientHelper = (function () {
    * @param {Function} [options.extend] extend 関数
    * @returns {Object} クライアント { call, use, get, post, put, patch, delete, [extend] }
    */
-  const createClient = (call, options) => {
-    const opts = options || {};
+  const createClient = (call, clientOptions) => {
     const methods = createHttpMethods(call);
 
     const createExtended = additionalMethods => {
       const client = { ...additionalMethods, call, ...methods };
 
-      if (opts.extend) {
-        client.extend = opts.extend;
+      if (clientOptions && clientOptions.extend) {
+        client.extend = clientOptions.extend;
       }
 
       /**
@@ -431,16 +430,16 @@ const ApiClient = (function () {
     };
 
     const buildUrl = (baseUrl, endpoint, query) => {
-      const ep = `/${trimLeftSlash(endpoint || '')}`;
-      const url = baseUrl + ep;
+      const path = `/${trimLeftSlash(endpoint || '')}`;
+      const url = baseUrl + path;
 
-      const qs = buildQueryString(query);
-      if (!qs) {
+      const queryString = buildQueryString(query);
+      if (!queryString) {
         return url;
       }
 
       const separator = url.indexOf('?') === -1 ? '?' : '&';
-      return url + separator + qs;
+      return url + separator + queryString;
     };
 
     // ─── 設定 ─────────────────────────────────────────────────────
@@ -560,23 +559,23 @@ const WebhookClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (webhookUrl, options) => {
-    const opts = options || {};
+    options = options || {};
 
     // Transport 構築
     let transport = HttpCore.createTransport();
 
     // リトライ機能（maxRetries: 0 で無効化可能）
-    if (opts.maxRetries !== 0) {
+    if (options.maxRetries !== 0) {
       transport = HttpCore.withRetry(transport, {
-        maxRetries: opts.maxRetries,
-        baseDelayMs: opts.baseDelayMs,
-        logger: opts.logger
+        maxRetries: options.maxRetries,
+        baseDelayMs: options.baseDelayMs,
+        logger: options.logger
       });
     }
 
     // ロギング機能
-    if (opts.logger) {
-      transport = HttpCore.withLogger(transport, opts.logger);
+    if (options.logger) {
+      transport = HttpCore.withLogger(transport, options.logger);
     }
 
     /**
@@ -588,7 +587,7 @@ const WebhookClient = (function () {
     const send = payload => {
       const headers = HttpCore.mergeHeaders(
         { 'Content-Type': 'application/json; charset=utf-8' },
-        opts.headers
+        options.headers
       );
 
       const fetchOptions = {
@@ -598,8 +597,8 @@ const WebhookClient = (function () {
         muteHttpExceptions: true
       };
 
-      if (typeof opts.timeoutMs === 'number') {
-        fetchOptions.timeout = opts.timeoutMs;
+      if (typeof options.timeoutMs === 'number') {
+        fetchOptions.timeout = options.timeoutMs;
       }
 
       const response = transport.fetch(webhookUrl, fetchOptions);

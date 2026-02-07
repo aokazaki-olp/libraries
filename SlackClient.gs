@@ -236,18 +236,18 @@ const SlackWebhookClient = (function () {
    * @returns {Object} クライアント
    */
   const create = (webhookUrl, options) => {
-    const opts = options || {};
-    const maxRetries = opts.maxRetries != null ? opts.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
+    options = options || {};
+    const maxRetries = options.maxRetries != null ? options.maxRetries : CONFIG.DEFAULT_MAX_RETRIES;
 
     // Transport 構築（Slack用リトライを使用）
     let transport = HttpCore.createTransport();
 
     if (maxRetries !== 0) {
-      transport = SlackCore.withRetry(transport, { maxRetries, logger: opts.logger });
+      transport = SlackCore.withRetry(transport, { maxRetries, logger: options.logger });
     }
 
-    if (opts.logger) {
-      transport = HttpCore.withLogger(transport, opts.logger);
+    if (options.logger) {
+      transport = HttpCore.withLogger(transport, options.logger);
     }
 
     /**
@@ -273,8 +273,8 @@ const SlackWebhookClient = (function () {
         muteHttpExceptions: true
       };
 
-      if (typeof opts.timeoutMs === 'number') {
-        fetchOptions.timeout = opts.timeoutMs;
+      if (typeof options.timeoutMs === 'number') {
+        fetchOptions.timeout = options.timeoutMs;
       }
 
       const response = transport.fetch(webhookUrl, fetchOptions);
