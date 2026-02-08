@@ -1,6 +1,67 @@
 'use strict';
 
+/**
+ * メイン関数: スプレッドシートからオブジェクト配列を読み込む
+ *
+ * @param {string|Array|Object|GoogleAppsScript.Spreadsheet.Range} source データソース
+ * @param {Function} [fn] キーマッパー: fn(rawKey, columnIndex) → string|string[]|null|undefined
+ * @param {number} [limit=Infinity] 読み込む行数の上限
+ * @param {number} [offset=0] ヘッダー行の直後からスキップする行数
+ * @returns {Array<Record<string, any>>} オブジェクト配列
+ *
+ * 引数は順序に関わらず型で自動判定される。
+ * fn は 1つ目の Function 型引数、limit は 1つ目の number 型引数、offset は 2つ目の number 型引数として扱われる。
+ *
+ * source の解決順序:
+ *   1. Range オブジェクト → Range の範囲からデータ取得
+ *   2. resolveSheet で解決を試みる（シート名、URL、配列、オブジェクト）
+ *   3. resolveSheet 失敗 かつ 文字列の場合 → Range として解決を試みる
+ *      （A1 表記、名前付き範囲。シート名が常に優先）
+ *
+ * Range の場合、先頭行をヘッダー、以降をデータ行として扱う。
+ * limit/offset は Range 内のデータ行に対して適用される。
+ *
+ * @example
+ *   // 基本的な使い方
+ *   const data = loadFromSheetAsObjects(sheet);
+ *
+ * @example
+ *   // キーをマッピング
+ *   const data = loadFromSheetAsObjects(sheet, key => key.toLowerCase());
+ *
+ * @example
+ *   // ネストした構造を作成
+ *   const data = loadFromSheetAsObjects(sheet, key => {
+ *     if (key === 'user.name') return ['user', 'name'];
+ *     return key;
+ *   });
+ *
+ * @example
+ *   // 件数制限とオフセット
+ *   const data = loadFromSheetAsObjects(sheet, 100, 10);
+ *
+ * @example
+ *   // Range オブジェクト
+ *   const data = loadFromSheetAsObjects(sheet.getRange('B2:E20'));
+ *
+ * @example
+ *   // Range 文字列（シート名が同名で存在すればシート優先）
+ *   const data = loadFromSheetAsObjects('A1:D10');
+ *   const data = loadFromSheetAsObjects('Sheet2!A1:D10');
+ */
 const loadFromSheetAsObjects = (function () {
+  /**
+   * キー末尾の [] 指定を解析（\[] はエスケープ）
+   *
+   * @param {string} keyRaw 生のキー文字列
+   * @returns {{key:string, isArray:boolean}} 解析結果
+   * @throws {TypeError} keyRaw が文字列でない場合
+   *
+   * @example
+   *   parseSuffix('name')      // => { key: 'name', isArray: false }
+   *   parseSuffix('items[]')   // => { key: 'items', isArray: true }
+   *   parseSuffix('tags\\[]')  // => { key: 'tags[]', isArray: false }
+   */
   const parseSuffix = keyRaw => {
     if (typeof keyRaw !== 'string') {
       throw new TypeError('keyRaw には文字列を指定してください');
@@ -15,6 +76,14 @@ const loadFromSheetAsObjects = (function () {
     return { key: match[1] + (match[2] || ''), isArray: !!match[3] };
   };
 
+  /**
+   * フラットキーをオブジェクトに設定（末尾 [] のみ配列化）
+   *
+   * @param {Record<string, any>} object 設定先オブジェクト
+   * @param {string} keyRaw 生のキー文字列
+   * @param {any} value 設定する値
+   * @throws {TypeError} object がオブジェクトでない、または keyRaw が文字列でない場合
+   */
   const setFlat = (object, keyRaw, value) => {
     if (typeof object !== 'object' || object === null) {
       throw new TypeError('object にはオブジェクトを指定してください');
@@ -36,6 +105,14 @@ const loadFromSheetAsObjects = (function () {
     }
   };
 
+  /**
+   * ネストパスをオブジェクトに設定（途中は上書き）
+   *
+   * @param {Record<string, any>} object 設定先オブジェクト
+   * @param {string[]} path パス配列
+   * @param {any} value 設定する値
+   * @throws {TypeError} object がオブジェクトでない、または path が配列でない場合
+   */
   const setNested = (object, path, value) => {
     if (typeof object !== 'object' || object === null) {
       throw new TypeError('object にはオブジェクトを指定してください');
@@ -74,10 +151,25 @@ const loadFromSheetAsObjects = (function () {
     }
   };
 
+  /**
+   * Range オブジェクトかどうかを判定
+   *
+   * @param {any} source 判定対象
+   * @returns {boolean} Range オブジェクトの場合 true
+   */
   const isRange = source =>
     typeof source?.getA1Notation === 'function'
     && typeof source?.getSheetId !== 'function';
 
+  /**
+   * Range の境界情報からヘッダーとデータ行を取得
+   * 一括 getValues() ではなく、必要分だけ getRange する
+   *
+   * @param {GoogleAppsScript.Spreadsheet.Range} range Range オブジェクト
+   * @param {number} limit 読み込む行数の上限
+   * @param {number} offset スキップする行数
+   * @returns {{header:Array, values:Array<Array>}|null} ヘッダーとデータ行、データなしなら null
+   */
   const getFromRange = (range, limit, offset) => {
     const sheet = range.getSheet();
     const startRow = range.getRow();
@@ -105,6 +197,14 @@ const loadFromSheetAsObjects = (function () {
     return { header, values };
   };
 
+  /**
+   * Sheet からヘッダーとデータ行を取得
+   *
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Sheet オブジェクト
+   * @param {number} limit 読み込む行数の上限
+   * @param {number} offset スキップする行数
+   * @returns {{header:Array, values:Array<Array>}|null} ヘッダーとデータ行、データなしなら null
+   */
   const getFromSheet = (sheet, limit, offset) => {
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
@@ -128,6 +228,13 @@ const loadFromSheetAsObjects = (function () {
     return { header, values };
   };
 
+  /**
+   * オブジェクト配列への変換（共通処理）
+   *
+   * @param {{header:Array, values:Array<Array>}|null} data ヘッダーとデータ行
+   * @param {Function|null} fn キーマッパー
+   * @returns {Array<Record<string, any>>} オブジェクト配列
+   */
   const toObjects = (data, fn) => {
     if (!data || !data.values || data.values.length === 0) {
       return [];
