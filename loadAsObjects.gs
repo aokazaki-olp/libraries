@@ -1,33 +1,34 @@
 'use strict';
 
 /**
- * loadFromRangeAsObjects
+ * loadFromRangeAsObjects / loadFromSheetAsObjects
  *
- * @description Range からデータを読み込みオブジェクト配列に変換
+ * @description Range またはシートからデータを読み込みオブジェクト配列に変換
  * @version 1.0.0
  * @author Arihiro OKAZAKI
- * @created 2026-02-08
+ * @created 2026-01-28
  *
  * 設計思想: "loader は切るだけ"
  * - 意味の推論、型変換、構造の自動補正は一切行わない
  * - 明示がすべて: fn の戻り値とキー末尾の [] のみを構造化の根拠とする
  *
- * サポートする source 形式:
- *   Range オブジェクト: sheet.getRange('A1:D10')
- *   文字列: 'A1:D10', 'Sheet1!A1:D10', 名前付き範囲
+ * 公開関数:
+ *   loadFromRangeAsObjects(source, fn?, limit?, offset?)
+ *     - source: Range オブジェクト / Range 文字列（A1表記、名前付き範囲）
  *
- * Range の先頭行をヘッダー、以降をデータ行として扱う。
- * limit/offset は Range 内のデータ行に対して適用される。
+ *   loadFromSheetAsObjects(source, fn?, limit?, offset?)
+ *     - source: resolveSheet 互換（シート名、URL、配列、オブジェクト、Sheet）
+ *     - 内部で Sheet 全体の Range を取得し loadFromRangeAsObjects に委譲
  *
  * 使用例:
- *   const data = loadFromRangeAsObjects(range);
- *   const mapped = loadFromRangeAsObjects(range, k => k.toLowerCase());
- *   const limited = loadFromRangeAsObjects(range, 100, 10);
+ *   const data = loadFromRangeAsObjects(sheet.getRange('B2:E20'));
  *   const data = loadFromRangeAsObjects('A1:D10');
+ *   const data = loadFromSheetAsObjects(sheet);
+ *   const data = loadFromSheetAsObjects(sheet, k => k.toLowerCase(), 100, 10);
  */
 
 /**
- * メイン関数: Range からオブジェクト配列を読み込む
+ * Range からオブジェクト配列を読み込む
  *
  * @param {GoogleAppsScript.Spreadsheet.Range|string} source Range オブジェクトまたは Range 文字列
  * @param {Function} [fn] キーマッパー: fn(rawKey, columnIndex) → string|string[]|null|undefined
@@ -37,6 +38,9 @@
  *
  * 引数は順序に関わらず型で自動判定される。
  * fn は 1つ目の Function 型引数、limit は 1つ目の number 型引数、offset は 2つ目の number 型引数として扱われる。
+ *
+ * Range の先頭行をヘッダー、以降をデータ行として扱う。
+ * limit/offset は Range 内のデータ行に対して適用される。
  *
  * @example
  *   // Range オブジェクト
@@ -177,7 +181,7 @@ const loadFromRangeAsObjects = (function () {
   /**
    * source を Range オブジェクトに解決
    *
-   * @param {GoogleAppsScript.Spreadsheet.Range|string} source Range またはRange 文字列
+   * @param {GoogleAppsScript.Spreadsheet.Range|string} source Range または Range 文字列
    * @returns {GoogleAppsScript.Spreadsheet.Range} Range オブジェクト
    * @throws {TypeError} source が Range でも文字列でもない場合
    */
@@ -264,3 +268,46 @@ const loadFromRangeAsObjects = (function () {
     return toObjects({ header, values }, fn);
   };
 })();
+
+/**
+ * スプレッドシートからオブジェクト配列を読み込む
+ *
+ * resolveSheet で Sheet を解決し、Sheet 全体の Range を取得して
+ * loadFromRangeAsObjects に委譲する。
+ *
+ * @param {string|Array|Object} source データソース（resolveSheet 互換）
+ * @param {Function} [fn] キーマッパー: fn(rawKey, columnIndex) → string|string[]|null|undefined
+ * @param {number} [limit=Infinity] 読み込む行数の上限
+ * @param {number} [offset=0] ヘッダー行の直後からスキップする行数
+ * @returns {Array<Record<string, any>>} オブジェクト配列
+ *
+ * @example
+ *   const data = loadFromSheetAsObjects(sheet);
+ *
+ * @example
+ *   const data = loadFromSheetAsObjects(sheet, key => key.toLowerCase());
+ *
+ * @example
+ *   const data = loadFromSheetAsObjects(sheet, key => {
+ *     if (key === 'user.name') return ['user', 'name'];
+ *     return key;
+ *   });
+ *
+ * @example
+ *   const data = loadFromSheetAsObjects(sheet, 100, 10);
+ *
+ * @example
+ *   const data = loadFromSheetAsObjects(sheet, k => k.toLowerCase(), 100, 10);
+ */
+const loadFromSheetAsObjects = (source, ...args) => {
+  const sheet = resolveSheet(source);
+
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+
+  if (lastRow < 1 || lastColumn < 1) {
+    return [];
+  }
+
+  return loadFromRangeAsObjects(sheet.getRange(1, 1, lastRow, lastColumn), ...args);
+};
