@@ -127,7 +127,7 @@ loadAndRun('SlackClient.gs');
 loadAndRun('LazyTemplate.gs');
 loadAndRun('SlackFilters.gs');
 loadAndRun('resolveSheet.gs');
-loadAndRun('loadFromSheetAsObjects.gs');
+loadAndRun('loadAsObjects.gs');
 loadAndRun('GoogleSearchConsoleApiClient.gs');
 
 // テストファイル（依存順に読み込み）
@@ -137,7 +137,7 @@ loadAndRun('LoggerFacade.test.gs');
 loadAndRun('LazyTemplate.test.gs');
 loadAndRun('SlackFilters.test.gs');
 loadAndRun('resolveSheet.test.gs');
-loadAndRun('loadFromSheetAsObjects.test.gs');
+loadAndRun('loadAsObjects.test.gs');
 loadAndRun('GoogleSearchConsoleApiClient.test.gs');
 
 // ============================================================================
@@ -151,7 +151,7 @@ const suites = [
   { name: 'LazyTemplate',                  fn: 'runAllLazyTemplateTests()' },
   { name: 'SlackFilters',                  fn: 'runAllSlackFiltersTests()' },
   { name: 'resolveSheet',                  fn: 'runAllResolveSheetTests()' },
-  { name: 'loadFromSheetAsObjects',        fn: 'runAllLoadFromSheetAsObjectsTests()' },
+  { name: 'loadAsObjects',                  fn: 'runAllLoadAsObjectsTests()' },
   { name: 'GoogleSearchConsoleApiClient',  fn: 'runAllGscTests()' }
 ];
 
