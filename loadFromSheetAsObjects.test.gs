@@ -9,7 +9,7 @@ const MockSheet = (function () {
     const lastRow = rows.length > 0 ? 1 + rows.length : (header.length > 0 ? 1 : 0);
     const lastColumn = header.length;
 
-    return {
+    const sheet = {
       getLastRow: () => lastRow,
       getLastColumn: () => lastColumn,
       getRange: (row, column, numRows, numColumns) => ({
@@ -21,74 +21,58 @@ const MockSheet = (function () {
           return rows.slice(startIdx, startIdx + numRows).map(r =>
             r.slice(column - 1, column - 1 + numColumns)
           );
-        }
+        },
+        // Range API（loadFromRangeAsObjects への委譲に必要）
+        getA1Notation: () => `R${row}C${column}:R${row + numRows - 1}C${column + numColumns - 1}`,
+        getSheet: () => sheet,
+        getRow: () => row,
+        getColumn: () => column,
+        getNumRows: () => numRows,
+        getNumColumns: () => numColumns
       }),
       getSheetId: () => 0,
       getName: () => 'MockSheet'
     };
+
+    return sheet;
   };
 
-  const empty = () => ({
-    getLastRow: () => 0,
-    getLastColumn: () => 0,
-    getRange: () => ({ getValues: () => [] }),
-    getSheetId: () => 0,
-    getName: () => 'EmptySheet'
-  });
+  const empty = () => {
+    const sheet = {
+      getLastRow: () => 0,
+      getLastColumn: () => 0,
+      getRange: () => ({ getValues: () => [] }),
+      getSheetId: () => 0,
+      getName: () => 'EmptySheet'
+    };
+    return sheet;
+  };
 
-  const headerOnly = header => ({
-    getLastRow: () => 1,
-    getLastColumn: () => header.length,
-    getRange: (row, column, numRows, numColumns) => ({
-      getValues: () => [header.slice(column - 1, column - 1 + numColumns)]
-    }),
-    getSheetId: () => 0,
-    getName: () => 'HeaderOnlySheet'
-  });
+  const headerOnly = header => {
+    const sheet = {
+      getLastRow: () => 1,
+      getLastColumn: () => header.length,
+      getRange: (row, column, numRows, numColumns) => ({
+        getValues: () => {
+          if (row === 1 && numRows === 1) {
+            return [header.slice(column - 1, column - 1 + numColumns)];
+          }
+          return [];
+        },
+        getA1Notation: () => `R${row}C${column}:R${row + numRows - 1}C${column + numColumns - 1}`,
+        getSheet: () => sheet,
+        getRow: () => row,
+        getColumn: () => column,
+        getNumRows: () => numRows,
+        getNumColumns: () => numColumns
+      }),
+      getSheetId: () => 0,
+      getName: () => 'HeaderOnlySheet'
+    };
+    return sheet;
+  };
 
   return { create, empty, headerOnly };
-})();
-
-// ============================================================================
-// モック Range
-// ============================================================================
-
-const MockRange = (function () {
-  const create = (header, rows = [], { startRow = 1, startColumn = 1 } = {}) => {
-    const allRows = [header, ...rows];
-    const numRows = allRows.length;
-    const numColumns = header.length;
-
-    const parentSheet = {
-      getRange: (row, column, nRows, nColumns) => ({
-        getValues: () => {
-          const results = [];
-          for (let r = 0; r < nRows; r++) {
-            const dataRowIndex = (row - startRow) + r;
-            if (dataRowIndex >= 0 && dataRowIndex < allRows.length) {
-              results.push(
-                allRows[dataRowIndex].slice(column - startColumn, column - startColumn + nColumns)
-              );
-            }
-          }
-          return results;
-        }
-      }),
-      getSheetId: () => 0,
-      getName: () => 'MockSheet'
-    };
-
-    return {
-      getA1Notation: () => `R${startRow}C${startColumn}:R${startRow + numRows - 1}C${startColumn + numColumns - 1}`,
-      getSheet: () => parentSheet,
-      getRow: () => startRow,
-      getColumn: () => startColumn,
-      getNumRows: () => numRows,
-      getNumColumns: () => numColumns
-    };
-  };
-
-  return { create };
 })();
 
 // ============================================================================
@@ -381,227 +365,6 @@ const runLoadEdgeCaseTests = () => {
   });
 };
 
-const runLoadRangeObjectTests = () => {
-  const { suite, test, assertEqual, assertDeepEqual } = TestRunner;
-
-  suite('loadFromSheetAsObjects Range オブジェクト');
-
-  test('Range からオブジェクト配列を作成する', () => {
-    const range = MockRange.create(
-      ['name', 'age'],
-      [['Alice', 30], ['Bob', 25]]
-    );
-    const result = loadFromSheetAsObjects(range);
-    assertEqual(result.length, 2);
-    assertEqual(result[0].name, 'Alice');
-    assertEqual(result[0].age, 30);
-    assertEqual(result[1].name, 'Bob');
-  });
-
-  test('Range + キーマッパー', () => {
-    const range = MockRange.create(
-      ['Name', 'AGE'],
-      [['Alice', 30]]
-    );
-    const result = loadFromSheetAsObjects(range, key => key.toLowerCase());
-    assertEqual(result[0].name, 'Alice');
-    assertEqual(result[0].age, 30);
-  });
-
-  test('Range + limit', () => {
-    const range = MockRange.create(
-      ['name'],
-      [['Alice'], ['Bob'], ['Charlie'], ['Dave']]
-    );
-    const result = loadFromSheetAsObjects(range, 2);
-    assertEqual(result.length, 2);
-    assertEqual(result[0].name, 'Alice');
-    assertEqual(result[1].name, 'Bob');
-  });
-
-  test('Range + offset', () => {
-    const range = MockRange.create(
-      ['name'],
-      [['Alice'], ['Bob'], ['Charlie'], ['Dave']]
-    );
-    const result = loadFromSheetAsObjects(range, Infinity, 1);
-    assertEqual(result.length, 3);
-    assertEqual(result[0].name, 'Bob');
-  });
-
-  test('Range + limit + offset', () => {
-    const range = MockRange.create(
-      ['name'],
-      [['Alice'], ['Bob'], ['Charlie'], ['Dave']]
-    );
-    const result = loadFromSheetAsObjects(range, 2, 1);
-    assertEqual(result.length, 2);
-    assertEqual(result[0].name, 'Bob');
-    assertEqual(result[1].name, 'Charlie');
-  });
-
-  test('Range + fn + limit + offset', () => {
-    const range = MockRange.create(
-      ['Name'],
-      [['Alice'], ['Bob'], ['Charlie']]
-    );
-    const result = loadFromSheetAsObjects(range, key => key.toLowerCase(), 1, 1);
-    assertEqual(result.length, 1);
-    assertEqual(result[0].name, 'Bob');
-  });
-
-  test('ヘッダーのみの Range は空配列を返す', () => {
-    const range = MockRange.create(['name', 'age'], []);
-    const result = loadFromSheetAsObjects(range);
-    assertDeepEqual(result, []);
-  });
-
-  test('開始位置がずれた Range（B3 起点）', () => {
-    const range = MockRange.create(
-      ['name', 'score'],
-      [['Alice', 100], ['Bob', 90]],
-      { startRow: 3, startColumn: 2 }
-    );
-    const result = loadFromSheetAsObjects(range);
-    assertEqual(result.length, 2);
-    assertEqual(result[0].name, 'Alice');
-    assertEqual(result[0].score, 100);
-    assertEqual(result[1].name, 'Bob');
-    assertEqual(result[1].score, 90);
-  });
-
-  test('Range + 配列サフィックス', () => {
-    const range = MockRange.create(
-      ['tags[]', 'tags[]', 'name'],
-      [['a', 'b', 'Alice']]
-    );
-    const result = loadFromSheetAsObjects(range);
-    assertDeepEqual(result[0].tags, ['a', 'b']);
-    assertEqual(result[0].name, 'Alice');
-  });
-};
-
-const runLoadRangeStringFallbackTests = () => {
-  const { suite, test, assertEqual, assertThrows } = TestRunner;
-
-  suite('loadFromSheetAsObjects Range 文字列フォールバック');
-
-  test('シート名が見つからない場合に Range 文字列として解決する', () => {
-    const original = typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp : undefined;
-
-    try {
-      const rangeData = MockRange.create(
-        ['name', 'age'],
-        [['Alice', 30]]
-      );
-
-      globalThis.SpreadsheetApp = {
-        getActiveSpreadsheet: () => ({
-          getSheetByName: () => null,
-          getRange: notation => {
-            if (notation === 'A1:B3') return rangeData;
-            throw new Error('Invalid range: ' + notation);
-          }
-        })
-      };
-
-      const result = loadFromSheetAsObjects('A1:B3');
-      assertEqual(result.length, 1);
-      assertEqual(result[0].name, 'Alice');
-      assertEqual(result[0].age, 30);
-    } finally {
-      if (original === undefined) {
-        delete globalThis.SpreadsheetApp;
-      } else {
-        globalThis.SpreadsheetApp = original;
-      }
-    }
-  });
-
-  test('シート名が存在すれば Range より優先される', () => {
-    const original = typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp : undefined;
-
-    try {
-      const sheet = MockSheet.create(
-        ['key', 'value'],
-        [['from_sheet', 'yes']]
-      );
-
-      globalThis.SpreadsheetApp = {
-        getActiveSpreadsheet: () => ({
-          getSheetByName: name => (name === 'Data' ? sheet : null),
-          getRange: () => {
-            throw new Error('should not be called');
-          }
-        })
-      };
-
-      const result = loadFromSheetAsObjects('Data');
-      assertEqual(result.length, 1);
-      assertEqual(result[0].key, 'from_sheet');
-    } finally {
-      if (original === undefined) {
-        delete globalThis.SpreadsheetApp;
-      } else {
-        globalThis.SpreadsheetApp = original;
-      }
-    }
-  });
-
-  test('シートも Range も見つからない場合は resolveSheet のエラーをスローする', () => {
-    const original = typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp : undefined;
-
-    try {
-      globalThis.SpreadsheetApp = {
-        getActiveSpreadsheet: () => ({
-          getSheetByName: () => null,
-          getRange: () => { throw new Error('invalid notation'); }
-        })
-      };
-
-      assertThrows(
-        () => loadFromSheetAsObjects('NonExistent'),
-        'シートが見つかりません'
-      );
-    } finally {
-      if (original === undefined) {
-        delete globalThis.SpreadsheetApp;
-      } else {
-        globalThis.SpreadsheetApp = original;
-      }
-    }
-  });
-
-  test('Range 文字列 + limit + offset', () => {
-    const original = typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp : undefined;
-
-    try {
-      const rangeData = MockRange.create(
-        ['name'],
-        [['Alice'], ['Bob'], ['Charlie'], ['Dave']]
-      );
-
-      globalThis.SpreadsheetApp = {
-        getActiveSpreadsheet: () => ({
-          getSheetByName: () => null,
-          getRange: () => rangeData
-        })
-      };
-
-      const result = loadFromSheetAsObjects('A1:A5', 2, 1);
-      assertEqual(result.length, 2);
-      assertEqual(result[0].name, 'Bob');
-      assertEqual(result[1].name, 'Charlie');
-    } finally {
-      if (original === undefined) {
-        delete globalThis.SpreadsheetApp;
-      } else {
-        globalThis.SpreadsheetApp = original;
-      }
-    }
-  });
-};
-
 // ============================================================================
 // メインテストランナー
 // ============================================================================
@@ -614,8 +377,6 @@ function runAllLoadFromSheetAsObjectsTests() {
   runLoadLimitOffsetTests();
   runLoadArraySuffixTests();
   runLoadEdgeCaseTests();
-  runLoadRangeObjectTests();
-  runLoadRangeStringFallbackTests();
 
   return TestRunner.run();
 }
