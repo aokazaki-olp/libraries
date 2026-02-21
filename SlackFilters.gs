@@ -4,9 +4,6 @@
  * SlackFilters
  * 
  * @description Slack Mrkdwn・Block Kit対応の拡張フィルターセット（LazyTemplate用）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-01
  * 
  * 設計思想:
  *   - すべてのフィルターは LazyTemplate.PRIMITIVE_FILTERS と同じシグネチャ (v => ...) を遵守
@@ -306,7 +303,7 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDate = v => {
-    if (v == null) return '';
+    if (v == null) { return ''; }
     const n = Number(v);
     if (!Number.isFinite(n)) {
       return toString(v);
@@ -332,7 +329,7 @@ const SlackFilters = (function () {
    * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
    */
   const slackDateFmt = v => {
-    if (v == null) return '';
+    if (v == null) { return ''; }
     const s = toString(v);
     const pipeIdx = s.indexOf('|');
 

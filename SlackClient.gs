@@ -4,9 +4,6 @@
  * SlackClient.gs
  *
  * @description Slack用クライアント群（SlackCore / SlackApiClient / SlackWebhookClient）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-01-28
  *
  * 構成:
  *   SlackCore          - Slack用共通基盤（Retry-After対応リトライ）

@@ -4,9 +4,6 @@
  * loadFromRangeAsObjects / loadFromSheetAsObjects
  *
  * @description Range またはシートからデータを読み込みオブジェクト配列に変換
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-01-28
  *
  * 設計思想: "loader は切るだけ"
  * - 意味の推論、型変換、構造の自動補正は一切行わない
@@ -210,26 +207,26 @@ const loadFromRangeAsObjects = (function () {
     const { header, values } = data;
 
     return values.map(row => {
-      const object = {};
+      const o = {};
 
       for (let i = 0; i < header.length; i++) {
         const rawKey = String(header[i]);
-        const mapped = fn ? fn(rawKey, i) : rawKey;
+        const m = fn ? fn(rawKey, i) : rawKey;
 
-        if (mapped == null) {
+        if (m == null) {
           continue;
         }
 
-        const value = row[i];
+        const v = row[i];
 
-        if (Array.isArray(mapped)) {
-          setNested(object, mapped, value);
+        if (Array.isArray(m)) {
+          setNested(o, m, v);
         } else {
-          setFlat(object, String(mapped), value);
+          setFlat(o, String(m), v);
         }
       }
 
-      return object;
+      return o;
     });
   };
 
