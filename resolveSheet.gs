@@ -4,9 +4,6 @@
  * resolveSheet
  *
  * @description 柔軟なソース指定からシートを解決する
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-02
  *
  * サポートする source 形式:
  *   URL:   https://docs.google.com/spreadsheets/d/{id}/...?gid={gid}
@@ -42,7 +39,9 @@
  * @param {Object} [options] オプション
  * @param {boolean} [options.create=false] シートが見つからない場合に作成する（name 指定必須）
  * @returns {GoogleAppsScript.Spreadsheet.Sheet} Sheetオブジェクト
- * @throws {Error} シートが見つからない、または作成できない場合
+ * @throws {Error} シートが見つからない場合
+ * @throws {Error} create オプションが現在の指定方法で使用できない場合
+ * @throws {TypeError} サポート外の型が指定された場合
  *
  * @example
  *   // 基本的な使い方

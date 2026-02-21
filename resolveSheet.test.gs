@@ -4,9 +4,6 @@
  * resolveSheet.test.gs
  *
  * @description resolveSheet のテストスイート（GAS モック使用）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-07
  *
  * 実行方法:
  *   GAS エディタから runAllResolveSheetTests() を実行

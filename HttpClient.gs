@@ -4,9 +4,6 @@
  * HttpClient.gs
  *
  * @description GAS上で動くHTTPクライアント群（HttpCore / ApiClient / WebhookClient）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-01-28
  *
  * 構成:
  *   HttpCore      - HTTP通信の共通基盤（Transport・デコレータ・ユーティリティ）
@@ -74,7 +71,7 @@ const HttpCore = (function () {
    * @param {Object} response HTTPレスポンス
    * @param {Object} request リクエストオブジェクト
    * @returns {Object} 解釈されたレスポンス
-   * @throws {Error} HTTPエラーの場合
+   * @throws {Error} HTTP応答ステータスエラー(4xx, 5xx等)発生時
    */
   const interpretResponse = (response, request) => {
     const status = response.getResponseCode();
@@ -136,7 +133,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options?.method || 'GET';
+        const method = options?.method ?? 'GET';
         let lastError = null;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -201,7 +198,7 @@ const HttpCore = (function () {
 
     return {
       fetch: (url, options) => {
-        const method = options?.method || 'GET';
+        const method = options?.method ?? 'GET';
         const startMs = Date.now();
 
         log.debug(`[HTTP] → ${method} ${url}`);
@@ -305,7 +302,7 @@ const ClientHelper = (function () {
         } else {
           newMethods = pluginOrName(client);
           if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
-            throw new TypeError('Plugin は Object を返す必要があります');
+            throw new TypeError('plugin の戻り値には Object を指定してください');
           }
         }
 
@@ -422,7 +419,7 @@ const ApiClient = (function () {
      * @returns {Object} レスポンス
      */
     const call = request => {
-      const method = (request.method || 'GET').toUpperCase();
+      const method = (request.method ?? 'GET').toUpperCase();
 
       const url = buildUrl(baseUrl, request.endpoint, request.query);
 

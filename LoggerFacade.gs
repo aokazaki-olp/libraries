@@ -4,9 +4,6 @@
  * LoggerFacade
  *
  * @description 各種ロガー実装を統一インターフェースに変換するファサード（SLF4J互換）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-02
  *
  * 設計思想:
  *   - SLF4J互換の5レベル（trace, debug, info, warn, error）を提供

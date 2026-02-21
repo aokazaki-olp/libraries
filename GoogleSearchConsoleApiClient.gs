@@ -4,9 +4,6 @@
  * GoogleSearchConsoleApiClient
  * 
  * @description Google Search Console API用クライアント（ApiClient基盤・OAuth動的取得）
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-01-28
  * 
  * 設計思想:
  *   - ApiClient の Decorator パターンを基盤とする

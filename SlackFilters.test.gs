@@ -4,9 +4,6 @@
  * SlackFilters.test.gs
  *
  * @description SlackFilters のテストスイート
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-07
  *
  * 実行方法:
  *   GAS エディタから runAllSlackFiltersTests() を実行

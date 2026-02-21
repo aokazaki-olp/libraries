@@ -4,9 +4,6 @@
  * HttpClient.test.gs
  *
  * @description HttpClient.gs (HttpCore / ApiClient / WebhookClient) のテストスイート
- * @version 1.0.0
- * @author Arihiro OKAZAKI
- * @created 2026-02-02
  *
  * 実行方法:
  *   GAS エディタから runAllHttpClientTests() を実行
@@ -1438,7 +1435,7 @@ const runEdgeCaseTests = () => {
     });
     assertThrows(
       () => client.use(() => null),
-      'Plugin は Object を返す必要があります'
+      'plugin の戻り値には Object を指定してください'
     );
   });
 
@@ -1450,7 +1447,7 @@ const runEdgeCaseTests = () => {
     });
     assertThrows(
       () => client.use(() => ['method']),
-      'Plugin は Object を返す必要があります'
+      'plugin の戻り値には Object を指定してください'
     );
   });
 
@@ -1462,7 +1459,7 @@ const runEdgeCaseTests = () => {
     });
     assertThrows(
       () => client.use(() => 'invalid'),
-      'Plugin は Object を返す必要があります'
+      'plugin の戻り値には Object を指定してください'
     );
   });
 
@@ -1474,7 +1471,7 @@ const runEdgeCaseTests = () => {
     });
     assertThrows(
       () => client.use(() => undefined),
-      'Plugin は Object を返す必要があります'
+      'plugin の戻り値には Object を指定してください'
     );
   });
 
@@ -1486,7 +1483,7 @@ const runEdgeCaseTests = () => {
     });
     assertThrows(
       () => client.use(() => 42),
-      'Plugin は Object を返す必要があります'
+      'plugin の戻り値には Object を指定してください'
     );
   });
 

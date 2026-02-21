@@ -4,9 +4,6 @@
  * LazyTemplate
  * 
  * @description ランタイム非依存の遅延評価テンプレートエンジン
- * @version 1.1.0
- * @author Arihiro OKAZAKI
- * @created 2026-01-24
  * 
  * テンプレート構文:
  *   {{{expression}}}
