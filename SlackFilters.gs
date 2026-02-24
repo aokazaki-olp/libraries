@@ -18,7 +18,7 @@ LazyTemplate.Filters.Slack = (() => {
   // ========================================
   // ユーティリティ
   // ========================================
-  const toString = (v) => v == null ? '' : String(v);
+  const toString = v => v == null ? '' : String(v);
 
   const processList = (v, formatFn) => {
     if (v == null || v === '') {
@@ -228,7 +228,7 @@ LazyTemplate.Filters.Slack = (() => {
     // JSONとして安全な形にエスケープ (\ と " をエスケープし、制御文字等をUnicodeエスケープ)
     return s.replace(/[\u0000-\u001f"\\]/g, match => {
       const c = match.charCodeAt(0);
-      switch(c) {
+      switch (c) {
         case 0x08:
           return '\\b';
         case 0x09:

@@ -26,7 +26,7 @@ const SlackResolvers = (() => {
    * @param {string} v オリジナル入力値
    * @returns {string} そのままの入力値
    */
-  const fallback = (v) => v;
+  const fallback = v => v;
 
   // ========================================
   // [コアAPI] 基本ファクトリ（提供済みの辞書に基づく生成）
@@ -41,8 +41,8 @@ const SlackResolvers = (() => {
    * @returns {Object} LazyTemplate に注入可能なフィルター関数群
    */
   const create = (dictionaries = {}) => {
-    const usersMap = dictionaries.users || {};
-    const channelsMap = dictionaries.channels || {};
+    const usersMap = dictionaries?.users ?? {};
+    const channelsMap = dictionaries?.channels ?? {};
 
     return {
       /**
@@ -50,9 +50,9 @@ const SlackResolvers = (() => {
        * @param {*} v 名前（キー）
        * @returns {string} 解決されたユーザーID、または見つからない場合は入力値そのまま
        */
-      toUserId: (v) => {
+      toUserId: v => {
         const s = v == null ? '' : String(v);
-        return usersMap[s] || fallback(s);
+        return usersMap[s] ?? fallback(s);
       },
 
       /**
@@ -60,9 +60,9 @@ const SlackResolvers = (() => {
        * @param {*} v 名前（キー）
        * @returns {string} 解決されたチャンネルID、または見つからない場合は入力値そのまま
        */
-      toChannelId: (v) => {
+      toChannelId: v => {
         const s = v == null ? '' : String(v);
-        return channelsMap[s] || fallback(s);
+        return channelsMap[s] ?? fallback(s);
       }
     };
   };
@@ -99,7 +99,7 @@ const SlackResolvers = (() => {
         params.cursor = cursor;
       }
 
-      const res = slackClient.call({ endpoint: 'users.list', body: params, method: 'GET' });
+      const res = slackClient.call({ endpoint: 'users.list', query: params, method: 'GET' });
       const members = res.members || [];
 
       for (const m of members) {
@@ -108,7 +108,7 @@ const SlackResolvers = (() => {
           continue;
         }
 
-        const profile = m.profile || {};
+        const profile = m.profile ?? {};
         
         // 5. real_name (最も優先度低、他の人に上書きされやすい)
         if (profile.real_name) {
@@ -165,7 +165,7 @@ const SlackResolvers = (() => {
         params.cursor = cursor;
       }
 
-      const res = slackClient.call({ endpoint: 'conversations.list', body: params, method: 'GET' });
+      const res = slackClient.call({ endpoint: 'conversations.list', query: params, method: 'GET' });
       const channels = res.channels || [];
 
       for (const c of channels) {

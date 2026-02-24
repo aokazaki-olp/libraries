@@ -52,6 +52,10 @@ function runAllSlackResolversTests() {
       call: (options) => {
         if (options.endpoint === 'users.list') {
           callCountUsers++;
+          // ページネーションパラメータが query に渡されていることを検証
+          if (callCountUsers === 2 && options.query?.cursor !== 'page2') {
+            throw new Error('Expected cursor=page2 in query on 2nd call, got: ' + JSON.stringify(options.query));
+          }
           // 1ページ目
           if (callCountUsers === 1) {
             return {
