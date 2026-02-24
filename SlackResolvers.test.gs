@@ -30,8 +30,13 @@ function runAllSlackResolversTests() {
     assertEqual('random', filters.toChannelId('random'));
     
     // 異常値
-    assertEqual('', filters.toUserId(null));
+    assertEqual('', filters.toUserId(null)); // null -> "", then "" is returned
+    assertEqual('', filters.toUserId(undefined)); // undefined -> "", then "" is returned
     assertEqual('123', filters.toUserId(123)); // String化される
+    
+    // 大文字・小文字の区別エッジケース（厳密に一致しないと解決しない）
+    assertEqual('alice', filters.toUserId('alice')); // 'Alice' != 'alice'
+    assertEqual('GENERAL', filters.toChannelId('GENERAL')); // 'general' != 'GENERAL'
   });
 
   // ============================================================================
@@ -88,6 +93,17 @@ function runAllSlackResolversTests() {
                   id: "U004",
                   name: "charlie",
                   profile: {} // name のみ
+                },
+                {
+                  // エッジケース: idが欠落（スキップされるはず）
+                  name: "no_id_user",
+                  profile: { display_name: "No ID" }
+                },
+                {
+                  // エッジケース: profile完全にnull
+                  id: "U005",
+                  name: "dave",
+                  profile: null
                 }
               ],
               response_metadata: {}
@@ -99,7 +115,8 @@ function runAllSlackResolversTests() {
           return {
             ok: true,
             channels: [
-              { id: "C001", name: "general" }
+              { id: "C001", name: "general" },
+              { id: "C002" } // name がない（スキップされるはず）
             ]
           };
         }
@@ -136,8 +153,30 @@ function runAllSlackResolversTests() {
     // [U004: Charlie (2ページ目の要素)]
     assertEqual('U004', filters.toUserId('charlie'));
 
+    // [U005: Dave (profileが無いメンバー)]
+    assertEqual('U005', filters.toUserId('dave'));
+    
+    // [IDの無いメンバーはスキップされる]
+    assertEqual('No ID', filters.toUserId('No ID'));
+
     // [C001: Channel]
     assertEqual('C001', filters.toChannelId('general'));
+  });
+
+  test('createFromApi(): APIエラー発生時の伝播検証', () => {
+    const errorSlackClient = {
+      call: () => {
+        throw new Error('Slack API Request Failed');
+      }
+    };
+
+    try {
+      SlackResolvers.createFromApi(errorSlackClient);
+      // ここには到達しないはず
+      assertEqual(true, false); 
+    } catch (e) {
+      assertEqual('Slack API Request Failed', e.message);
+    }
   });
 
   // ============================================================================
