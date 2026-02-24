@@ -32,6 +32,7 @@
  * @param {number} [limit=Infinity] 読み込む行数の上限
  * @param {number} [offset=0] ヘッダー行の直後からスキップする行数
  * @returns {Array<Record<string, any>>} オブジェクト配列
+ * @throws {TypeError} source が Range オブジェクトでも文字列でもない場合
  *
  * 引数は順序に関わらず型で自動判定される。
  * fn は 1つ目の Function 型引数、limit は 1つ目の number 型引数、offset は 2つ目の number 型引数として扱われる。
@@ -63,7 +64,7 @@
  *   // 件数制限とオフセット
  *   const data = loadFromRangeAsObjects(range, 100, 10);
  */
-const loadFromRangeAsObjects = (function () {
+const loadFromRangeAsObjects = (() => {
   /**
    * キー末尾の [] 指定を解析（\[] はエスケープ）
    *
@@ -273,6 +274,8 @@ const loadFromRangeAsObjects = (function () {
  * @param {number} [limit=Infinity] 読み込む行数の上限
  * @param {number} [offset=0] ヘッダー行の直後からスキップする行数
  * @returns {Array<Record<string, any>>} オブジェクト配列
+ * @throws {Error} シートが見つからない場合
+ * @throws {TypeError} source の型が不正な場合
  *
  * @example
  *   const data = loadFromSheetAsObjects(sheet);

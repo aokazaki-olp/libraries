@@ -14,7 +14,7 @@
  *   const client = GoogleSearchConsoleApiClient.create('https://example.com/', logger);
  *   const res = client.call({ endpoint: '/search-analytics/query', body: { startDate: '2026-01-01', endDate: '2026-01-31' } });
  */
-const GoogleSearchConsoleApiClient = (function () {
+const GoogleSearchConsoleApiClient = (() => {
   /** @type {Object} 設定情報 */
   const CONFIG = Object.freeze({
     BASE_URL: 'https://searchconsole.googleapis.com/webmasters/v3',

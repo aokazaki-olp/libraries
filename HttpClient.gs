@@ -26,7 +26,7 @@
  *   transport = HttpCore.withRetry(transport, { maxRetries: 3 });
  *   transport = HttpCore.withLogger(transport, logger);
  */
-const HttpCore = (function () {
+const HttpCore = (() => {
   /** @type {Object} 設定情報 */
   const CONFIG = Object.freeze({
     DEFAULT_MAX_RETRIES: 3,
@@ -119,6 +119,7 @@ const HttpCore = (function () {
    * @param {number} retryOptions.baseDelayMs 基本遅延時間（ミリ秒、デフォルト: 500）
    * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
+   * @throws {Error} リトライ上限に達した場合（RetryExhaustedError または HTTPエラーステータス）
    */
   const withRetry = (transport, retryOptions = {}) => {
     const maxRetries = retryOptions.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
@@ -189,6 +190,7 @@ const HttpCore = (function () {
    * @param {Object} transport 基本トランスポート
    * @param {Object} logger ロガーインスタンス
    * @returns {Object} ロギング機能付きトランスポート
+   * @throws {Error} fetch実行中に発生した例外を再スロー
    */
   const withLogger = (transport, logger) => {
     const log = LoggerFacade.createLogger(logger);
@@ -239,7 +241,7 @@ const HttpCore = (function () {
  *
  * @description クライアント拡張の共通ヘルパー
  */
-const ClientHelper = (function () {
+const ClientHelper = (() => {
 
   /**
    * HTTP メソッドショートカットを生成
@@ -333,7 +335,7 @@ const ClientHelper = (function () {
  *   const authed = client.extend(t => ApiClient.withBearerAuth(t, token));
  *   const res = authed.call({ endpoint: '/users', method: 'GET' });
  */
-const ApiClient = (function () {
+const ApiClient = (() => {
 
   // URL・クエリ文字列ユーティリティ（純粋関数、config 非依存）
   const trimRightSlash = s => String(s).replace(/\/+$/, '');
@@ -494,7 +496,7 @@ const ApiClient = (function () {
  *   client.send({ text: 'Message 1' });
  *   client.send({ text: 'Message 2' });
  */
-const WebhookClient = (function () {
+const WebhookClient = (() => {
 
   /**
    * Webhookクライアントを作成

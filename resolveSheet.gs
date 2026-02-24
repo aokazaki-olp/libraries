@@ -53,7 +53,7 @@
  *   const sheet = resolveSheet({ urlOrId: '...', name: 'Data' }, { create: true });
  *   const sheet = resolveSheet('NewSheet', { create: true });
  */
-const resolveSheet = (function () {
+const resolveSheet = (() => {
   /**
    * URL が Google Spreadsheet URL かどうかを判定
    *

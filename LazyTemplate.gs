@@ -246,6 +246,7 @@ class LazyTemplate {
    * 
    * @param {string} template テンプレート文字列
    * @param {Object} [filters={}] カスタムフィルター
+   * @throws {TypeError} template に文字列以外が指定された場合
    */
   constructor(template, filters = {}) {
     if (typeof template !== 'string') {
@@ -267,6 +268,8 @@ class LazyTemplate {
    * 
    * @param {string} name フィルター名
    * @param {Function} fn フィルター関数
+   * @throws {TypeError} name が文字列以外、または fn が関数以外の場合
+   * @throws {Error} フィルター名が不正な形式の場合
    */
   registerFilter(name, fn) {
     if (typeof name !== 'string' || !name) {
@@ -487,7 +490,9 @@ class LazyTemplate {
       const token = m[0];
       if (token === '||') {
         const trimmed = current.trim();
-        if (trimmed) terms.push(trimmed);
+        if (trimmed) {
+          terms.push(trimmed);
+        }
         current = '';
       } else {
         current += token;
@@ -496,7 +501,9 @@ class LazyTemplate {
 
     {
       const trimmed = current.trim();
-      if (trimmed) terms.push(trimmed);
+      if (trimmed) {
+        terms.push(trimmed);
+      }
     }
 
     // 各項をコンパイル
@@ -600,8 +607,9 @@ class LazyTemplate {
   /**
    * 評価
    * 
-   * @param {Object} data データオブジェクト
-   * @returns {string} 評価結果
+   * @param {Object} data 展開するデータ
+   * @returns {string} 展開後の文字列
+   * @throws {TypeError} data がオブジェクトでない場合
    */
   evaluate(data) {
     if (data == null) {
@@ -637,7 +645,8 @@ class LazyTemplate {
    * @param {string} template テンプレート文字列
    * @param {Object} data データオブジェクト
    * @param {Object} [filters={}] カスタムフィルター
-   * @returns {string} 評価結果
+   * @returns {string} 展開後の文字列
+   * @throws {TypeError} コンストラクターまたは evaluate で発生する型エラー
    */
   static evaluate(template, data, filters = {}) {
     return new LazyTemplate(template, filters).evaluate(data);

@@ -21,7 +21,7 @@
  *   - Slack 固有の Retry-After ヘッダーを尊重
  *   - SlackApiClient / SlackWebhookClient の共通部分を提供
  */
-const SlackCore = (function () {
+const SlackCore = (() => {
   /**
    * Slack用のリトライ機能をtransportに追加（Retry-Afterヘッダーを尊重）
    *
@@ -30,6 +30,7 @@ const SlackCore = (function () {
    * @param {number} retryOptions.maxRetries 最大リトライ回数（デフォルト: 3）
    * @param {Object} retryOptions.logger ロガーインスタンス
    * @returns {Object} リトライ機能付きトランスポート
+   * @throws {Error} リトライ上限に達した場合（RetryExhaustedError または HTTPエラーステータス）
    */
   const withRetry = (transport, retryOptions = {}) => {
     const maxRetries = retryOptions.maxRetries ?? 3;
@@ -133,7 +134,7 @@ const SlackCore = (function () {
  *   const client = SlackApiClient.create(token, logger);
  *   const res = client.call({ endpoint: 'chat.postMessage', body: { channel: 'C123', text: 'hi' } });
  */
-const SlackApiClient = (function () {
+const SlackApiClient = (() => {
   const CONFIG = Object.freeze({
     BASE_URL: 'https://slack.com/api',
     DEFAULT_MAX_RETRIES: 3
@@ -207,7 +208,7 @@ const SlackApiClient = (function () {
  *   client.send({ text: 'Message 1' });
  *   client.send({ text: 'Message 2' });
  */
-const SlackWebhookClient = (function () {
+const SlackWebhookClient = (() => {
   const CONFIG = Object.freeze({
     DEFAULT_MAX_RETRIES: 3
   });

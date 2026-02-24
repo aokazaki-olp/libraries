@@ -33,7 +33,7 @@
  * @property {function(string, ...any): void} error - エラー
  */
 
-const LoggerFacade = (function () {
+const LoggerFacade = (() => {
   /**
    * 実装オブジェクトをLogger形式に変換するファサード
    *
