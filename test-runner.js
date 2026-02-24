@@ -124,6 +124,7 @@ const loadAndRun = (filename) => {
 loadAndRun('LoggerFacade.gs');
 loadAndRun('HttpClient.gs');
 loadAndRun('SlackClient.gs');
+loadAndRun('SlackResolvers.gs');
 loadAndRun('LazyTemplate.gs');
 loadAndRun('SlackFilters.gs');
 loadAndRun('resolveSheet.gs');
@@ -131,9 +132,11 @@ loadAndRun('loadAsObjects.gs');
 loadAndRun('GoogleSearchConsoleApiClient.gs');
 
 // テストファイル（依存順に読み込み）
-loadAndRun('HttpClient.test.gs');       // TestRunner, MockTransport を定義
+// HttpClient.test.gs 内でグローバルな TestRunner, MockTransport などが定義される
+loadAndRun('HttpClient.test.gs');
 loadAndRun('SlackClient.test.gs');
 loadAndRun('LoggerFacade.test.gs');
+loadAndRun('SlackResolvers.test.gs');
 loadAndRun('LazyTemplate.test.gs');
 loadAndRun('SlackFilters.test.gs');
 loadAndRun('resolveSheet.test.gs');
@@ -145,14 +148,15 @@ loadAndRun('GoogleSearchConsoleApiClient.test.gs');
 // ============================================================================
 
 const suites = [
-  { name: 'HttpClient',                    fn: 'runUnitTestsOnly()' },
-  { name: 'SlackClient',                   fn: 'runAllSlackClientTests()' },
-  { name: 'LoggerFacade',                  fn: 'runAllLoggerFacadeTests()' },
-  { name: 'LazyTemplate',                  fn: 'runAllLazyTemplateTests()' },
-  { name: 'SlackFilters',                  fn: 'runAllSlackFiltersTests()' },
-  { name: 'resolveSheet',                  fn: 'runAllResolveSheetTests()' },
-  { name: 'loadAsObjects',                  fn: 'runAllLoadAsObjectsTests()' },
-  { name: 'GoogleSearchConsoleApiClient',  fn: 'runAllGscTests()' }
+  { name: 'HttpClient', fn: 'runUnitTestsOnly()' },
+  { name: 'SlackClient', fn: 'runAllSlackClientTests()' },
+  { name: 'SlackResolvers', fn: 'runAllSlackResolversTests()' },
+  { name: 'LoggerFacade', fn: 'runAllLoggerFacadeTests()' },
+  { name: 'LazyTemplate', fn: 'runAllLazyTemplateTests()' },
+  { name: 'SlackFilters', fn: 'runAllSlackFiltersTests()' },
+  { name: 'resolveSheet', fn: 'runAllResolveSheetTests()' },
+  { name: 'loadAsObjects', fn: 'runAllLoadAsObjectsTests()' },
+  { name: 'GoogleSearchConsoleApiClient', fn: 'runAllGscTests()' }
 ];
 
 const allResults = [];

@@ -1,59 +1,42 @@
 'use strict';
 
 /**
- * SlackFilters
- * 
- * @description Slack Mrkdwn・Block Kit対応の拡張フィルターセット（LazyTemplate用）
- * 
- * 設計思想:
- *   - すべてのフィルターは LazyTemplate.PRIMITIVE_FILTERS と同じシグネチャ (v => ...) を遵守
- *   - Mrkdwn装飾フィルターは文字列テンプレートで使用する前提で設計
- *   - エスケープフィルターは escapeXXX の命名規則を統一
- *   - Block Kit JSONテンプレートにも安全に使える（JSON文字列中のエスケープも考慮）
- *   - 副効果なし・純関数のみ
- * 
- * 対応カテゴリ:
- *   [Mrkdwn装飾]     bold, italic, strike, code, pre
- *   [エスケープ]      escapeMrkdwn, escapeHtml, escapeJson
- *   [参照リンク]      slackUser, slackChannel, slackSpecial, slackLink, slackMail
- *   [日時]           slackDate, slackDateFmt
- *   [ユーティリティ]  slackTruncate, slackNewline, slackBullet, slackNumbered
- * 
- * 使用例:
- *   // 文字列テンプレート
- *   const t = new LazyTemplate('{{{name | bold}}} さん', SlackFilters);
- *   t.evaluate({ name: 'Alice' });  // => "*Alice* さん"
- * 
- *   // Block Kit JSONテンプレート（escapeJson を末尾に適用）
- *   const t = new LazyTemplate('{"text": "{{{msg | escapeMrkdwn | escapeJson}}}"}', SlackFilters);
- *   t.evaluate({ msg: 'hello *world*' });  // => '{"text": "hello \\*world\\*"}'
+ * SlackFilters.gs
+ *
+ * @description LazyTemplate(遅延評価テンプレートエンジン)用 Slack装飾フィルター群。
  */
-const SlackFilters = (() => {
+
+// ファイル読み込み順序に依存しない安全な拡張手法
+if (typeof LazyTemplate === 'undefined') {
+  throw new Error('[SlackFilters] LazyTemplate is not defined. Ensure LazyTemplate.gs is loaded before SlackFilters.gs.');
+}
+
+LazyTemplate.Filters = LazyTemplate.Filters || {};
+
+LazyTemplate.Filters.Slack = (() => {
 
   // ========================================
-  // [内部] 共通ユーティリティ
+  // ユーティリティ
+  // ========================================
+  const toString = (v) => v == null ? '' : String(v);
+
+  const processList = (v, formatFn) => {
+    if (v == null || v === '') {
+      return '';
+    }
+    const lines = Array.isArray(v) ? v : toString(v).split(/\r?\n/);
+    return lines.map(formatFn).join('\n');
+  };
+
+  // ========================================
+  // 装飾系（Mrkdwn）
   // ========================================
 
   /**
-   * 値を文字列に正規化（null/undefinedは空文字）
+   * [Mrkdwn装飾] 太字化
    * 
    * @param {*} v 値
-   * @returns {string} 文字列化された値
-   */
-  const toString = v => v == null ? '' : String(v);
-
-  // ========================================
-  // [Mrkdwn装飾] フィルター
-  // ========================================
-  // Slack Mrkdwn の装飾記法をラップする。
-  // 入力が空文字の場合は装飾しない（空の **** を生成しないように）。
-
-  /**
-   * [Mrkdwn装飾] 太字
-   * Mrkdwn: *text*
-   * 
-   * @param {*} v 値
-   * @returns {string} 太字装飾された文字列、または空文字の場合はそのまま
+   * @returns {string} 太字化された文字列、または空文字
    */
   const bold = v => {
     const s = toString(v);
@@ -61,11 +44,10 @@ const SlackFilters = (() => {
   };
 
   /**
-   * [Mrkdwn装飾] イタリック
-   * Mrkdwn: _text_
+   * [Mrkdwn装飾] 斜体化
    * 
    * @param {*} v 値
-   * @returns {string} イタリック装飾された文字列、または空文字の場合はそのまま
+   * @returns {string} 斜体化された文字列、または空文字
    */
   const italic = v => {
     const s = toString(v);
@@ -74,10 +56,9 @@ const SlackFilters = (() => {
 
   /**
    * [Mrkdwn装飾] 取り消し線
-   * Mrkdwn: ~text~
    * 
    * @param {*} v 値
-   * @returns {string} 取り消し線装飾された文字列、または空文字の場合はそのまま
+   * @returns {string} 取り消し線が付与された文字列、または空文字
    */
   const strike = v => {
     const s = toString(v);
@@ -85,386 +66,301 @@ const SlackFilters = (() => {
   };
 
   /**
-   * [Mrkdwn装飾] インラインコード
-   * Mrkdwn: `text`
+   * [Mrkdwn装飾] インラインコード化
    * 
    * @param {*} v 値
-   * @returns {string} インラインコード装飾された文字列、または空文字の場合はそのまま
+   * @returns {string} インラインコード化された文字列、または空文字
    */
   const code = v => {
     const s = toString(v);
-    return s === '' ? '' : '`' + s + '`';
+    return s === '' ? '' : `\`${s}\``;
   };
 
   /**
-   * [Mrkdwn装飾] コードブロック
-   * Mrkdwn: ```text```
-   * 言語指定には対応しない（Slack Mrkdwnでは標準記法ではないため）。
+   * [Mrkdwn装飾] コードブロック化
    * 
    * @param {*} v 値
-   * @returns {string} コードブロック装飾された文字列、または空文字の場合はそのまま
+   * @returns {string} コードブロック化された文字列、または空文字
    */
-  const pre = v => {
+  const codeBlock = v => {
     const s = toString(v);
-    return s === '' ? '' : '```' + s + '```';
+    return s === '' ? '' : `\`\`\`\n${s}\n\`\`\``;
+  };
+
+  /**
+   * [Mrkdwn装飾] 引用化(各行に > を付与)
+   * 
+   * @param {*} v 値
+   * @returns {string} 引用化された文字列、または空文字
+   */
+  const quote = v => {
+    const s = toString(v);
+    if (s === '') {
+      return '';
+    }
+    return s.split(/\r?\n/).map(line => `> ${line}`).join('\n');
   };
 
   // ========================================
-  // [エスケープ] フィルター
+  // メンション（参照）系
+  // ※ここでは纯粋にIDをラップするのみ。名前解決は行わない
   // ========================================
-  // 命名規則: escapeXXX
-  // Mrkdwn装飾・HTML・JSONの各コンテキストに対応。
-  // Block Kit JSONテンプレートで使う際は escapeJson を末尾に適用する。
 
   /**
-   * [エスケープ] Slack Mrkdwnの特殊文字をエスケープ
+   * [メンション] ユーザーIDをメンション記法でラップ
    * 
-   * エスケープ対象の文字:
-   *   & → &amp;    < → &lt;    > → &gt;
-   *   * → \*       _ → \_      ~ → \~
-   *   ` → \`
-   * 
-   * @param {*} v 値
-   * @returns {string} エスケープされた文字列
+   * @param {*} v ユーザーID
+   * @returns {string} メンション文字列、または空文字
    */
-  const escapeMrkdwn = v => {
-    const s = toString(v);
-    // & は最初にエスケープ（他のエスケープと衝突しないように）
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\*/g, '\\*')
-      .replace(/_/g, '\\_')
-      .replace(/~/g, '\\~')
-      .replace(/`/g, '\\`');
-  };
-
-  /**
-   * [エスケープ] HTML特殊文字をエスケープ
-   * Block Kit の text オブジェクトでも & < > はエスケープが必要。
-   * 
-   * エスケープ対象の文字:
-   *   & → &amp;    < → &lt;    > → &gt;    " → &quot;    ' → &#39;
-   * 
-   * @param {*} v 値
-   * @returns {string} エスケープされた文字列
-   */
-  const escapeHtml = v => {
-    const s = toString(v);
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  };
-
-  /**
-   * [エスケープ] JSON文字列中の特殊文字をエスケープ
-   * Block Kit JSONテンプレートの "..." の中に値を埋め込む際に使用。
-   * 
-   * エスケープ対象の文字:
-   *   \ → \\    " → \"
-   *   \n → \\n    \r → \\r    \t → \\t
-   *   U+0000〜U+001F の残り制御文字 → \\uXXXX
-   * 
-   * @param {*} v 値
-   * @returns {string} JSON文字列中に安全に埋め込める文字列
-   */
-  const escapeJson = v => {
-    const s = toString(v);
-    return s
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\r')
-      .replace(/\t/g, '\\t')
-      // 残り制御文字 U+0000〜U+001F を \uXXXX で吸収
-      .replace(/[\u0000-\u001f]/g, c =>
-        '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)
-      );
-  };
-
-  // ========================================
-  // [参照リンク] フィルター
-  // ========================================
-  // Slack の <@U...>・<#C...>・<mailto:...> 記法に変換する。
-  // これらは Mrkdwn の装飾記法とは異なる「特殊リンク記法」であり、
-  // Block Kit の mrkdwn: true テキスト中でも有効に動作する。
-
-  /**
-   * [参照リンク] ユーザーID → <@U...> 参照
-   * 
-   * @param {*} v ユーザーID（例: "U1234ABCD"）
-   * @returns {string} Slack ユーザー参照文字列
-   */
-  const slackUser = v => {
+  const mentionUser = v => {
     const s = toString(v);
     return s === '' ? '' : `<@${s}>`;
   };
 
   /**
-   * [参照リンク] チャネルID → <#C...> 参照
+   * [メンション] チャンネルIDを参照記法でラップ
    * 
-   * @param {*} v チャネルID（例: "C1234ABCD"）
-   * @returns {string} Slack チャネル参照文字列
+   * @param {*} v チャンネルID
+   * @returns {string} チャンネル参照文字列、または空文字
    */
-  const slackChannel = v => {
+  const mentionChannel = v => {
     const s = toString(v);
     return s === '' ? '' : `<#${s}>`;
   };
 
   /**
-   * [参照リンク] 特殊キーワード → Slack 特殊リンク
+   * [メンション] 特別なメンション（here, everyone など）をラップ
    * 
-   * サポートするキーワード:
-   *   "here"    → <!here>
-   *   "channel" → <!channel>
-   *   "everyone"→ <!everyone>
-   * 
-   * 上記以外の値はそのまま <!value> としてラップされる。
-   * 
-   * @param {*} v キーワード文字列
-   * @returns {string} Slack 特殊リンク文字列
+   * @param {*} v 特別なメンション文字列
+   * @returns {string} 特別なメンション文字列、または空文字
    */
-  const slackSpecial = v => {
+  const mentionSpecial = v => {
     const s = toString(v);
     return s === '' ? '' : `<!${s}>`;
   };
 
   /**
-   * [参照リンク] URL → Slack リンク
+   * [メンション] リンク化
    * 
-   * ラベル無し: <url>
-   * ラベル付き: <url|label>
-   * 
-   * ただし、このフィルターは値そのものをURLとして <...> でラップするだけ。
-   * ラベル付きの場合は "url|label" の形で渡すこと。
-   * 
-   * @param {*} v URL文字列（または "url|label" 形式）
-   * @returns {string} Slack リンク文字列
+   * @param {*} v URL
+   * @returns {string} リンク文字列、または空文字
    */
-  const slackLink = v => {
+  const link = v => {
     const s = toString(v);
     return s === '' ? '' : `<${s}>`;
   };
 
   /**
-   * [参照リンク] メールアドレス → <mailto:...> リンク
+   * [メンション] メールリンク化
    * 
-   * ラベル無し: <mailto:addr>
-   * ラベル付き: <mailto:addr|label>
-   * 
-   * 値に "|" が含まれる場合、その左側をアドレス、右側をラベルとして扱う。
-   * 
-   * @param {*} v メールアドレス文字列（または "addr|label" 形式）
-   * @returns {string} Slack メールリンク文字列
+   * @param {*} v メールアドレス
+   * @returns {string} メールリンク文字列、または空文字
    */
-  const slackMail = v => {
+  const mail = v => {
+    const s = toString(v);
+    return s === '' ? '' : `<mailto:${s}>`;
+  };
+
+  // ========================================
+  // エスケープ系
+  // ========================================
+  
+  /**
+   * [エスケープ] HTML実体参照へのエスケープ
+   * 
+   * @param {*} v 値
+   * @returns {string} HTMLエスケープされた文字列
+   */
+  const escapeHtml = v => {
     const s = toString(v);
     if (s === '') {
       return '';
     }
-    const pipeIdx = s.indexOf('|');
-    if (pipeIdx === -1) {
-      return `<mailto:${s}>`;
-    }
-    const addr  = s.slice(0, pipeIdx);
-    const label = s.slice(pipeIdx + 1);
-    return `<mailto:${addr}|${label}>`;
-  };
-
-  // ========================================
-  // [日時] フィルター
-  // ========================================
-  // Slack の <! date> 記法を生成する。
-  // この記法は受信側のタイムゾーンで自動変換される。
-  //
-  // 入力値の期待:
-  //   - Number: Unix タイムスタンプ（秒単位）をそのまま使用
-  //   - その他: Number() で変換を試みる
-  //
-  // Slack date トークン（一部）:
-  //   {date_short}       → 2026/01/28
-  //   {date}             → January 28th, 2026
-  //   {date_long}        → January 28th, 2026
-  //   {time}             → 14:30
-  //   {time_secs}        → 14:30:00
-  //   {date_short_time} → 2026/01/28 14:30
-  //
-  // フォールバック文字列はSlack APIが日時を解釈できない場合に表示される。
-
-  /**
-   * [日時] Unix タイムスタンプ → Slack 日時リンク（デフォルトフォーマット）
-   * フォーマット: {date_short_time}
-   * 
-   * @param {*} v Unix タイムスタンプ（秒単位）
-   * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
-   */
-  const slackDate = v => {
-    if (v == null) {
-      return '';
-    }
-    const n = Number(v);
-    if (!Number.isFinite(n)) {
-      return toString(v);
-    }
-    return `<!date^${Math.floor(n)}^{date_short_time}|${toString(v)}>`;
+    return s.replace(/[&<>"']/g, match => {
+      switch (match) {
+        case '&':
+          return '&amp;';
+        case '<':
+          return '&lt;';
+        case '>':
+          return '&gt;';
+        case '"':
+          return '&quot;';
+        case "'":
+          return '&#39;';
+        default:
+          return match; // 該当なし（正規表現で制限されている）
+      }
+    });
   };
 
   /**
-   * [日時] Unix タイムスタンプ → Slack 日時リンク（フォーマット指定版）
-   * 
-   * 入力値の形式: "timestamp|format"
-   *   timestamp : Unix タイムスタンプ（秒単位）
-   *   format    : Slack date トークン文字列（例: "{date_short} {time}"）
-   * 
-   * "|" が含まれない場合は slackDate と同じデフォルトフォーマットにフォールバックする。
-   * 
-   * 利用例:
-   *   {{{ts | slackDateFmt}}}
-   *   データ: { ts: "1738000000|{date_long} {time_secs}" }
-   *   → <!date^1738000000^{date_long} {time_secs}|1738000000>
-   * 
-   * @param {*} v "timestamp|format" 文字列
-   * @returns {string} Slack 日時リンク文字列、または変換失敗時は元の文字列
-   */
-  const slackDateFmt = v => {
-    if (v == null) {
-      return '';
-    }
-    const s = toString(v);
-    const pipeIdx = s.indexOf('|');
-
-    // "|" なし → slackDate と同一動作
-    if (pipeIdx === -1) {
-      return slackDate(v);
-    }
-
-    const rawTs = s.slice(0, pipeIdx);
-    const fmt   = s.slice(pipeIdx + 1);
-    const n     = Number(rawTs);
-
-    if (!Number.isFinite(n)) {
-      return s;
-    }
-    return `<!date^${Math.floor(n)}^${fmt}|${rawTs}>`;
-  };
-
-  // ========================================
-  // [ユーティリティ] フィルター
-  // ========================================
-
-  /**
-   * [ユーティリティ] 文字列を指定長以内に切り詰め（末尾に省略記号を付与）
-   * 
-   * 省略記号は "…"（U+2026、単一文字）を使用。
-   * 指定長以内であればそのまま返す。
-   * 
-   * ※ 引数を受け取れないため、省略記数は固定値（40文字）としている。
-   *   それ以外の長さが必要な場合は registerFilter で別途カスタム実装を登録してください。
+   * [エスケープ] Slack Mrkdwn文脈でのエスケープ
+   * （API送信時に意図せず太字や斜体、メンションとして解釈されるのを防ぐ）
    * 
    * @param {*} v 値
-   * @returns {string} 40文字以内に切り詰めた文字列
+   * @returns {string} Mrkdwn用にエスケープされた文字列
    */
-  const slackTruncate = v => {
-    const s = toString(v);
-    const max = 40;
-    return s.length <= max ? s : s.slice(0, max - 1) + '\u2026';
-  };
-
-  /**
-   * [ユーティリティ] 改行を Slack の改行(\n)に正規化
-   * \r\n や \r を \n に統一する。
-   * 
-   * @param {*} v 値
-   * @returns {string} 改行が \n に統一された文字列
-   */
-  const slackNewline = v => {
-    const s = toString(v);
-    return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  };
-
-  /**
-   * [ユーティリティ] Slack Mrkdwn のバレットリスト項目に変換
-   * 先頭に "• " を付加する。
-   * 
-   * @param {*} v 値
-   * @returns {string} バレットリスト項目の文字列、または空文字の場合はそのまま
-   */
-  const slackBullet = v => {
-    const s = toString(v);
-    return s === '' ? '' : `\u2022 ${s}`;
-  };
-
-  /**
-   * [ユーティリティ] Slack Mrkdwn の番号付きリスト項目に変換
-   * 
-   * 入力値の形式: "n|text"
-   *   n    : 番号（任意の数値または文字列）
-   *   text : リスト項目の本文
-   * 
-   * "|" が含まれない場合は番号として "1" を固定で付与する。
-   * 
-   * 利用例:
-   *   {{{item | slackNumbered}}}
-   *   データ: { item: "3|三番目のタスク" }
-   *   → "3. 三番目のタスク"
-   * 
-   * @param {*} v "n|text" 文字列
-   * @returns {string} 番号付きリスト項目の文字列、または空文字の場合はそのまま
-   */
-  const slackNumbered = v => {
+  const escapeMrkdwn = v => {
     const s = toString(v);
     if (s === '') {
       return '';
     }
-    const pipeIdx = s.indexOf('|');
-    if (pipeIdx === -1) {
-      return `1. ${s}`;
+    // Slack固有の特殊文字(&, <, >)をエスケープした上で、装飾記号(*, _, ~, `)をエスケープする
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/([*_~`])/g, '\\$1');
+  };
+
+  /**
+   * [エスケープ] JSON文字列への埋め込み用エスケープ
+   * 
+   * @param {*} v 値
+   * @returns {string} JSON値として展開可能なエスケープ文字列文字列
+   */
+  const escapeJson = v => {
+    const s = toString(v);
+    if (s === '') {
+      return '';
     }
-    const num  = s.slice(0, pipeIdx);
-    const text = s.slice(pipeIdx + 1);
-    return `${num}. ${text}`;
+    // JSONとして安全な形にエスケープ (\ と " をエスケープし、制御文字等をUnicodeエスケープ)
+    return s.replace(/[\u0000-\u001f"\\]/g, match => {
+      const c = match.charCodeAt(0);
+      switch(c) {
+        case 0x08:
+          return '\\b';
+        case 0x09:
+          return '\\t';
+        case 0x0a:
+          return '\\n';
+        case 0x0c:
+          return '\\f';
+        case 0x0d:
+          return '\\r';
+        case 0x22:
+          return '\\"';
+        case 0x5c:
+          return '\\\\';
+        default:
+          return '\\u' + ('0000' + c.toString(16)).slice(-4);
+      }
+    });
+  };
+
+  /**
+   * [エスケープ] Block Kit 送信用の統合エスケープ
+   * escapeMrkdwn -> escapeJson を直列実行する。
+   * (escapeMrkdwn 内で HTML実体(& < >) のエスケープが済んでいるため、
+   * escapeHtml を挟むと二重エスケープが発生するのを防ぐ設計。)
+   * 
+   * @param {*} v 値
+   * @returns {string} Block Kitテンプレート向けに安全に二重エスケープされた文字列
+   */
+  const escapeBlockKit = v => {
+    return escapeJson(escapeMrkdwn(v));
+  };
+
+
+  // ========================================
+  // リスト・ユーティリティ系
+  // ========================================
+
+  /**
+   * [ユーティリティ] 改行コードの正規化(CRLF/CR -> LF)
+   * 
+   * @param {*} v 値
+   * @returns {string} 正規化された文字列
+   */
+  const newline = v => {
+    const s = toString(v);
+    return s === '' ? '' : s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  };
+
+  /**
+   * [ユーティリティ] 単一行の先頭に `• ` を付与する
+   * 
+   * @param {*} v 値
+   * @returns {string} バレット付与文字列
+   */
+  const bullet = v => {
+    const s = toString(v);
+    return s === '' ? '' : `• ${s}`;
+  };
+
+  /**
+   * [ユーティリティ] 各行の先頭に `• ` を付与して再結合する（Multi対応）
+   * 
+   * @param {*} v 値または配列
+   * @returns {string} 各行にバレット付与された文字列
+   */
+  const bulletList = v => processList(v, line => `• ${line}`);
+
+  /**
+   * [ユーティリティ] 単一行の先頭に `1. ` を付与する
+   * 
+   * @param {*} v 値
+   * @returns {string} 番号付与文字列
+   */
+  const numbered = v => {
+    const s = toString(v);
+    return s === '' ? '' : `1. ${s}`;
+  };
+
+  /**
+   * [ユーティリティ] 各行の先頭に自動連番を付与して再結合する（Multi対応）
+   * 
+   * @param {*} v 値または配列
+   * @returns {string} 各行に連番付与された文字列
+   */
+  const numberedList = v => {
+    if (v == null || v === '') {
+      return '';
+    }
+    const lines = Array.isArray(v) ? v : toString(v).split(/\r?\n/);
+    return lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
+  };
+
+  /**
+   * [ユーティリティ] Slack仕様の Unix タイムスタンプ装飾日付
+   * 
+   * @param {*} v Unix Timestamp
+   * @returns {string} SlackネイティブのDate文字列
+   */
+  const date = v => {
+    const s = toString(v);
+    return s === '' ? '' : `<!date^${s}^{date} {time}|${s}>`;
   };
 
   // ========================================
-  // エクスポート
+  // エクスポート（純粋関数群のプレーンオブジェクト）
   // ========================================
-  // LazyTemplate のコンストラクタの第2引数（filters オブジェクト）として渡す。
-  //
-  // 使い方:
-  //   const t = new LazyTemplate(templateStr, SlackFilters);
-
   return {
-    // Mrkdwn装飾
     bold,
     italic,
     strike,
     code,
-    pre,
+    codeBlock,
+    quote,
 
-    // エスケープ
-    escapeMrkdwn,
+    mentionUser,
+    mentionChannel,
+    mentionSpecial,
+    link,
+    mail,
+
     escapeHtml,
+    escapeMrkdwn,
     escapeJson,
+    escapeBlockKit,
 
-    // 参照リンク
-    slackUser,
-    slackChannel,
-    slackSpecial,
-    slackLink,
-    slackMail,
-
-    // 日時
-    slackDate,
-    slackDateFmt,
-
-    // ユーティリティ
-    slackTruncate,
-    slackNewline,
-    slackBullet,
-    slackNumbered
+    newline,
+    bullet,
+    bulletList,
+    numbered,
+    numberedList,
+    date
   };
+
 })();
