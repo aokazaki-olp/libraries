@@ -257,6 +257,66 @@ function runAllSlackFiltersTests() {
     assertEqual('hello "\n\\*bold\\* &amp; &lt;world&gt;', parsed.text);
   });
 
+  test('Integration: Edge case chains (nulls, undefined)', () => {
+    const t = new LazyTemplate('A{{{ missing_var | escapeHtml | bold }}}B', LazyTemplate.Filters.Slack);
+    // 存在しない変数はプレースホルダー自体が消え（空文字評価）、フィルタチェーンも空文字を伝播させる
+    assertEqual('AB', t.evaluate({}));
+    
+    // null が渡された場合も同様に空文字伝播（SlackFilters自体の防御による）
+    assertEqual('AB', t.evaluate({ missing_var: null }));
+  });
+
+  test('Integration: Complex Fallback with Filters', () => {
+    // タームごとの評価。 `||` で区切られる。
+    const t = new LazyTemplate('{{{ missing || text | bold | italic }}}', LazyTemplate.Filters.Slack);
+    
+    assertEqual('_*hello*_', t.evaluate({ text: 'hello' }));
+    
+    // missing に値があれば右側（テキストとフィルター）は評価されない
+    assertEqual('first', t.evaluate({ missing: 'first', text: 'hello' }));
+    
+    // フォールバックタームにフィルターを適用するケース
+    const t2 = new LazyTemplate('{{{ missing || "default" | bold }}}', LazyTemplate.Filters.Slack);
+    assertEqual('*default*', t2.evaluate({}));
+    assertEqual('fallback', t2.evaluate({ missing: 'fallback' })); // リテラル側のタームには干渉しない
+  });
+
+  test('Integration: Multi-filter array handling compositions', () => {
+    // リスト処理と装飾系のパイプライン結合
+    const t = new LazyTemplate('{{{ items | bulletList | quote }}}', LazyTemplate.Filters.Slack);
+    
+    // array -> bulletList -> quote
+    assertEqual('> • A\n> • B', t.evaluate({ items: ['A', 'B'] }));
+    
+    // empty array は安全にパイプを抜けて空文字になることの確認
+    assertEqual('', t.evaluate({ items: [] }));
+  });
+
+  test('Integration: Combining with Primitive Filters', () => {
+    // LazyTemplate に内蔵されている Primitive Filters (upper, round, length, jsonなど) と
+    // SlackFilters を組み合わせたパイプラインテスト
+    const t = new LazyTemplate(
+      'Len: {{{ items | length | bold }}}, Text: {{{ text | upper | bold }}}, JSON: {{{ data | json | escapeBlockKit }}}', 
+      LazyTemplate.Filters.Slack
+    );
+
+    const result = t.evaluate({
+      items: [1, 2, 3],
+      text: 'hello',
+      data: { a: 1, b: "x" }
+    });
+
+    // length(3) -> bold("*3*")
+    // upper("HELLO") -> bold("*HELLO*")
+    // json('{"a":1,"b":"x"}') -> escapeBlockKit (jsonエスケープされるため \ が付く)
+    assertEqual('Len: *3*, Text: *HELLO*, JSON: {\\"a\\":1,\\"b\\":\\"x\\"}', result);
+    
+    // Primitiveの `default` フィルタとの連携
+    const t2 = new LazyTemplate('{{{ missing | default | bold }}}', LazyTemplate.Filters.Slack);
+    // default フィルタは null/undefined を空文字にするため、boldに空文字が渡って最終的に空文字となる
+    assertEqual('', t2.evaluate({}));
+  });
+
   return TestRunner.run();
 }
 
