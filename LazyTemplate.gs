@@ -50,10 +50,10 @@ class LazyTemplate {
   static NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
   /**
-   * シングルクォートリテラルの \\ 一時退避用プレースホルダー
-   * U+E000（PUA）を含む固定文字列で衝突確率を実用上ゼロに抑える
+   * シングルクォートリテラルの \\ 一時退避用センチネル
+   * PUA（U+E000）で囲み LT_BS ラベルを付与。自然なテキストには現れない
    */
-  static BACKSLASH_PLACEHOLDER = '\uE000BACKSLASH\uE000';
+  static BACKSLASH_SENTINEL = '\uE000__LT_BS__\uE000';
 
   /** @type {Object.<string, Function>} プリミティブフィルター(18個) */
   static PRIMITIVE_FILTERS = {
@@ -418,9 +418,7 @@ class LazyTemplate {
       // 2. \\ を一時的にプレースホルダーに変換（Unicode PUA: U+E000を使用）
       // 3. ダブルクォート用のエスケープを追加
       // 4. プレースホルダーを \\ に戻す
-      // 注: U+E000はUnicode Private Use Area（私用領域）の文字で、
-      //     通常の文字列リテラル内には出現しないため安全に使用可能
-      const ph = LazyTemplate.BACKSLASH_PLACEHOLDER;
+      const ph = LazyTemplate.BACKSLASH_SENTINEL;
       const unescaped = i
         .replace(/\\\\/g, ph)       // \\ を一時退避
         .replace(/\\'/g, "'")        // \' を ' に変換
