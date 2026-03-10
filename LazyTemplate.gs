@@ -49,6 +49,12 @@ class LazyTemplate {
   /** @type {RegExp} 数値リテラルパターン */
   static NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
+  /**
+   * シングルクォートリテラルの \\ 一時退避用プレースホルダー
+   * U+E000（PUA）を含む固定文字列で衝突確率を実用上ゼロに抑える
+   */
+  static BACKSLASH_PLACEHOLDER = '\uE000BACKSLASH\uE000';
+
   /** @type {Object.<string, Function>} プリミティブフィルター(18個) */
   static PRIMITIVE_FILTERS = {
     // 文字列操作
@@ -414,11 +420,12 @@ class LazyTemplate {
       // 4. プレースホルダーを \\ に戻す
       // 注: U+E000はUnicode Private Use Area（私用領域）の文字で、
       //     通常の文字列リテラル内には出現しないため安全に使用可能
+      const ph = LazyTemplate.BACKSLASH_PLACEHOLDER;
       const unescaped = i
-        .replace(/\\\\/g, '\uE000')  // \\ を一時保存（PUA: U+E000）
-        .replace(/\\'/g, "'")         // \' を ' に変換
-        .replace(/\uE000/g, '\\\\')   // \\ を復元
-        .replace(/"/g, '\\"');        // " を \" にエスケープ
+        .replace(/\\\\/g, ph)       // \\ を一時退避
+        .replace(/\\'/g, "'")        // \' を ' に変換
+        .replaceAll(ph, '\\\\')      // \\ を復元
+        .replace(/"/g, '\\"');       // " を \" にエスケープ
       const j = `"${unescaped}"`;
       try {
         return JSON.parse(j);
