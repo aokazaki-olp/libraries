@@ -49,6 +49,12 @@ class LazyTemplate {
   /** @type {RegExp} 数値リテラルパターン */
   static NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
+  /**
+   * シングルクォートリテラルの \\ 一時退避用センチネル
+   * PUA（U+E000）で囲み LT_BS ラベルを付与。自然なテキストには現れない
+   */
+  static BACKSLASH_SENTINEL = '\uE000__LT_BS__\uE000';
+
   /** @type {Object.<string, Function>} プリミティブフィルター(18個) */
   static PRIMITIVE_FILTERS = {
     // 文字列操作
@@ -389,14 +395,14 @@ class LazyTemplate {
 
   /**
    * 文字列リテラルのパース
-   * 
-   * @param {string} token トークン
-   * @returns {string|undefined} パース結果
+   *
+   * @param {string} token トークン（クォート付き文字列リテラル）
+   * @returns {string|undefined} 解釈した文字列。トークンがリテラルでない場合は undefined
    */
   static parseStringLiteral(token) {
     // 前後の空白を削除
     token = token.trim();
-    
+
     if (token.startsWith('"')) {
       try {
         return JSON.parse(token);
@@ -406,22 +412,17 @@ class LazyTemplate {
     }
 
     if (token.startsWith("'")) {
-      const i = token.slice(1, -1);
-      // シングルクォート内のエスケープシーケンスを処理
-      // 1. \' を ' に変換（シングルクォートのエスケープ解除）
-      // 2. \\ を一時的にプレースホルダーに変換（Unicode PUA: U+E000を使用）
-      // 3. ダブルクォート用のエスケープを追加
-      // 4. プレースホルダーを \\ に戻す
-      // 注: U+E000はUnicode Private Use Area（私用領域）の文字で、
-      //     通常の文字列リテラル内には出現しないため安全に使用可能
-      const unescaped = i
-        .replace(/\\\\/g, '\uE000')  // \\ を一時保存（PUA: U+E000）
+      const inner = token.slice(1, -1);
+      // \\ を一時退避してから \' を処理し、JSON.parse に委譲する
+      const sentinel = LazyTemplate.BACKSLASH_SENTINEL;
+      const quoted = `"${inner
+        .replace(/\\\\/g, sentinel)  // \\ を一時退避
         .replace(/\\'/g, "'")         // \' を ' に変換
-        .replace(/\uE000/g, '\\\\')   // \\ を復元
-        .replace(/"/g, '\\"');        // " を \" にエスケープ
-      const j = `"${unescaped}"`;
+        .replaceAll(sentinel, '\\\\') // \\ を復元
+        .replace(/"/g, '\\"')         // " を \" にエスケープ
+      }"`;
       try {
-        return JSON.parse(j);
+        return JSON.parse(quoted);
       } catch { // 正常経路: リテラルでない場合の吸収
         return undefined;
       }
