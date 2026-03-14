@@ -53,7 +53,7 @@ class LazyTemplate {
   static BACKSLASH_SENTINEL = '\uE000__LT_BS__\uE000';
 
   /** @type {Object.<string, Function>} プリミティブフィルター(18個) */
-  static PRIMITIVE_FILTERS = {
+  static PRIMITIVE_FILTERS = Object.freeze({
     // 文字列操作
     
     /**
@@ -242,7 +242,7 @@ class LazyTemplate {
         return '{}';
       }
     }
-  };
+  });
 
   /**
    * コンストラクター
@@ -292,28 +292,28 @@ class LazyTemplate {
    * @returns {Array} パース結果
    */
   parseTemplate(template) {
-    const p = [];
-    let l = 0;
+    const parts = [];
+    let lastIndex = 0;
 
     for (const m of template.matchAll(LazyTemplate.PLACEHOLDER_PATTERN)) {
-      if (m.index > l) {
-        p.push({ type: 'text', value: template.slice(l, m.index) });
+      if (m.index > lastIndex) {
+        parts.push({ type: 'text', value: template.slice(lastIndex, m.index) });
       }
 
-      p.push({
+      parts.push({
         type: 'placeholder',
         backslashes: m[1],
         expression: m[2].trim(),
       });
 
-      l = m.index + m[0].length;
+      lastIndex = m.index + m[0].length;
     }
 
-    if (l < template.length) {
-      p.push({ type: 'text', value: template.slice(l) });
+    if (lastIndex < template.length) {
+      parts.push({ type: 'text', value: template.slice(lastIndex) });
     }
 
-    return p;
+    return parts;
   }
 
   /**
