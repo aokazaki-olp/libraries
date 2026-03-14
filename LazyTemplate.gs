@@ -49,10 +49,7 @@ class LazyTemplate {
   /** @type {RegExp} 数値リテラルパターン */
   static NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
-  /**
-   * シングルクォートリテラルの \\ 一時退避用センチネル
-   * PUA（U+E000）で囲み LT_BS ラベルを付与。自然なテキストには現れない
-   */
+  /** @type {string} \\ 一時退避センチネル: PUA（U+E000）で囲み自然なテキストとの衝突を回避 */
   static BACKSLASH_SENTINEL = '\uE000__LT_BS__\uE000';
 
   /** @type {Object.<string, Function>} プリミティブフィルター(18個) */
