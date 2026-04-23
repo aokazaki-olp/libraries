@@ -47,11 +47,27 @@ src/
     utils.ts            # 内部ヘルパー（pure 関数）
 ```
 
+### ライセンス一覧
+
+| パッケージ | バージョン | ライセンス | 著作権者 |
+|---|---|---|---|
+| `normalize-japanese-addresses`（本体）| 3.1.3 | **MIT** | Copyright 2020 Geolonia Inc. |
+| `@geolonia/japanese-numeral` | 1.0.2 | **MIT** | Copyright 2020 Geolonia Inc. |
+| `@geolonia/japanese-addresses-v2` | 0.0.5 | **MIT** | Copyright 2024 Geolonia Inc. |
+| `lru-cache` | 11.0.1 | **ISC** | Copyright 2010-2023 Isaac Z. Schlueter and Contributors |
+| `papaparse` | 5.4.1 | **MIT** | Copyright 2015 Matthew Holt |
+| `undici` | 6.19.8 | **MIT** | Matteo Collina and Undici contributors |
+
+**全パッケージが MIT または ISC**（いずれも OSI 承認済みの permissive ライセンス）。  
+MIT と ISC は実質的に同等の条件であり、商用利用・改変・再配布・インライン化いずれも制限なし。
+
+**移植時の義務**: コードをインライン化またはバンドルする場合、各パッケージの著作権表示とライセンス文をソース内に保持すること（配布時も同様）。
+
 ### 外部 npm 依存（runtime）
 
 | パッケージ | バージョン | 独自依存 | 規模 | 用途 | GAS での代替 |
 |---|---|---|---|---|---|
-| `@geolonia/japanese-numeral` | 1.0.2 | **なし** | ~100行 | 漢数字変換（`kanji2number`, `number2kanji`, `findKanjiNumbers`）| ソースをそのままインライン化（MIT）|
+| `@geolonia/japanese-numeral` | 1.0.2 | **なし** | ~100行 | 漢数字変換（`kanji2number`, `number2kanji`, `findKanjiNumbers`）| ソースをそのままインライン化 |
 | `@geolonia/japanese-addresses-v2` | 0.0.5 | **なし** | 49行 | 型定義 + `prefectureName` 等5つのヘルパー関数 | 型削除 + 5関数インライン化 |
 | `lru-cache` | 11.0.1 | **なし** | 1,545行 | LRU キャッシュ（`LRUCache({ max })` のみ使用）| `Map` + エントリ数管理の独自実装で代替可 |
 | `papaparse` | 5.4.1 | **なし** | 1,922行 | CSV 解析（1箇所のみ: `parseSubresource()` 内）| `Utilities.parseCsv()` に置換可 |
