@@ -47,15 +47,28 @@ src/
     utils.ts            # 内部ヘルパー（pure 関数）
 ```
 
-### 外部 npm 依存
+### 外部 npm 依存（runtime）
 
-| パッケージ | 用途 | GAS での代替 |
-|---|---|---|
-| `@geolonia/japanese-numeral` | 漢数字変換 | ソースをインライン化（MIT）|
-| `@geolonia/japanese-addresses-v2` | 型定義・ヘルパー関数 | 型削除 + 関数インライン化 |
-| `lru-cache` | LRU キャッシュ | `Map` + エントリ数管理の独自実装 |
-| `papaparse` | CSV 解析 | `Utilities.parseCsv()` |
-| `undici` | Node.js HTTP クライアント | 不要（GAS は同期 UrlFetchApp）|
+| パッケージ | バージョン | 独自依存 | 規模 | 用途 | GAS での代替 |
+|---|---|---|---|---|---|
+| `@geolonia/japanese-numeral` | 1.0.2 | **なし** | ~100行 | 漢数字変換（`kanji2number`, `number2kanji`, `findKanjiNumbers`）| ソースをそのままインライン化（MIT）|
+| `@geolonia/japanese-addresses-v2` | 0.0.5 | **なし** | 49行 | 型定義 + `prefectureName` 等5つのヘルパー関数 | 型削除 + 5関数インライン化 |
+| `lru-cache` | 11.0.1 | **なし** | 1,545行 | LRU キャッシュ（`LRUCache({ max })` のみ使用）| `Map` + エントリ数管理の独自実装で代替可 |
+| `papaparse` | 5.4.1 | **なし** | 1,922行 | CSV 解析（1箇所のみ: `parseSubresource()` 内）| `Utilities.parseCsv()` に置換可 |
+| `undici` | 6.19.8 | **なし** | - | Node.js 専用 HTTP クライアント（`main-node.ts` のみ）| 不要（GAS は `UrlFetchApp`）|
+
+**全ての runtime 依存が zero-deps**。パッケージツリーはフラット（間接依存なし）。
+
+### 外部 API エンドポイント
+
+| リクエスト | URL パターン | レスポンス | 使用場面 |
+|---|---|---|---|
+| 都道府県・市区町村一覧 | `{api}/.json` | JSON | レベル1〜2（初回1回のみ）|
+| 町丁目一覧 | `{api}/{都道府県}/{市区町村}.json?v={ts}` | JSON | レベル3（市区町村ごと）|
+| 住居表示CSV | `{api}/{都道府県}/{市区町村}-住居表示.txt?v={ts}` | テキスト（CSV）| レベル8（Range ヘッダーで部分取得）|
+| 地番CSV | `{api}/{都道府県}/{市区町村}-地番.txt?v={ts}` | テキスト（CSV）| レベル8（Range ヘッダーで部分取得）|
+
+住居表示・地番はHTTP Range ヘッダー（`bytes=N-M`）でバイト範囲指定の部分取得。`UrlFetchApp` はヘッダー指定が可能なため代替可能。
 
 ---
 
