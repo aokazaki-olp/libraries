@@ -178,11 +178,13 @@ normalize-japanese-addresses は**すでに Rollup + TypeScript のビルド構�
 src/          ← TypeScript ソース（normalize-japanese-addresses を GAS 向けに移植）
   index.ts    ← エントリーポイント（IIFE or 名前空間）
   ...
+test/         ← Jest テスト（Node.js 上で実行）
 tsconfig.json
 rollup.config.js  ← 既存ライブラリのものを参考に GAS 向けに調整
 dist/
   AddressNormalizer.js  ← clasp push の対象（単一ファイル）
 .clasp.json
+.claspignore
 ```
 
 **tsconfig のポイント:**
@@ -200,7 +202,27 @@ dist/
 
 `@types/google-apps-script` により `UrlFetchApp`・`CacheService`・`Utilities` 等の型補完が得られる。
 
-### 5.4 移植方針の推奨
+### 5.4 テスト戦略
+
+clasp はデプロイツールに過ぎず、**開発・テストは Node.js 上で完結する**。既存の Jest（または `node:test`）はそのまま使用可。
+
+- `UrlFetchApp` 等の GAS API はテスト内でモックする
+- 純粋なロジック（`zen2han` 等）はモック不要でそのまま単体テスト可
+- `puppeteer` のみ削除対象（ブラウザ統合テスト用、GAS 開発では不要）
+
+**初期構築時の devDependencies 整理:**
+
+| パッケージ | 判断 | 理由 |
+|---|---|---|
+| `puppeteer` | **削除** | ブラウザ統合テスト用、不要 |
+| `jest` / `jest-matcher-deep-close-to` | **維持** | Node.js テストに使用 |
+| `glob`, `tsx` | **維持** | テストランナー・TS 実行に必須 |
+| `rollup` 関連 | **維持** | GAS 向けバンドルに使用 |
+| `typescript`, `eslint` 関連 | **維持** | 型チェック・リントに使用 |
+| `@types/google-apps-script` | **追加** | GAS API の型補完 |
+| `@claspjs/clasp` | **追加** | デプロイ用 |
+
+### 5.5 移植方針の推奨
 
 **フェーズ 1（即実施可能）: pure ユーティリティの移植**
 - `zen2han`, `kan2num`, `prenormalize`, `patchAddr`, `dict`/`dictionaries` をそのまま TypeScript で移植
