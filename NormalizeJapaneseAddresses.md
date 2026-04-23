@@ -132,29 +132,86 @@ GAS のスクリプト実行時間制限（6分）内に収めるには、`Cache
 
 ---
 
-## 5. 移植方針の推奨
+## 5. TypeScript 維持 + clasp 化の検討
 
-### 段階的移植ロードマップ
+### 5.1 clasp の現在の TypeScript サポート状況
+
+clasp はかつて TypeScript をネイティブにトランスパイルしていたが、**現在はその機能を廃止**。  
+公式推奨ワークフローは「外部バンドラーでビルド → clasp push」。
+
+```
+TypeScript ──(Rollup/esbuild)──→ 単一 JS ファイル ──(clasp push)──→ GAS
+```
+
+normalize-japanese-addresses は**すでに Rollup + TypeScript のビルド構成を持つ**ため、この構成をそのまま流用できる。
+
+### 5.2 GAS V8 における async/await の実態
+
+**GAS V8 は `async/await` 構文をサポートしているが、イベントループが存在しない。**
+
+- `UrlFetchApp.fetch()` など全ての GAS API は**同期・ブロッキング**
+- `async` 関数は Promise を返すが、内部処理が同期であれば即時解決する
+- 真に非同期なコールバック（`setTimeout` 等）は使えないため、ネットワーク I/O を `await` しても意味がない
+
+つまり `fetch` を `UrlFetchApp.fetch()` に置き換えると、`async/await` は**構文として残せるが実質的には無用**になる。  
+型の整合性を保つ目的で `async` シグネチャを維持することは可能だが、戻り値は `Promise<T>` ではなく `T` を直接返す設計に変えた方がシンプル。
+
+### 5.3 TypeScript + clasp 構成の設計案
+
+```
+src/          ← TypeScript ソース（normalize-japanese-addresses を GAS 向けに移植）
+  index.ts    ← エントリーポイント（IIFE or 名前空間）
+  ...
+tsconfig.json
+rollup.config.js  ← 既存ライブラリのものを参考に GAS 向けに調整
+dist/
+  AddressNormalizer.js  ← clasp push の対象（単一ファイル）
+.clasp.json
+```
+
+**tsconfig のポイント:**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "types": ["google-apps-script"]
+  }
+}
+```
+
+`@types/google-apps-script` により `UrlFetchApp`・`CacheService`・`Utilities` 等の型補完が得られる。
+
+### 5.4 移植方針の推奨
 
 **フェーズ 1（即実施可能）: pure ユーティリティの移植**
-- `zen2han`, `kan2num`, `prenormalize`, `patchAddr`, `dict`/`dictionaries`
-- 依存ゼロ、非同期なし → IIFE ラップしてそのまま `.gs` 化
+- `zen2han`, `kan2num`, `prenormalize`, `patchAddr`, `dict`/`dictionaries` をそのまま TypeScript で移植
+- `@geolonia/japanese-numeral` はソースが ~100行・zero-deps なのでインライン化
+- `@geolonia/japanese-addresses-v2` は49行・ヘルパー5関数のみなのでインライン化
 
 **フェーズ 2（中優先）: レベル 1〜2 正規化**
-- `UrlFetchApp.fetch()` で `ja.json` を取得（同期）
-- `URL` コンストラクタを文字列操作に置換
-- `CacheService.getScriptCache()` でキャッシュ
+- `fetch` → `UrlFetchApp.fetch()`（同期）に置換
+- `URL` コンストラクタ → テンプレートリテラルに置換
+- `async` 関数シグネチャを同期に変更
+- `lru-cache` → `Map` + エントリ数制限のシンプルな実装
+- `CacheService.getScriptCache()` で都道府県データをセッション間キャッシュ
 
 **フェーズ 3（要検討）: レベル 3〜8 正規化**
-- 実行時間と API レイテンシのトレードオフを要評価
-- スプレッドシート等への事前データ展開も選択肢
+- `papaparse` → `Utilities.parseCsv()` に置換
+- Range ヘッダーは `UrlFetchApp` で指定可能なため対応可
+- 連鎖 API コールの実行時間コストを実測して判断
 
-### GAS 移植コード上の注意点
+### 5.5 現行 `.gs` ファイルとの共存
 
-- TypeScript 型注釈は削除（GAS は JavaScript）
-- `import/export` を削除し、IIFE または名前空間オブジェクトに変換
-- `for...of` はそのまま使用可（CODING_RULES 準拠）
-- `forEach` は使用禁止（CODING_RULES 準拠）→元コードの `forEach` は `for...of` に変換
+現行ライブラリ群（`HttpClient.gs` 等）は手書きの GAS JavaScript。  
+TypeScript + clasp 化にあたっては2つの選択肢がある。
+
+| 選択肢 | 内容 | トレードオフ |
+|---|---|---|
+| **A. 新規ファイルのみ TypeScript 化** | 住所正規化ライブラリのみ TS+clasp 構成、既存 `.gs` は現状維持 | 移行コスト小、ツールチェーン混在 |
+| **B. プロジェクト全体を TypeScript 化** | 既存 `.gs` も `.ts` に移行し統一 | 移行コスト大、型安全性・補完の恩恵を全体で享受 |
 
 ---
 
@@ -162,7 +219,9 @@ GAS のスクリプト実行時間制限（6分）内に収めるには、`Cache
 
 | 移植対象 | 判定 | 備考 |
 |---|---|---|
-| pure ユーティリティ（zen2han 等）| ✅ 移植可 | 即実施可能 |
-| レベル 1〜2 正規化 | ✅ 移植可 | async→sync 変換が必要 |
-| レベル 3〜8 正規化 | ⚠️ 移植可 | 実行コストの設計が別途必要 |
+| pure ユーティリティ（zen2han 等）| ✅ 移植可 | 即実施可能、型そのまま維持 |
+| レベル 1〜2 正規化 | ✅ 移植可 | async→sync 変換が主な作業 |
+| レベル 3〜8 正規化 | ⚠️ 移植可 | 実行コストの実測・設計が別途必要 |
 | Node.js 専用部分（fs, undici）| ❌ 移植不要 | GAS では削除 |
+| TypeScript 維持 | ✅ 可能 | Rollup + clasp の構成で実現（既存ライブラリ参考）|
+| async/await 維持 | ⚠️ 非推奨 | GAS V8 はイベントループなし、同期設計に変更を推奨 |
