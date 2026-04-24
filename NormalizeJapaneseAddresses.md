@@ -394,7 +394,162 @@ const csv = response.getContentText();
 
 ---
 
-## 7. 結論
+## 7. 移植方針
+
+### 7.1 プロジェクト初期構築
+
+```bash
+# 1. 元ソースをベースに初期化
+git clone https://github.com/geolonia/normalize-japanese-addresses.git AddressNormalizer
+cd AddressNormalizer
+npm install
+rm -rf .git && git init
+
+# 2. 不要ファイルを削除
+rm src/cli.ts src/main.ts src/main-node.ts
+rm -rf test/integration   # browser/webpack/Node CJS・ESM テスト
+# puppeteer を devDependencies から削除（package.json 編集）
+```
+
+### 7.2 ファイル処理方針
+
+**削除**
+
+| ファイル | 理由 |
+|---|---|
+| `src/cli.ts` | CLI ツール。GAS 不要 |
+| `src/main.ts` | ブラウザ向けエントリーポイント |
+| `src/main-node.ts` | Node.js 専用（fs / undici）|
+| `test/integration/` | Node.js / ブラウザ / webpack ビルド確認 |
+
+**新規作成**
+
+| ファイル | 内容 |
+|---|---|
+| `src/main-gas.ts` | GAS エントリーポイント（`__internals.fetch` の GAS 実装 + バンドルローダー）|
+| `tools/build-bundle.ts` | データバンドル生成スクリプト（API から全 JSON 取得・`csv_ranges` 除去・統合）|
+
+**維持（最小変換）**
+
+| ファイル | 変換内容 |
+|---|---|
+| `src/normalize.ts` | `async/await` 除去、戻り値を `Promise<T>` → `T` に変更 |
+| `src/lib/cacheRegexes.ts` | `lru-cache` → `Map`、`papaparse` → `Utilities.parseCsv()`、`async` 除去 |
+| `src/lib/zen2han.ts` | そのまま |
+| `src/lib/kan2num.ts` | `@geolonia/japanese-numeral` をインライン化 |
+| `src/lib/normalizeHelpers.ts` | そのまま |
+| `src/lib/patchAddr.ts` | そのまま |
+| `src/lib/dict.ts` + `dictionaries/` | そのまま |
+| `src/config.ts` | デフォルト fetch 実装を削除（GAS 版は `main-gas.ts` で注入）|
+
+### 7.3 依存パッケージの置換
+
+| パッケージ | 置換方法 |
+|---|---|
+| `@geolonia/japanese-numeral` | `src/lib/kan2num.ts` にインライン化（~100行）|
+| `@geolonia/japanese-addresses-v2` | 型定義削除 + 5関数インライン化（49行）|
+| `lru-cache` | `Map` ベースの簡易実装に置換 |
+| `papaparse` | `Utilities.parseCsv()` に置換（1箇所のみ）|
+| `undici` | 削除（`main-node.ts` ごと削除）|
+| `fetch` global / `URL` コンストラクタ | `UrlFetchApp.fetch()` + テンプレートリテラル |
+
+### 7.4 GAS fetch 実装（`main-gas.ts` の核心）
+
+```typescript
+// HttpClient.gs の HttpCore.createTransport() を活用してリトライを共通化
+const transport = HttpCore.withRetry(HttpCore.createTransport(), { maxRetries: 3 });
+
+let bundleData: Record<string, unknown> | null = null;
+
+function loadBundle(): Record<string, unknown> {
+  if (bundleData) { return bundleData; }
+  const file = DriveApp.getFileById(BUNDLE_FILE_ID);
+  bundleData = JSON.parse(file.getBlob().getDataAsString());
+  return bundleData;
+}
+
+__internals.fetch = (input, options) => {
+  // レベル1〜3: バンドルから直接参照（HTTP不要）
+  const key = input.replace(/^\//, '').replace(/\.json(\?.*)?$/, '');
+  const bundle = loadBundle();
+  if (!options?.offset && bundle[key]) {
+    return { json: () => bundle[key], text: () => JSON.stringify(bundle[key]), ok: true };
+  }
+  // レベル8: Range ヘッダーで HTTP 取得
+  const url = BASE_URL + input;
+  const headers: Record<string, string> = {};
+  if (options?.offset != null && options?.length != null) {
+    headers['Range'] = `bytes=${options.offset}-${options.offset + options.length - 1}`;
+  }
+  const resp = transport({ url, method: 'GET', headers });
+  return { json: () => JSON.parse(resp.getContentText()), text: () => resp.getContentText(), ok: resp.getResponseCode() < 300 };
+};
+```
+
+### 7.5 データバンドル生成
+
+```bash
+# tools/build-bundle.ts を実行して bundle.json を生成
+npx tsx tools/build-bundle.ts
+
+# bundle.json を Google Drive にアップロードし、ファイル ID を main-gas.ts に設定
+```
+
+バンドル生成ルール:
+- `ja.json` → キー `"ja"`
+- `{都道府県}/{市区町村}.json` → キー `"ja/{都道府県}/{市区町村}"`
+- 各市区町村 JSON から **`csv_ranges` を除去**（レベル8時に HTTP で再取得）
+- 推定サイズ: ~25〜30 MB（非圧縮）
+
+### 7.6 コーディング規約の適用方針
+
+| レイヤー | 規約準拠 |
+|---|---|
+| `main-gas.ts`（新規・GAS インターフェース層）| **完全準拠**（IIFE、JSDoc、`for...of`、命名規則）|
+| `tools/build-bundle.ts`（新規ツール）| **完全準拠** |
+| ポートされたアルゴリズムコード | **最低限**（`async` 除去・API 置換のみ。内部構造は元ソースを維持）|
+
+元ソースとの対照性を保つことで upstream の変更取り込みコストを下げる。
+
+### 7.7 テスト戦略
+
+**フレームワーク: `node:test`（元ソースと同じ。Jest ランナーは不使用）**
+
+```
+test/
+  helpers.ts              ← assertMatchCloseTo（既存流用）
+  main/
+    main.test.ts          ← 基本テスト 17件（GAS API モックで実行）
+    metadata.test.ts      ← メタデータフィールド検証
+  addresses/
+    addresses.csv         ← 7,190件のテストデータ（流用）
+    addresses.test.ts     ← 全件テスト（実バンドル or モック）
+```
+
+GAS API のモック（テスト冒頭で差し込み）:
+
+```typescript
+// test/mocks/gas.ts
+export const DriveApp = { getFileById: (id) => ({ getBlob: () => ({ getDataAsString: () => JSON.stringify(testBundle) }) }) };
+export const UrlFetchApp = { fetch: (url, opts) => mockHttpResponse(url, opts) };
+export const Utilities = { parseCsv: (text) => text.split('\n').map(r => r.split(',')) };
+```
+
+Claude Code はモックベーステストをそのまま実行可能。実GAS環境テストは clasp push 後に手動確認。
+
+### 7.8 実装フェーズ
+
+| フェーズ | 内容 | 工数感 |
+|---|---|---|
+| **1** | pure ユーティリティ移植（`zen2han` / `kan2num` / `patchAddr` / `dict` / `prenormalize`）+ テスト | 小 |
+| **2** | `cacheRegexes.ts` 書き換え（LRU→Map / async除去）+ レベル1〜3 正規化の同期化 | 中 |
+| **3** | `tools/build-bundle.ts` 作成 + Drive バンドル読み込み実装（`main-gas.ts`）| 中 |
+| **4** | レベル8実装（UrlFetchApp + Range + Utilities.parseCsv）| 中 |
+| **5** | `addresses.csv` 7,190件での検証 + 実GAS環境での動作確認 | 中 |
+
+---
+
+## 8. 結論
 
 | 移植対象 | 判定 | 備考 |
 |---|---|---|
