@@ -62,14 +62,14 @@ Sandbox 用は別ディレクトリ(`sandbox/`) で同じ手順を `SalesforceJW
    - **Use Digital Signatures** にチェックを入れ、`certificate.crt` をアップロード
    - OAuth Scopes:
      - `Manage user data via APIs (api)`
-     - `Perform requests at any time (refresh_token, offline_access)`
-4. 保存後、**Consumer Key / Consumer Secret** を控える(Consumer Key だけ使用)
+     - 必要に応じて `Perform requests at any time (refresh_token, offline_access)` (JWT Bearer Flow 自体は refresh token を使わないため、最小権限を優先するなら `api` のみで動作確認)
+4. 保存後、**Consumer Key** を控える (JWT Bearer Flow では Consumer Secret は使用しない)
 
 ### 2.2 OAuth Policy を設定
 
 1. 作成した External Client App → **Policies** → **OAuth Policies**
 2. **Permitted Users**: `Admin approved users are pre-authorized`
-3. **IP Relaxation**: 環境に合わせて選択(GAS は固定 IP を持たないので通常は緩める)
+3. **IP Relaxation**: GAS は送信元 IP を固定しづらいため IP 制限を厳格に使う構成とは相性が悪い。必要に応じて緩和し、その代わり Integration User の権限最小化・専用ユーザー化・本番/Sandbox の鍵分離でリスクを抑える。
 
 ### 2.3 Integration User を割り当てる
 
@@ -126,6 +126,7 @@ awk '{printf "%s\\n", $0}' private_key_pkcs8.pem
 > ❌ https://yourcompany.my.salesforce.com/                          ← trailing slash
 > ❌ https://yourcompany.my.salesforce.com/services/oauth2/token     ← endpoint 混入
 > ❌ https://yourcompany.lightning.force.com                         ← Lightning URL
+> ❌ https://Yourcompany.My.Salesforce.com                           ← 大文字混入
 > ❌ http://yourcompany.my.salesforce.com                            ← http://
 > ```
 

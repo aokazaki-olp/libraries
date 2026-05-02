@@ -125,17 +125,22 @@ const runSfAuthValidationTests = () => {
     }), 'tokenHost');
   });
 
-  test('tokenHost に trailing slash を付けると正規化されて成功', () => {
-    const transport = createFakeTransport({
-      status: 200,
-      body: { access_token: 'a', instance_url: 'i' }
-    });
-    const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(
-      { ...validOpts(), tokenHost: 'https://acme.my.salesforce.com/' },
-      { transport, signer }
-    );
-    assertEqual(transport.getCalls()[0].url, 'https://acme.my.salesforce.com/services/oauth2/token');
+  test('tokenHost の trailing slash は TypeError で弾かれる', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(), tokenHost: 'https://acme.my.salesforce.com/'
+    }), 'trailing slash');
+  });
+
+  test('tokenHost に大文字が含まれると TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(), tokenHost: 'https://Acme.My.Salesforce.com'
+    }), '小文字');
+  });
+
+  test('tokenHost に Lightning URL を渡すと TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(), tokenHost: 'https://acme.lightning.force.com'
+    }), 'Lightning');
   });
 
   test('tokenHost に full endpoint を渡すと TypeError', () => {
@@ -344,6 +349,27 @@ const runSfAuthErrorTests = () => {
       () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
       'access_token'
     );
+  });
+
+  test('エラー時の HttpError.request.body には JWT assertion が含まれない (redacted)', () => {
+    const transport = createFakeTransport({
+      status: 400,
+      body: { error: 'invalid_grant', error_description: 'bad' }
+    });
+    const signer = createFakeSigner();
+    let captured;
+    try {
+      SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    } catch (e) {
+      captured = e;
+    }
+    if (!captured || captured.name !== 'HttpError') {
+      throw new Error('HttpError がスローされていない');
+    }
+    const loggedBody = captured.request?.body;
+    if (!loggedBody || loggedBody.assertion !== '[REDACTED]') {
+      throw new Error('assertion が redacted されていない: ' + JSON.stringify(loggedBody));
+    }
   });
 
   test('200 で instance_url が欠落していたら明示的にエラー', () => {

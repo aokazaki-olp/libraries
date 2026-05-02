@@ -34,24 +34,45 @@ const SalesforceAuth = (() => {
   });
 
   /**
-   * tokenHost の形式不正を早期検知する。
-   * trailing slash / full endpoint 混入 / Lightning URL の誤指定を防ぐ。
+   * tokenHost の形式不正を早期検知する(fail-fast)。
+   * 暗黙の値変換は行わず、誤入力は TypeError で弾く。
    */
   const normalizeTokenHost = (host) => {
-    if (typeof host !== 'string' || host === '') {
+    if (typeof host !== 'string') {
       throw new TypeError(
         'tokenHost には組織の My Domain URL (string) を指定してください ' +
         '(例: https://yourcompany.my.salesforce.com)'
       );
     }
-    const normalized = host.trim().replace(/\/+$/, '');
-    if (!/^https:\/\/[^/]+$/.test(normalized)) {
+    const raw = host.trim();
+    if (raw === '') {
       throw new TypeError(
-        'tokenHost にはホスト部のみを指定してください ' +
-        '(/services/oauth2/token や Lightning URL は指定不可)。received: ' + host
+        'tokenHost には組織の My Domain URL を指定してください ' +
+        '(例: https://yourcompany.my.salesforce.com)'
       );
     }
-    return normalized;
+    if (raw !== raw.toLowerCase()) {
+      throw new TypeError(
+        'tokenHost は全て小文字で指定してください。received: ' + host
+      );
+    }
+    if (raw.endsWith('/')) {
+      throw new TypeError(
+        'tokenHost には trailing slash を含めないでください。received: ' + host
+      );
+    }
+    if (raw.includes('.lightning.force.com')) {
+      throw new TypeError(
+        'tokenHost に Lightning URL は指定できません。My Domain URL を指定してください。received: ' + host
+      );
+    }
+    if (!/^https:\/\/[^/]+$/.test(raw)) {
+      throw new TypeError(
+        'tokenHost にはホスト部のみを指定してください ' +
+        '(/services/oauth2/token は指定不可)。received: ' + host
+      );
+    }
+    return raw;
   };
 
   /**
@@ -170,7 +191,13 @@ const SalesforceAuth = (() => {
     };
 
     const rawResponse = transport.fetch(url, fetchOptions);
-    const response = HttpCore.interpretResponse(rawResponse, { url, body: fetchOptions.payload });
+    // assertion は署名済み JWT で access_token と交換可能な credential のため、
+    // HttpError 経由でログ/通知に乗らないよう redact してから interpretResponse に渡す。
+    const redactedBody = {
+      grant_type: fetchOptions.payload.grant_type,
+      assertion: '[REDACTED]'
+    };
+    const response = HttpCore.interpretResponse(rawResponse, { url, body: redactedBody });
 
     const accessToken = response.body?.access_token;
     const instanceUrl = response.body?.instance_url;
