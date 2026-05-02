@@ -70,7 +70,8 @@ const SalesforceApiClient = (() => {
 
     // デコレータ適用順 (内側 → 外側): Bearer → Retry → Logger
     // この順序により以下が成立する:
-    //   - Logger は最外で全試行(認証失敗・リトライ含む)を観測できる
+    //   - Logger は最外で Retry が最終的に返した 1 回分(成功/失敗)を観測する
+    //     (個別のリトライ試行は withRetry 内部の logger が出力)
     //   - Logger 通過時点では Authorization ヘッダがまだ付いていないため、
     //     access_token が誤ってログに流出することがない (意図的設計)
     //   - Retry は認証付きリクエストを再送できる
