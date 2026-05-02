@@ -11,7 +11,7 @@
  *   - 本体クライアント(SalesforceApiClient)は本モジュールを知らない(疎結合)
  *   - token endpoint への通信は HttpCore.createTransport + withRetry + withLogger を経由
  *     (定期トリガー運用での一時障害を吸収・401/invalid_grant 調査時のログを確保)
- *   - テスタビリティ確保のため第 2 引数 deps で transport / signer を注入可能
+ *   - テスタビリティ確保のため第 2 引数 dependencies で transport / signer を注入可能
  *     (ApiClient.createClient({ transport }) と同じパターン)
  *   - iss/sub/aud は ASCII 想定(External Client App key / username / URL)
  *   - tokenHost は組織固有 My Domain URL を必須とする
@@ -120,37 +120,37 @@ const SalesforceAuth = (() => {
    * test.salesforce.com を固定で使う方式が動作しないため、組織固有の
    * My Domain URL を tokenHost に必ず指定すること。
    *
-   * @param {Object} opts
-   * @param {string} opts.consumerKey
+   * @param {Object} options
+   * @param {string} options.consumerKey
    *   External Client App / Connected App の Consumer Key。
-   * @param {string} opts.username
+   * @param {string} options.username
    *   Salesforce Username。メールアドレスと異なる場合がある。
    *   設定 → ユーザー → 「ユーザー名」列の値を使用すること。
    *   (例: integration@example.com.prod)
-   * @param {string} opts.privateKey
+   * @param {string} options.privateKey
    *   PEM 形式の RSA 秘密鍵。
    *   GAS の Utilities.computeRsaSha256Signature では PKCS#8 形式が必須
    *   (`-----BEGIN PRIVATE KEY-----` で始まること)。
    *   PKCS#1 (`BEGIN RSA PRIVATE KEY`) の場合は事前変換が必要:
    *     openssl pkcs8 -topk8 -nocrypt -in key.pem -out key_pkcs8.pem
-   * @param {string} opts.tokenHost
+   * @param {string} options.tokenHost
    *   組織固有の My Domain URL。ホスト部のみ指定する。
    *   - 含めない: /services/oauth2/token、trailing slash
    *   - 指定不可: Lightning URL (.lightning.force.com)
    *   - 本番例:    https://yourcompany.my.salesforce.com
    *   - Sandbox例: https://yourcompany--sbx.sandbox.my.salesforce.com
-   * @param {Object} [opts.logger] LoggerFacade 互換ロガー
-   * @param {number} [opts.maxRetries] 最大リトライ回数 (デフォルト: 3)
-   * @param {number} [opts.baseDelayMs] リトライ基本遅延ミリ秒 (デフォルト: 500)
-   * @param {Object} [deps] 依存注入(テスト用、本番でも使用可)
-   * @param {Object} [deps.transport] { fetch(url, options) } を持つトランスポート(注入時は retry/logger も呼び出し側責務)
-   * @param {Object} [deps.signer] { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } (デフォルト: Utilities)
+   * @param {Object} [options.logger] LoggerFacade 互換ロガー
+   * @param {number} [options.maxRetries] 最大リトライ回数 (デフォルト: 3)
+   * @param {number} [options.baseDelayMs] リトライ基本遅延ミリ秒 (デフォルト: 500)
+   * @param {Object} [dependencies] 依存注入(テスト用、本番でも使用可)
+   * @param {Object} [dependencies.transport] { fetch(url, options) } を持つトランスポート(注入時は retry/logger も呼び出し側責務)
+   * @param {Object} [dependencies.signer] { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } (デフォルト: Utilities)
    * @returns {{ accessToken: string, instanceUrl: string }}
    * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
    * @throws {Error} token endpoint が非 2xx を返した場合 (HttpError, HttpCore.interpretResponse 経由)
    * @throws {Error} レスポンスに access_token / instance_url が欠落していた場合
    */
-  const getAccessTokenByJwt = (opts = {}, deps = {}) => {
+  const getAccessTokenByJwt = (options = {}, dependencies = {}) => {
     const {
       consumerKey,
       username,
@@ -159,7 +159,7 @@ const SalesforceAuth = (() => {
       logger,
       maxRetries = CONFIG.DEFAULT_MAX_RETRIES,
       baseDelayMs = CONFIG.DEFAULT_BASE_DELAY_MS
-    } = opts;
+    } = options;
     if (typeof consumerKey !== 'string' || consumerKey === '') {
       throw new TypeError('consumerKey には External Client App の Consumer Key (string) を指定してください');
     }
@@ -171,8 +171,8 @@ const SalesforceAuth = (() => {
     }
     const audience = normalizeTokenHost(tokenHost);
 
-    const transport = deps.transport ?? buildDefaultTransport(logger, { maxRetries, baseDelayMs });
-    const signer = deps.signer ?? Utilities;
+    const transport = dependencies.transport ?? buildDefaultTransport(logger, { maxRetries, baseDelayMs });
+    const signer = dependencies.signer ?? Utilities;
     const url = `${audience}/services/oauth2/token`;
     const jwt = buildJwt(signer, { consumerKey, username, audience, privateKey });
 
