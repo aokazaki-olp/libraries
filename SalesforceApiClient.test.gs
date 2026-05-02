@@ -220,6 +220,192 @@ const runSfApiErrorTests = () => {
   });
 };
 
+const runSfApiEdgeCaseTests = () => {
+  const { suite, test, assertEqual, assertTrue, assertThrows } = TestRunner;
+
+  suite('SalesforceApiClient エッジケース');
+
+  test('instanceUrl が数値だと TypeError', () => {
+    assertThrows(() => SalesforceApiClient.create(123, 'tok'), 'instanceUrl');
+  });
+
+  test('accessToken が数値だと TypeError', () => {
+    assertThrows(() => SalesforceApiClient.create('https://x', 123), 'access token');
+  });
+
+  test('apiVersion: undefined ならデフォルト v60.0', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok', { apiVersion: undefined });
+      c.get('/query', { q: 'X' });
+      assertTrue(fetchMock.getCalls()[0].url.includes('/services/data/v60.0/'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('apiVersion が数値だと TypeError', () => {
+    assertThrows(() => SalesforceApiClient.create('https://x', 'tok', { apiVersion: 60 }), 'apiVersion');
+  });
+
+  test('5xx でリトライされる (503 → 200)', () => {
+    const fetchMock = MockSfUrlFetchApp.setup([
+      { status: 503, body: 'unavailable' },
+      { status: 200, body: { records: [] } }
+    ]);
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok');
+      const result = c.get('/query', { q: 'X' });
+      assertTrue(Array.isArray(result.records));
+      assertEqual(fetchMock.getCalls().length, 2);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('429 でリトライされる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup([
+      { status: 429, body: 'rate limited' },
+      { status: 200, body: { ok: true } }
+    ]);
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok');
+      c.get('/query', { q: 'X' });
+      assertEqual(fetchMock.getCalls().length, 2);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('maxRetries: 1 でリトライ回数を上書きできる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup([
+      { status: 503 }, { status: 503 }, { status: 503 }, { status: 503 }
+    ]);
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok', { maxRetries: 1, baseDelayMs: 0 });
+      assertThrows(() => c.get('/query', { q: 'X' }), 'リトライ');
+      // 初回 + 1 リトライ = 2 回
+      assertEqual(fetchMock.getCalls().length, 2);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('500 系エラーはリトライ上限到達後に伝播', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 500, body: 'oops' });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok', { maxRetries: 2, baseDelayMs: 0 });
+      assertThrows(() => c.get('/query', { q: 'X' }), 'リトライ');
+      assertEqual(fetchMock.getCalls().length, 3);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('POST で JSON ボディが送られ Content-Type が JSON', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 201, body: { id: '001xxx', success: true } });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok');
+      const result = c.post('/sobjects/Account', { Name: 'Acme' });
+      assertEqual(result.id, '001xxx');
+      const call = fetchMock.getCalls()[0];
+      assertEqual(call.options.method, 'POST');
+      assertTrue(call.options.payload.includes('"Name":"Acme"'));
+      const ct = call.options.headers['Content-Type'] || call.options.contentType;
+      assertTrue(typeof ct === 'string' && ct.toLowerCase().startsWith('application/json'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('PATCH で sObject 更新できる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 204, body: '' });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok');
+      c.patch('/sobjects/Account/001xxx', { Name: 'New' });
+      const call = fetchMock.getCalls()[0];
+      assertEqual(call.options.method, 'PATCH');
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('DELETE で sObject 削除できる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 204, body: '' });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok');
+      c.delete('/sobjects/Account/001xxx');
+      const call = fetchMock.getCalls()[0];
+      assertEqual(call.options.method, 'DELETE');
+      assertEqual(call.options.headers.Authorization, 'Bearer tok');
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('.use() で SOQL ヘルパを注入できる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({
+      status: 200, body: { totalSize: 0, done: true, records: [] }
+    });
+    try {
+      const c = SalesforceApiClient
+        .create('https://x', 'tok')
+        .use('queryAll', client => soql => client.get('/query', { q: soql }));
+      const result = c.queryAll('SELECT Id FROM Account');
+      assertEqual(result.totalSize, 0);
+      const call = fetchMock.getCalls()[0];
+      assertTrue(call.url.includes('q=' + encodeURIComponent('SELECT Id FROM Account')));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('.extend() で transport デコレータを追加できる', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      let extendCalled = false;
+      const c = SalesforceApiClient
+        .create('https://x', 'tok')
+        .extend(transport => {
+          extendCalled = true;
+          return {
+            fetch: (url, options) => transport.fetch(url, {
+              ...options,
+              headers: { ...(options.headers || {}), 'X-Custom': 'yes' }
+            })
+          };
+        });
+      c.get('/query', { q: 'X' });
+      assertTrue(extendCalled);
+      assertEqual(fetchMock.getCalls()[0].options.headers['X-Custom'], 'yes');
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('instanceUrl の末尾複数スラッシュも 1 本に正規化される', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const c = SalesforceApiClient.create('https://acme.my.salesforce.com///', 'tok');
+      c.get('/query', { q: 'X' });
+      assertTrue(!fetchMock.getCalls()[0].url.includes('salesforce.com//services'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('apiVersion に複数桁マイナーも許容', () => {
+    const fetchMock = MockSfUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const c = SalesforceApiClient.create('https://x', 'tok', { apiVersion: 'v100.0' });
+      c.get('/query', { q: 'X' });
+      assertTrue(fetchMock.getCalls()[0].url.includes('/services/data/v100.0/'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+};
+
 function runAllSalesforceApiClientTests() {
   TestRunner.reset();
 
@@ -243,6 +429,9 @@ function runAllSalesforceApiClientTests() {
 
   console.log('Running SF Api エラー伝播 tests...');
   runSfApiErrorTests();
+
+  console.log('Running SF Api エッジケース tests...');
+  runSfApiEdgeCaseTests();
 
   return TestRunner.run();
 }
