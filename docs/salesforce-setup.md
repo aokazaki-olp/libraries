@@ -62,14 +62,14 @@ Sandbox 用は別ディレクトリ(`sandbox/`) で同じ手順を `SalesforceJW
    - **Use Digital Signatures** にチェックを入れ、`certificate.crt` をアップロード
    - OAuth Scopes:
      - `Manage user data via APIs (api)`
-     - 必要に応じて `Perform requests at any time (refresh_token, offline_access)` (JWT Bearer Flow 自体は refresh token を使わないため、最小権限を優先するなら `api` のみで動作確認)
+     - JWT Bearer Flow 自体は refresh token を使わないため `api` のみで本番運用可能。`Perform requests at any time (refresh_token, offline_access)` は Authorization Code Flow 等を併用する場合のみ追加する。
 4. 保存後、**Consumer Key** を控える (JWT Bearer Flow では Consumer Secret は使用しない)
 
 ### 2.2 OAuth Policy を設定
 
 1. 作成した External Client App → **Policies** → **OAuth Policies**
 2. **Permitted Users**: `Admin approved users are pre-authorized`
-3. **IP Relaxation**: GAS は送信元 IP を固定しづらいため IP 制限を厳格に使う構成とは相性が悪い。必要に応じて緩和し、その代わり Integration User の権限最小化・専用ユーザー化・本番/Sandbox の鍵分離でリスクを抑える。
+3. **IP Relaxation**: GAS の送信元 IP は Google のサーバープールから動的割当のため、固定 IP の許可リスト運用は現実的でない。**Relax IP restrictions** を選択し、代替策として Integration User の権限最小化・専用ユーザー化・本番/Sandbox の鍵分離・証明書ローテーションでリスクを管理する。
 
 ### 2.3 Integration User を割り当てる
 
@@ -173,11 +173,7 @@ function helloSalesforce() {
   });
 
   // 3) SOQL を 1 件投げる
-  const res = sf.call({
-    method: 'GET',
-    endpoint: 'query',
-    query: { q: 'SELECT Id, Name FROM Account LIMIT 1' }
-  });
+  const res = sf.get('/query', { q: 'SELECT Id, Name FROM Account LIMIT 1' });
   console.log(res.body);
 }
 ```
@@ -230,7 +226,7 @@ function getCachedToken(env = 'prod') {
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| `app_not_found` | `aud` / token endpoint に `login.salesforce.com` 等を使っている。Spring '26 以降の External Client App は My Domain URL が必要 | `tokenHost` に組織の My Domain URL を指定する |
+| `app_not_found` | ① `aud` / token endpoint に `login.salesforce.com` 等を使用 (Spring '26 以降の External Client App は My Domain URL が必要)<br>② External Client App にプロファイル/権限セットが割り当たっていない | ① `tokenHost` に My Domain URL を指定<br>② External Client App の Manage Profiles / Permission Sets で Integration User のプロファイルを追加 |
 | `user hasn't approved this consumer` | `sub` (= `username` opt) にメールアドレスを指定している。Salesforce Username と異なる場合がある | 設定 → ユーザー → 「ユーザー名」列の正確な値を `username` に渡す |
 | `Invalid argument: key` | 秘密鍵が PKCS#1 形式 / 改行が壊れている | PKCS#8 に変換 + Script Properties から取り出した後に `replace(/\\n/g, '\n')` |
 | `tokenHost にはホスト部のみを指定してください` | trailing slash / `/services/oauth2/token` / Lightning URL | ホスト部のみに修正 |

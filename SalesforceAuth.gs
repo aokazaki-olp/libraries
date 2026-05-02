@@ -68,8 +68,8 @@ const SalesforceAuth = (() => {
     }
     if (!/^https:\/\/[^/]+$/.test(raw)) {
       throw new TypeError(
-        'tokenHost にはホスト部のみを指定してください ' +
-        '(/services/oauth2/token は指定不可)。received: ' + host
+        'tokenHost は https:// で始まるホスト部のみを指定してください ' +
+        '(http:// 不可、/services/oauth2/token などのパス指定不可)。received: ' + host
       );
     }
     return raw;
@@ -185,18 +185,19 @@ const SalesforceAuth = (() => {
       method: 'post',
       payload: {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        // 署名済み JWT。access_token と交換可能な credential のためログ出力禁止。
         assertion: jwt
       },
       muteHttpExceptions: true
     };
-
-    const rawResponse = transport.fetch(url, fetchOptions);
-    // assertion は署名済み JWT で access_token と交換可能な credential のため、
-    // HttpError 経由でログ/通知に乗らないよう redact してから interpretResponse に渡す。
+    // 上記 assertion が HttpError.request.body 経由でログ/通知に乗らないよう、
+    // interpretResponse には redacted 版を渡す。
     const redactedBody = {
       grant_type: fetchOptions.payload.grant_type,
       assertion: '[REDACTED]'
     };
+
+    const rawResponse = transport.fetch(url, fetchOptions);
     const response = HttpCore.interpretResponse(rawResponse, { url, body: redactedBody });
 
     const accessToken = response.body?.access_token;
