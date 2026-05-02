@@ -100,7 +100,8 @@ const context = {
   encodeURIComponent,
   decodeURIComponent,
   encodeURI,
-  decodeURI
+  decodeURI,
+  Buffer
 };
 
 // globalThis を自己参照にする
@@ -131,6 +132,8 @@ loadAndRun('resolveSheet.gs');
 loadAndRun('loadAsObjects.gs');
 loadAndRun('GoogleSearchConsoleApiClient.gs');
 loadAndRun('GBizInfoApiClient.gs');
+loadAndRun('SalesforceApiClient.gs');
+loadAndRun('SalesforceAuth.gs');
 
 // テストファイル（依存順に読み込み）
 // HttpClient.test.gs 内でグローバルな TestRunner, MockTransport などが定義される
@@ -144,6 +147,8 @@ loadAndRun('resolveSheet.test.gs');
 loadAndRun('loadAsObjects.test.gs');
 loadAndRun('GoogleSearchConsoleApiClient.test.gs');
 loadAndRun('GBizInfoApiClient.test.gs');
+loadAndRun('SalesforceApiClient.test.gs');
+loadAndRun('SalesforceAuth.test.gs');
 
 // ============================================================================
 // テスト実行
@@ -159,7 +164,9 @@ const suites = [
   { name: 'resolveSheet', fn: 'runAllResolveSheetTests()' },
   { name: 'loadAsObjects', fn: 'runAllLoadAsObjectsTests()' },
   { name: 'GoogleSearchConsoleApiClient', fn: 'runAllGscTests()' },
-  { name: 'GBizInfoApiClient', fn: 'runAllGBizInfoTests()' }
+  { name: 'GBizInfoApiClient', fn: 'runAllGBizInfoTests()' },
+  { name: 'SalesforceApiClient', fn: 'runAllSalesforceApiClientTests()' },
+  { name: 'SalesforceAuth', fn: 'runAllSalesforceAuthTests()' }
 ];
 
 const allResults = [];

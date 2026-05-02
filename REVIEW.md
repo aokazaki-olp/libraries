@@ -9,6 +9,7 @@
 
 | 版 | 対象 | レビュー日 | 新規指摘 | 要対応残 |
 |---|---|---|---|---|
+| [第11版](#第11版) | PR #18 — SalesforceApiClient + SalesforceAuth | 2026-05-02 | H×2, M×4, L×4 | **0件** |
 | [第10版](#第10版) | PR #17 — GBizInfoApiClient | 2026-05-02 | L×2 | **0件** |
 | [第9版](#第9版) | SlackFilters.gs / SlackResolvers.gs | 2026-02-25 | H×1, M×1, L×5 | **0件** |
 | [第8版](#第8版) | PR #7 — loadAsObjects Range サポート | 2026-02-08 | H×1 (R-1) | **0件** |
@@ -644,3 +645,112 @@ GAS の `Range` は `getA1Notation()` を持ち `getSheetId()` を持たない�
 - **「切るだけ」設計原則**が明確に定義・徹底されている
 
 **PR #7 判定**: マージ可。要対応の指摘事項 0件。
+
+---
+
+<a name="第11版"></a>
+
+## 第11版
+
+**対象**: PR #18 — `feat(Salesforce): API クライアント + JWT Bearer Flow 認証ヘルパを追加`
+**レビュー日**: 2026-05-02
+**ブランチ**: `feature/salesforce-api-client`
+**追加ファイル**: `SalesforceApiClient.gs` (67行) / `SalesforceApiClient.test.gs` (233行) / `SalesforceAuth.gs` (125行) / `SalesforceAuth.test.gs` (295行) / `test-runner.js` (+9/-2)
+
+### 1. 総評
+
+`PHILOSOPHY.md` の規律（§4.2 プロトコル層 / §4.3 ドメイン層線引き / §6.5 OAuth 別動線 / §3.1 依存方向 / §3.2 immutable な extend / §6.3 素の JSON）にいずれも適合。`HttpCore` / `ApiClient` の既存の継ぎ目を新規概念ゼロで合成しており、`PHILOSOPHY.md §2.2` の「機能ではなく継ぎ目」を理想的に活用している。マージ可能な品質。ただし下記 H×2 / M×4 を直しておきたい。
+
+### 2. 設計評価
+
+| 観点 | 評価 |
+|---|---|
+| プロトコル層 / ドメイン層線引き（§4.3） | ✅ SOQL ヘルパや sObject CRUD を生やしていない |
+| 初期化の軽さ（§1.2） | ✅ `SalesforceApiClient.create(instanceUrl, accessToken)` の 1 行 |
+| OAuth 別動線（§6.5） | ✅ `SalesforceAuth` を別ファイル化、戻り値は素のオブジェクト |
+| 依存逆転（§3.1） | ✅ Client ↔ Auth は互いを知らない |
+| テスタビリティ | ✅ `getAccessTokenByJwt(opts, deps)` で transport / signer 注入可 |
+| イミュータブル合成（§3.2） | ✅ `extend()` を 3 段重ねている |
+| エラー戦略（CODING_RULES §5.2） | ✅ 事前条件 `TypeError` / HTTP は `HttpError` |
+
+### 3. 指摘事項
+
+#### SF-H1 [H]: `SalesforceAuth._defaultTransport` シングルトンが logger を初回呼び出しに永久束縛
+
+[SalesforceAuth.gs:38-48](SalesforceAuth.gs#L38-L48)
+
+```javascript
+let _defaultTransport = null;
+const getDefaultTransport = logger => {
+  if (_defaultTransport === null) {
+    _defaultTransport = HttpCore.withRetry(HttpCore.createTransport(), {
+      maxRetries: DEFAULTS.MAX_RETRIES,
+      baseDelayMs: DEFAULTS.BASE_DELAY_MS,
+      logger          // ← 初回呼び出し時の logger に永久束縛
+    });
+  }
+  return _defaultTransport;
+};
+```
+
+2 回目以降の呼び出しで異なる `logger` を渡してもリトライ警告ログが期待先に流れない。GAS は実行ごとにプロセスが死ぬのでキャッシュの利益も薄い。**毎回構築する形に直す**。
+
+#### SF-H2 [H]: `SalesforceAuth` のデフォルト transport に `withLogger` が無い
+
+[SalesforceAuth.gs:41-45](SalesforceAuth.gs#L41-L45)
+
+`SalesforceApiClient.create` は `withRetry` の外側に `withLogger` を被せている [SalesforceApiClient.gs:58-63](SalesforceApiClient.gs#L58-L63) のに対し、`SalesforceAuth` 側は `withRetry` のみ。token 取得の 401 / `invalid_grant` 調査時に可視化されないので、本体クライアントとログ粒度を揃えたい。
+
+#### SF-M1 [M]: `responseHandler` が body のみ返すことが JSDoc に書かれていない
+
+[SalesforceApiClient.gs:27](SalesforceApiClient.gs#L27)
+
+`status` / `headers`（`Sforce-Limit-Info` / `X-Sfdc-Request-Id` 等）は捨てられる暗黙仕様。JSDoc に明記し、必要時は `extend` または独自 `responseHandler` で取得する旨を書く。
+
+#### SF-M2 [M]: decorator 順序の意図がコメント無し
+
+[SalesforceApiClient.gs:57-63](SalesforceApiClient.gs#L57-L63)
+
+合成順は `withLogger(withRetry(withBearerAuth(base)))`。結果として `withLogger` 通過時には `Authorization` ヘッダが**まだ付いていない**ため token がログに流出しない。これは望ましい挙動だが意図的設計か偶然かが読めない。1 行コメントで意図を保全する。
+
+#### SF-M3 [M]: `getAccessTokenByJwt` が `access_token` 欠落時に黙って `undefined` を返す
+
+[SalesforceAuth.gs:118-121](SalesforceAuth.gs#L118-L121)
+
+200 で `body.access_token` が無いケースで `accessToken: undefined` のまま `SalesforceApiClient.create(instanceUrl, undefined)` に渡ると `TypeError` が**遠くで**落ちる。明示エラー化（コスト極小）。
+
+#### SF-M4 [M]: `CONFIG.DEFAULT_*` が options で override 不能
+
+[SalesforceApiClient.gs:21-25](SalesforceApiClient.gs#L21-L25)
+
+`apiVersion` のみ override 可、`MAX_RETRIES` / `BASE_DELAY_MS` は固定。命名と挙動の整合のために `DEFAULT_` プレフィックスを外すか、override パスを通すか統一する。
+
+#### SF-L1 [L]: `apiVersion` の形式チェック無し（`'60.0'` がそのまま URL に乗る）
+
+[SalesforceApiClient.gs:48](SalesforceApiClient.gs#L48)
+
+#### SF-L2 [L]: 利用例 JSDoc に `.use()` パターンが無い
+
+GoogleSearchConsoleApiClient 等と地続きの肌触りのため、`PHILOSOPHY.md §4.2` の `.use()` パターンを 1 例添える。
+
+#### SF-L3 [L]: `signingInput === \`${headerB64}.${claimsB64}\`` の直接検証がテスト未実装
+
+[SalesforceAuth.test.gs:234-247](SalesforceAuth.test.gs#L234-L247) では `signingInput.includes('.')` のみで、JWT 構築ロジックの将来リグレッション検知には弱い。
+
+#### SF-L4 [L]: 生 transport を直叩きする理由がコメント無し
+
+[SalesforceAuth.gs:115-116](SalesforceAuth.gs#L115-L116)
+
+`ApiClient.createClient.call` を経由すると `JSON.stringify(body)` されてしまうため意図的に生 transport を使う設計。コメントで保全。
+
+### 4. コーディング規則適合
+
+- ファイルヘッダー JSDoc（CODING_RULES §2.2）✅
+- `TypeError` メッセージ形式（§5.2-A）✅ `'... には ... を指定してください'`
+- ブロックスタイル / `forEach` / `var` 不使用（§4.1）✅
+- `??` / 分割代入 / デフォルト引数（§4.2）✅
+
+### 5. 判定
+
+**マージ可能**。ただし SF-H1 / SF-H2 / SF-M1 / SF-M3 は merge 前に解消推奨。SF-M2 / SF-M4 / SF-L* は後追いでも可。
+
