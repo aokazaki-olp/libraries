@@ -13,26 +13,46 @@
  *     (定期トリガー運用での一時障害を吸収・401/invalid_grant 調査時のログを確保)
  *   - テスタビリティ確保のため第 2 引数 deps で transport / signer を注入可能
  *     (ApiClient.createClient({ transport }) と同じパターン)
- *   - iss/sub/aud は ASCII 想定(Connected App key / username / URL)
+ *   - iss/sub/aud は ASCII 想定(External Client App key / username / URL)
+ *   - tokenHost は組織固有 My Domain URL を必須とする
+ *     (Spring '26 以降の External Client Apps では login/test.salesforce.com 固定では動作しない)
  *
  * 使用例:
  *   const { accessToken, instanceUrl } = SalesforceAuth.getAccessTokenByJwt({
  *     consumerKey: 'XXX',
- *     username: 'user@example.com',
+ *     username: 'integration@example.com.prod',
  *     privateKey: '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----',
+ *     tokenHost: 'https://yourcompany.my.salesforce.com'
  *   });
  *   const sf = SalesforceApiClient.create(instanceUrl, accessToken);
  */
 const SalesforceAuth = (() => {
-  const TOKEN_HOST = Object.freeze({
-    PRODUCTION: 'https://login.salesforce.com',
-    SANDBOX: 'https://test.salesforce.com'
-  });
   const JWT_LIFETIME_SEC = 180; // 3 分以内が Salesforce の要件
   const CONFIG = Object.freeze({
     DEFAULT_MAX_RETRIES: 3,
     DEFAULT_BASE_DELAY_MS: 500
   });
+
+  /**
+   * tokenHost の形式不正を早期検知する。
+   * trailing slash / full endpoint 混入 / Lightning URL の誤指定を防ぐ。
+   */
+  const normalizeTokenHost = (host) => {
+    if (typeof host !== 'string' || host === '') {
+      throw new TypeError(
+        'tokenHost には組織の My Domain URL (string) を指定してください ' +
+        '(例: https://yourcompany.my.salesforce.com)'
+      );
+    }
+    const normalized = host.trim().replace(/\/+$/, '');
+    if (!/^https:\/\/[^/]+$/.test(normalized)) {
+      throw new TypeError(
+        'tokenHost にはホスト部のみを指定してください ' +
+        '(/services/oauth2/token や Lightning URL は指定不可)。received: ' + host
+      );
+    }
+    return normalized;
+  };
 
   /**
    * デフォルトトランスポートを構築する。呼び出し側の logger を毎回反映するため
@@ -75,11 +95,29 @@ const SalesforceAuth = (() => {
   /**
    * JWT Bearer Flow で access_token を取得する。
    *
+   * Spring '26 以降の External Client Apps では login.salesforce.com /
+   * test.salesforce.com を固定で使う方式が動作しないため、組織固有の
+   * My Domain URL を tokenHost に必ず指定すること。
+   *
    * @param {Object} opts
-   * @param {string} opts.consumerKey Connected App の Consumer Key
-   * @param {string} opts.username 連携ユーザーの username
-   * @param {string} opts.privateKey PEM 形式の RSA 秘密鍵
-   * @param {boolean} [opts.sandbox] true なら test.salesforce.com を使う
+   * @param {string} opts.consumerKey
+   *   External Client App / Connected App の Consumer Key。
+   * @param {string} opts.username
+   *   Salesforce Username。メールアドレスと異なる場合がある。
+   *   設定 → ユーザー → 「ユーザー名」列の値を使用すること。
+   *   (例: integration@example.com.prod)
+   * @param {string} opts.privateKey
+   *   PEM 形式の RSA 秘密鍵。
+   *   GAS の Utilities.computeRsaSha256Signature では PKCS#8 形式が必須
+   *   (`-----BEGIN PRIVATE KEY-----` で始まること)。
+   *   PKCS#1 (`BEGIN RSA PRIVATE KEY`) の場合は事前変換が必要:
+   *     openssl pkcs8 -topk8 -nocrypt -in key.pem -out key_pkcs8.pem
+   * @param {string} opts.tokenHost
+   *   組織固有の My Domain URL。ホスト部のみ指定する。
+   *   - 含めない: /services/oauth2/token、trailing slash
+   *   - 指定不可: Lightning URL (.lightning.force.com)
+   *   - 本番例:    https://yourcompany.my.salesforce.com
+   *   - Sandbox例: https://yourcompany--sbx.sandbox.my.salesforce.com
    * @param {Object} [opts.logger] LoggerFacade 互換ロガー
    * @param {number} [opts.maxRetries] 最大リトライ回数 (デフォルト: 3)
    * @param {number} [opts.baseDelayMs] リトライ基本遅延ミリ秒 (デフォルト: 500)
@@ -87,7 +125,7 @@ const SalesforceAuth = (() => {
    * @param {Object} [deps.transport] { fetch(url, options) } を持つトランスポート(注入時は retry/logger も呼び出し側責務)
    * @param {Object} [deps.signer] { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } (デフォルト: Utilities)
    * @returns {{ accessToken: string, instanceUrl: string }}
-   * @throws {TypeError} 必須パラメータ欠落
+   * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
    * @throws {Error} token endpoint が非 2xx を返した場合 (HttpError, HttpCore.interpretResponse 経由)
    * @throws {Error} レスポンスに access_token / instance_url が欠落していた場合
    */
@@ -96,24 +134,24 @@ const SalesforceAuth = (() => {
       consumerKey,
       username,
       privateKey,
-      sandbox = false,
+      tokenHost,
       logger,
       maxRetries = CONFIG.DEFAULT_MAX_RETRIES,
       baseDelayMs = CONFIG.DEFAULT_BASE_DELAY_MS
     } = opts;
     if (typeof consumerKey !== 'string' || consumerKey === '') {
-      throw new TypeError('consumerKey には Connected App の Consumer Key (string) を指定してください');
+      throw new TypeError('consumerKey には External Client App の Consumer Key (string) を指定してください');
     }
     if (typeof username !== 'string' || username === '') {
       throw new TypeError('username には Salesforce ユーザーの username (string) を指定してください');
     }
     if (typeof privateKey !== 'string' || privateKey === '') {
-      throw new TypeError('privateKey には PEM 形式の RSA 秘密鍵 (string) を指定してください');
+      throw new TypeError('privateKey には PEM 形式 (PKCS#8) の RSA 秘密鍵 (string) を指定してください');
     }
+    const audience = normalizeTokenHost(tokenHost);
 
     const transport = deps.transport ?? buildDefaultTransport(logger, { maxRetries, baseDelayMs });
     const signer = deps.signer ?? Utilities;
-    const audience = sandbox ? TOKEN_HOST.SANDBOX : TOKEN_HOST.PRODUCTION;
     const url = `${audience}/services/oauth2/token`;
     const jwt = buildJwt(signer, { consumerKey, username, audience, privateKey });
 
