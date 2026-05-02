@@ -244,6 +244,19 @@ const runSfAuthJwtStructureTests = () => {
     // signingInput は header.claims の連結
     assertTrue(recorded[0].signingInput.includes('.'));
   });
+
+  test('signingInput が JWT 先頭 2 パート(header.claims)と完全一致する', () => {
+    const transport = createFakeTransport({
+      status: 200,
+      body: { access_token: 'a', instance_url: 'i' }
+    });
+    const recorded = [];
+    const signer = createFakeSigner(recorded);
+    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    const assertion = transport.getCalls()[0].options.payload.assertion;
+    const parts = assertion.split('.');
+    assertEqual(recorded[0].signingInput, `${parts[0]}.${parts[1]}`);
+  });
 };
 
 const runSfAuthErrorTests = () => {
@@ -269,6 +282,30 @@ const runSfAuthErrorTests = () => {
     assertThrows(
       () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
       'HTTPエラー 500'
+    );
+  });
+
+  test('200 で access_token が欠落していたら明示的にエラー', () => {
+    const transport = createFakeTransport({
+      status: 200,
+      body: { instance_url: 'https://x' }
+    });
+    const signer = createFakeSigner();
+    assertThrows(
+      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      'access_token'
+    );
+  });
+
+  test('200 で instance_url が欠落していたら明示的にエラー', () => {
+    const transport = createFakeTransport({
+      status: 200,
+      body: { access_token: 'AT_xxx' }
+    });
+    const signer = createFakeSigner();
+    assertThrows(
+      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      'instance_url'
     );
   });
 };

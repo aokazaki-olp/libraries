@@ -140,6 +140,21 @@ const runSfApiBaseUrlTests = () => {
       fetchMock.restore();
     }
   });
+
+  test('apiVersion が形式違反だと TypeError', () => {
+    TestRunner.assertThrows(
+      () => SalesforceApiClient.create('https://x', 'tok', { apiVersion: '60.0' }),
+      'apiVersion'
+    );
+    TestRunner.assertThrows(
+      () => SalesforceApiClient.create('https://x', 'tok', { apiVersion: 'v60' }),
+      'apiVersion'
+    );
+    TestRunner.assertThrows(
+      () => SalesforceApiClient.create('https://x', 'tok', { apiVersion: 'latest' }),
+      'apiVersion'
+    );
+  });
 };
 
 const runSfApiAuthHeaderTests = () => {
