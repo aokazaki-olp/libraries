@@ -71,7 +71,7 @@ const createFakeTransport = (responses) => {
 
 const TEST_TOKEN_HOST = 'https://acme.my.salesforce.com';
 
-const validOpts = () => ({
+const validOptions = () => ({
   consumerKey: 'CONSUMER_KEY_XXX',
   username: 'user@example.com',
   privateKey: '-----BEGIN PRIVATE KEY-----\nFAKE\n-----END PRIVATE KEY-----',
@@ -127,39 +127,39 @@ const runSfAuthValidationTests = () => {
 
   test('tokenHost の trailing slash は TypeError で弾かれる', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(), tokenHost: 'https://acme.my.salesforce.com/'
+      ...validOptions(), tokenHost: 'https://acme.my.salesforce.com/'
     }), 'trailing slash');
   });
 
   test('tokenHost に大文字が含まれると TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(), tokenHost: 'https://Acme.My.Salesforce.com'
+      ...validOptions(), tokenHost: 'https://Acme.My.Salesforce.com'
     }), '小文字');
   });
 
   test('tokenHost に Lightning URL を渡すと TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(), tokenHost: 'https://acme.lightning.force.com'
+      ...validOptions(), tokenHost: 'https://acme.lightning.force.com'
     }), 'Lightning');
   });
 
   test('tokenHost に full endpoint を渡すと TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(),
+      ...validOptions(),
       tokenHost: 'https://acme.my.salesforce.com/services/oauth2/token'
     }), 'tokenHost');
   });
 
   test('tokenHost が http:// だと TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(),
+      ...validOptions(),
       tokenHost: 'http://acme.my.salesforce.com'
     }), 'tokenHost');
   });
 
   test('tokenHost が空文字だと TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      ...validOpts(),
+      ...validOptions(),
       tokenHost: ''
     }), 'tokenHost');
   });
@@ -180,7 +180,7 @@ const runSfAuthSuccessTests = () => {
       }
     });
     const signer = createFakeSigner();
-    const result = SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    const result = SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     assertEqual(result.accessToken, 'AT_xxx');
     assertEqual(result.instanceUrl, 'https://acme.my.salesforce.com');
   });
@@ -191,7 +191,7 @@ const runSfAuthSuccessTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     assertEqual(transport.getCalls()[0].url, `${TEST_TOKEN_HOST}/services/oauth2/token`);
   });
 
@@ -202,7 +202,7 @@ const runSfAuthSuccessTests = () => {
     });
     const signer = createFakeSigner();
     SalesforceAuth.getAccessTokenByJwt(
-      { ...validOpts(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
+      { ...validOptions(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
       { transport, signer }
     );
     assertEqual(
@@ -217,7 +217,7 @@ const runSfAuthSuccessTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     const payload = transport.getCalls()[0].options.payload;
     assertEqual(payload.grant_type, 'urn:ietf:params:oauth:grant-type:jwt-bearer');
     if (typeof payload.assertion !== 'string' || payload.assertion === '') {
@@ -237,7 +237,7 @@ const runSfAuthJwtStructureTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt({ ...validOpts(), ...overrides }, { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt({ ...validOptions(), ...overrides }, { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     const parts = assertion.split('.');
     return {
@@ -253,7 +253,7 @@ const runSfAuthJwtStructureTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     assertEqual(assertion.split('.').length, 3);
   });
@@ -292,9 +292,9 @@ const runSfAuthJwtStructureTests = () => {
     });
     const recorded = [];
     const signer = createFakeSigner(recorded);
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     assertEqual(recorded.length, 1);
-    assertEqual(recorded[0].privateKey, validOpts().privateKey);
+    assertEqual(recorded[0].privateKey, validOptions().privateKey);
     // signingInput は header.claims の連結
     assertTrue(recorded[0].signingInput.includes('.'));
   });
@@ -306,7 +306,7 @@ const runSfAuthJwtStructureTests = () => {
     });
     const recorded = [];
     const signer = createFakeSigner(recorded);
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     const parts = assertion.split('.');
     assertEqual(recorded[0].signingInput, `${parts[0]}.${parts[1]}`);
@@ -325,7 +325,7 @@ const runSfAuthErrorTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'HTTPエラー 400'
     );
   });
@@ -334,7 +334,7 @@ const runSfAuthErrorTests = () => {
     const transport = createFakeTransport({ status: 500, body: 'Internal Server Error' });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'HTTPエラー 500'
     );
   });
@@ -346,7 +346,7 @@ const runSfAuthErrorTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'access_token'
     );
   });
@@ -359,7 +359,7 @@ const runSfAuthErrorTests = () => {
     const signer = createFakeSigner();
     let captured;
     try {
-      SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+      SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     } catch (e) {
       captured = e;
     }
@@ -379,7 +379,7 @@ const runSfAuthErrorTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'instance_url'
     );
   });
@@ -411,7 +411,7 @@ const runSfAuthEdgeCaseTests = () => {
     );
   });
 
-  test('opts が undefined でも TypeError (consumerKey 欠落)', () => {
+  test('options が undefined でも TypeError (consumerKey 欠落)', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt(undefined), 'consumerKey');
   });
 
@@ -421,10 +421,10 @@ const runSfAuthEdgeCaseTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
-    const opts = transport.getCalls()[0].options;
-    assertEqual(opts.method, 'post');
-    assertEqual(opts.muteHttpExceptions, true);
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
+    const options = transport.getCalls()[0].options;
+    assertEqual(options.method, 'post');
+    assertEqual(options.muteHttpExceptions, true);
   });
 
   test('payload はオブジェクト形式 (form-urlencoded として GAS 側でエンコードされる)', () => {
@@ -433,10 +433,10 @@ const runSfAuthEdgeCaseTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
-    const opts = transport.getCalls()[0].options;
-    assertTrue(typeof opts.payload === 'object' && !Array.isArray(opts.payload));
-    assertTrue(typeof opts.payload.assertion === 'string');
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
+    const options = transport.getCalls()[0].options;
+    assertTrue(typeof options.payload === 'object' && !Array.isArray(options.payload));
+    assertTrue(typeof options.payload.assertion === 'string');
   });
 
   test('access_token が空文字でもエラー', () => {
@@ -446,7 +446,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'access_token'
     );
   });
@@ -458,7 +458,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'instance_url'
     );
   });
@@ -470,7 +470,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'access_token'
     );
   });
@@ -479,7 +479,7 @@ const runSfAuthEdgeCaseTests = () => {
     const transport = createFakeTransport({ status: 200, body: {} });
     const signer = createFakeSigner();
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer }),
+      () => SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer }),
       'access_token'
     );
   });
@@ -491,7 +491,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     const before = Math.floor(Date.now() / 1000);
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     const claims = decodeBase64UrlJson(assertion.split('.')[1]);
     assertTrue(claims.exp > before, `exp(${claims.exp}) > before(${before})`);
@@ -503,8 +503,8 @@ const runSfAuthEdgeCaseTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    const opts = { ...validOpts(), consumerKey: '3MVG9.abc+xyz/== weird' };
-    SalesforceAuth.getAccessTokenByJwt(opts, { transport, signer });
+    const options = { ...validOptions(), consumerKey: '3MVG9.abc+xyz/== weird' };
+    SalesforceAuth.getAccessTokenByJwt(options, { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     const claims = decodeBase64UrlJson(assertion.split('.')[1]);
     assertEqual(claims.iss, '3MVG9.abc+xyz/== weird');
@@ -516,7 +516,7 @@ const runSfAuthEdgeCaseTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(validOptions(), { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     assertTrue(!assertion.includes('='));
     assertTrue(!assertion.includes('+'));
@@ -530,7 +530,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     SalesforceAuth.getAccessTokenByJwt(
-      { ...validOpts(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
+      { ...validOptions(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
       { transport, signer }
     );
     const call = transport.getCalls()[0];
@@ -540,7 +540,7 @@ const runSfAuthEdgeCaseTests = () => {
   });
 
   test('token endpoint で 503 が連続するとリトライ上限に達してエラー (デフォルトトランスポート使用)', () => {
-    // deps.transport を渡さずデフォルト経路をカバー → UrlFetchApp をモック
+    // dependencies.transport を渡さずデフォルト経路をカバー → UrlFetchApp をモック
     const original = typeof globalThis.UrlFetchApp !== 'undefined' ? globalThis.UrlFetchApp : undefined;
     const calls = [];
     globalThis.UrlFetchApp = {
@@ -557,7 +557,7 @@ const runSfAuthEdgeCaseTests = () => {
       const signer = createFakeSigner();
       assertThrows(
         () => SalesforceAuth.getAccessTokenByJwt(
-          validOpts(),
+          validOptions(),
           { signer, /* transport omitted on purpose */ }
         ).accessToken && null,
         'リトライ'
@@ -583,7 +583,7 @@ const runSfAuthEdgeCaseTests = () => {
     });
     const signer = createFakeSigner();
     const result = SalesforceAuth.getAccessTokenByJwt(
-      { ...validOpts(), logger },
+      { ...validOptions(), logger },
       { transport, signer }
     );
     assertEqual(result.accessToken, 'a');
