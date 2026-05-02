@@ -93,7 +93,7 @@ const runSfAuthInterfaceTests = () => {
 };
 
 const runSfAuthValidationTests = () => {
-  const { suite, test, assertThrows } = TestRunner;
+  const { suite, test, assertThrows, assertEqual } = TestRunner;
 
   suite('SalesforceAuth.getAccessTokenByJwt バリデーション');
 
@@ -135,10 +135,7 @@ const runSfAuthValidationTests = () => {
       { ...validOpts(), tokenHost: 'https://acme.my.salesforce.com/' },
       { transport, signer }
     );
-    const { TestRunner: TR } = globalThis;
-    if (transport.getCalls()[0].url !== 'https://acme.my.salesforce.com/services/oauth2/token') {
-      throw new Error('trailing slash が正規化されていない: ' + transport.getCalls()[0].url);
-    }
+    assertEqual(transport.getCalls()[0].url, 'https://acme.my.salesforce.com/services/oauth2/token');
   });
 
   test('tokenHost に full endpoint を渡すと TypeError', () => {

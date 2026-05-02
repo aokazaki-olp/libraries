@@ -120,7 +120,7 @@ awk '{printf "%s\\n", $0}' private_key_pkcs8.pem
 | `SF_PRIVATE_KEY_SBX` | `-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n` |
 | `SF_TOKEN_HOST_SBX` | `https://yourcompany--sbx.sandbox.my.salesforce.com` |
 
-> **`SF_TOKEN_HOST_*` は必ずホスト部のみ**にする。次は全部 `TypeError` で弾かれる:
+> **`SF_TOKEN_HOST_*` は必ずホスト部のみ・全て小文字**にする。Salesforce 側のホストは小文字で扱われるため、大文字混じり (`Yourcompany.My.Salesforce.com` 等) で登録すると `app_not_found` 系の調査が困難になる。次の形式は全部 `TypeError` で弾かれる:
 >
 > ```
 > ❌ https://yourcompany.my.salesforce.com/                          ← trailing slash
