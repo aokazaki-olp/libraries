@@ -9,6 +9,7 @@
 
 | 版 | 対象 | レビュー日 | 新規指摘 | 要対応残 |
 |---|---|---|---|---|
+| [第10版](#第10版) | PR #17 — GBizInfoApiClient | 2026-05-02 | L×2 | **0件** |
 | [第9版](#第9版) | SlackFilters.gs / SlackResolvers.gs | 2026-02-25 | H×1, M×1, L×5 | **0件** |
 | [第8版](#第8版) | PR #7 — loadAsObjects Range サポート | 2026-02-08 | H×1 (R-1) | **0件** |
 
@@ -32,6 +33,7 @@
 | resolveSheet | resolveSheet.gs | **A** | 柔軟な入力対応。全修正済み |
 | loadAsObjects | loadAsObjects.gs | **A** | PR #7 で Range サポート追加。R-1 修正済み |
 | GSC Client | GoogleSearchConsoleApiClient.gs | **A** | withGoogleAuth は共通デコレータとして公開（設計意図） |
+| GBizInfo Client | GBizInfoApiClient.gs | **A** | SlackApiClient と同型のミニマル構成。プロトコル層に厳密準拠 |
 
 ---
 
@@ -98,6 +100,46 @@ resolveSheet ← loadFromRangeAsObjects ← loadFromSheetAsObjects
 全エラーは `new Error(); e.name = '...'` 方式（GAS V8 互換）。`instanceof` 判定不可、`e.name ===` で判定する。
 
 ---
+
+---
+
+<a name="第10版"></a>
+
+# 第10版 — PR #17 GBizInfoApiClient（2026-05-02）
+
+- **対象**: `GBizInfoApiClient.gs`, `GBizInfoApiClient.test.gs`, `test-runner.js`
+- **レビュー範囲**: 設計・コード・PHILOSOPHY 適合性・既存クライアントとの一貫性
+- **変更**: 3ファイル / 新規追加 366行・テスト 16件追加（全 540 件緑）
+
+## 1. 設計評価
+
+PHILOSOPHY との整合は厳格。`SlackApiClient` と完全に同型のミニマル構成（プロトコル層のみ・`.use()` でドメイン層を呼び出し側に委譲）。
+
+| 観点 | 評価 |
+|---|---|
+| §1.2 GASらしさテスト 3 問 | ✅ `create(token, logger)` の 1 行で利用開始 |
+| §4.2 エンドポイントは呼び出し側 | ✅ `byCorporateNumber` 等は `.use()` 経由 |
+| §4.3 プロトコル/ドメイン線引き | ✅ 認証・リトライ・ロギング・URL 構築のみ |
+| §6.3 レスポンス独自ラップ禁止 | ✅ `response => response.body` で素通し |
+| §3.2 イミュータブル `extend` | ✅ `ApiClient.createClient → extend → extend` |
+| §6.5 5 行以内 | ✅ 初期化 1 行 |
+
+### 認証層の実装方式
+
+- GSC は動的トークン取得（`ScriptApp.getOAuthToken()` を毎リクエスト）が必要なため `withGoogleAuth` decorator 化
+- gBizINFO は静的トークンなので `createClient({ headers: { 'X-hojinInfo-api-token': token } })` で十分
+- 継ぎ目は壊れていない（`request.headers` で上書き可能）。**判定: 現状で OK**
+
+## 2. 指摘
+
+| ID | 重要度 | 内容 |
+|---|---|---|
+| GB-1 | L | `MockGBizUrlFetchApp` は `HttpClient.test.gs` / `GoogleSearchConsoleApiClient.test.gs` に続く 3 回目の同型再実装。**Rule of Three (§5.1) 該当**。共通テストヘルパへの抽出を次回検討（本 PR 外） |
+| GB-2 | L | [GBizInfoApiClient.test.gs:227](GBizInfoApiClient.test.gs#L227) `assertEqual(true, call.url.endsWith(...))` の引数順序が他テストと逆。挙動は同じだが失敗時メッセージの可読性のため次回統一 |
+
+## 3. 総合判断
+
+Approve 相当。マージ前 must-fix なし。エンドポイント網羅の誘惑を退けた、PHILOSOPHY に忠実な良 PR。
 
 ---
 
