@@ -69,10 +69,13 @@ const createFakeTransport = (responses) => {
   };
 };
 
+const TEST_TOKEN_HOST = 'https://acme.my.salesforce.com';
+
 const validOpts = () => ({
   consumerKey: 'CONSUMER_KEY_XXX',
   username: 'user@example.com',
-  privateKey: '-----BEGIN PRIVATE KEY-----\nFAKE\n-----END PRIVATE KEY-----'
+  privateKey: '-----BEGIN PRIVATE KEY-----\nFAKE\n-----END PRIVATE KEY-----',
+  tokenHost: TEST_TOKEN_HOST
 });
 
 // ============================================================================
@@ -112,8 +115,51 @@ const runSfAuthValidationTests = () => {
 
   test('privateKey が空文字で TypeError', () => {
     assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
-      consumerKey: 'c', username: 'u', privateKey: ''
+      consumerKey: 'c', username: 'u', privateKey: '', tokenHost: TEST_TOKEN_HOST
     }), 'privateKey');
+  });
+
+  test('tokenHost 未指定で TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      consumerKey: 'c', username: 'u', privateKey: 'k'
+    }), 'tokenHost');
+  });
+
+  test('tokenHost に trailing slash を付けると正規化されて成功', () => {
+    const transport = createFakeTransport({
+      status: 200,
+      body: { access_token: 'a', instance_url: 'i' }
+    });
+    const signer = createFakeSigner();
+    SalesforceAuth.getAccessTokenByJwt(
+      { ...validOpts(), tokenHost: 'https://acme.my.salesforce.com/' },
+      { transport, signer }
+    );
+    const { TestRunner: TR } = globalThis;
+    if (transport.getCalls()[0].url !== 'https://acme.my.salesforce.com/services/oauth2/token') {
+      throw new Error('trailing slash が正規化されていない: ' + transport.getCalls()[0].url);
+    }
+  });
+
+  test('tokenHost に full endpoint を渡すと TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(),
+      tokenHost: 'https://acme.my.salesforce.com/services/oauth2/token'
+    }), 'tokenHost');
+  });
+
+  test('tokenHost が http:// だと TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(),
+      tokenHost: 'http://acme.my.salesforce.com'
+    }), 'tokenHost');
+  });
+
+  test('tokenHost が空文字だと TypeError', () => {
+    assertThrows(() => SalesforceAuth.getAccessTokenByJwt({
+      ...validOpts(),
+      tokenHost: ''
+    }), 'tokenHost');
   });
 };
 
@@ -137,24 +183,30 @@ const runSfAuthSuccessTests = () => {
     assertEqual(result.instanceUrl, 'https://acme.my.salesforce.com');
   });
 
-  test('token endpoint URL は本番 (login.salesforce.com)', () => {
+  test('token endpoint URL は tokenHost + /services/oauth2/token', () => {
     const transport = createFakeTransport({
       status: 200,
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
     SalesforceAuth.getAccessTokenByJwt(validOpts(), { transport, signer });
-    assertEqual(transport.getCalls()[0].url, 'https://login.salesforce.com/services/oauth2/token');
+    assertEqual(transport.getCalls()[0].url, `${TEST_TOKEN_HOST}/services/oauth2/token`);
   });
 
-  test('sandbox: true で test.salesforce.com を使う', () => {
+  test('Sandbox 用 My Domain URL も使える', () => {
     const transport = createFakeTransport({
       status: 200,
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt({ ...validOpts(), sandbox: true }, { transport, signer });
-    assertEqual(transport.getCalls()[0].url, 'https://test.salesforce.com/services/oauth2/token');
+    SalesforceAuth.getAccessTokenByJwt(
+      { ...validOpts(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
+      { transport, signer }
+    );
+    assertEqual(
+      transport.getCalls()[0].url,
+      'https://acme--sbx.sandbox.my.salesforce.com/services/oauth2/token'
+    );
   });
 
   test('payload に grant_type と assertion が含まれる', () => {
@@ -177,13 +229,13 @@ const runSfAuthJwtStructureTests = () => {
 
   suite('SalesforceAuth JWT 構造');
 
-  const captureJwt = (sandbox = false) => {
+  const captureJwt = (overrides = {}) => {
     const transport = createFakeTransport({
       status: 200,
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt({ ...validOpts(), sandbox }, { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt({ ...validOpts(), ...overrides }, { transport, signer });
     const assertion = transport.getCalls()[0].options.payload.assertion;
     const parts = assertion.split('.');
     return {
@@ -211,16 +263,16 @@ const runSfAuthJwtStructureTests = () => {
   });
 
   test('claims に iss/sub/aud/exp が含まれる', () => {
-    const { claims } = captureJwt(false);
+    const { claims } = captureJwt();
     assertEqual(claims.iss, 'CONSUMER_KEY_XXX');
     assertEqual(claims.sub, 'user@example.com');
-    assertEqual(claims.aud, 'https://login.salesforce.com');
+    assertEqual(claims.aud, TEST_TOKEN_HOST);
     assertTrue(typeof claims.exp === 'number');
   });
 
-  test('claims.aud は sandbox フラグで切り替わる', () => {
-    const { claims } = captureJwt(true);
-    assertEqual(claims.aud, 'https://test.salesforce.com');
+  test('claims.aud は tokenHost と一致する', () => {
+    const { claims } = captureJwt({ tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' });
+    assertEqual(claims.aud, 'https://acme--sbx.sandbox.my.salesforce.com');
   });
 
   test('exp は now + 180 秒以内', () => {
@@ -331,7 +383,7 @@ const runSfAuthEdgeCaseTests = () => {
 
   test('privateKey が undefined だと TypeError', () => {
     assertThrows(
-      () => SalesforceAuth.getAccessTokenByJwt({ consumerKey: 'c', username: 'u' }),
+      () => SalesforceAuth.getAccessTokenByJwt({ consumerKey: 'c', username: 'u', tokenHost: TEST_TOKEN_HOST }),
       'privateKey'
     );
   });
@@ -454,7 +506,10 @@ const runSfAuthEdgeCaseTests = () => {
       body: { access_token: 'a', instance_url: 'i' }
     });
     const signer = createFakeSigner();
-    SalesforceAuth.getAccessTokenByJwt({ ...validOpts(), sandbox: true }, { transport, signer });
+    SalesforceAuth.getAccessTokenByJwt(
+      { ...validOpts(), tokenHost: 'https://acme--sbx.sandbox.my.salesforce.com' },
+      { transport, signer }
+    );
     const call = transport.getCalls()[0];
     const assertion = call.options.payload.assertion;
     const claims = decodeBase64UrlJson(assertion.split('.')[1]);
