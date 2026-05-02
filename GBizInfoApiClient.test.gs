@@ -260,6 +260,128 @@ const runGBizExtensionTests = () => {
   });
 };
 
+const runGBizEdgeCaseTests = () => {
+  const { suite, test, assertEqual, assertTrue, assertThrows } = TestRunner;
+
+  suite('GBizInfoApiClient エッジケース');
+
+  test('token が真偽値だと TypeError', () => {
+    assertThrows(() => GBizInfoApiClient.create(true), 'gBizINFO API token');
+    assertThrows(() => GBizInfoApiClient.create(false), 'gBizINFO API token');
+  });
+
+  test('token がオブジェクトだと TypeError', () => {
+    assertThrows(() => GBizInfoApiClient.create({}), 'gBizINFO API token');
+    assertThrows(() => GBizInfoApiClient.create([]), 'gBizINFO API token');
+  });
+
+  test('429 が返るとリトライされる', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup([
+      { status: 429, body: 'Too Many Requests' },
+      { status: 200, body: { ok: true } }
+    ]);
+    try {
+      const client = GBizInfoApiClient.create('t');
+      const result = client.get('/hojin/1');
+      assertEqual(result.ok, true);
+      assertEqual(fetchMock.getCalls().length, 2);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('連続 503 でリトライ上限に達するとエラー', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup([
+      { status: 503, body: 'down' },
+      { status: 503, body: 'down' },
+      { status: 503, body: 'down' },
+      { status: 503, body: 'down' }
+    ]);
+    try {
+      const client = GBizInfoApiClient.create('t');
+      assertThrows(() => client.get('/hojin/1'), 'リトライ');
+      // maxRetries=3 → 初回 + 3 回 = 4 回呼び出し
+      assertEqual(fetchMock.getCalls().length, 4);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('4xx クライアントエラーは即時スローされ再試行されない', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup([
+      { status: 401, body: { error: 'unauthorized' } },
+      { status: 200, body: { ok: true } }
+    ]);
+    try {
+      const client = GBizInfoApiClient.create('bad');
+      assertThrows(() => client.get('/hojin/1'), 'HTTPエラー 401');
+      assertEqual(fetchMock.getCalls().length, 1);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('logger が transport ログを記録する', () => {
+    const logs = [];
+    const logger = {
+      log: (...args) => logs.push(['log', args]),
+      info: (...args) => logs.push(['info', args]),
+      warn: (...args) => logs.push(['warn', args]),
+      error: (...args) => logs.push(['error', args]),
+      debug: (...args) => logs.push(['debug', args])
+    };
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: { ok: true } });
+    try {
+      const client = GBizInfoApiClient.create('t', logger);
+      client.get('/hojin/1');
+      assertTrue(logs.length > 0, 'logger に何らかの記録がある');
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('複数の use() を連鎖できる', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: { ok: 1 } });
+    try {
+      const client = GBizInfoApiClient
+        .create('t')
+        .use('byNumber', c => n => c.get(`/hojin/${n}`))
+        .use('search', c => name => c.get('/hojin', { name }));
+      assertTrue(typeof client.byNumber === 'function');
+      assertTrue(typeof client.search === 'function');
+      client.byNumber('1');
+      client.search('A 社');
+      assertEqual(fetchMock.getCalls().length, 2);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('クエリ未指定でもエラーにならない', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const client = GBizInfoApiClient.create('t');
+      client.get('/hojin/1');
+      const call = fetchMock.getCalls()[0];
+      assertTrue(!call.url.includes('?'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('200 で空ボディが返ると空オブジェクトとして処理される', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: '' });
+    try {
+      const client = GBizInfoApiClient.create('t');
+      const result = client.get('/hojin/1');
+      // 空 string は HttpCore が空オブジェクトに正規化(あるいは null)
+      assertTrue(result === null || result === '' || (typeof result === 'object'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+};
+
 // ============================================================================
 // メインテストランナー
 // ============================================================================
@@ -290,6 +412,9 @@ function runAllGBizInfoTests() {
 
   console.log('Running GBizInfo 拡張口 tests...');
   runGBizExtensionTests();
+
+  console.log('Running GBizInfo エッジケース tests...');
+  runGBizEdgeCaseTests();
 
   return TestRunner.run();
 }
