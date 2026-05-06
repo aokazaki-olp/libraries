@@ -1,0 +1,316 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ApiClient } from '../src/ApiClient.js';
+import { HttpError } from '../src/types.js';
+import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+
+// ============================================================================
+// テストユーティリティ
+// ============================================================================
+
+const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
+  status: 200,
+  headers: {},
+  body: null,
+  text: '',
+  ...overrides,
+});
+
+const mockTransport = (response?: Partial<RawResponse>): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
+  const calls: { url: string; options?: FetchOptions }[] = [];
+  return {
+    calls,
+    fetch: vi.fn(async (url: string, options?: FetchOptions) => {
+      calls.push({ url, options });
+      return makeRawResponse(response);
+    }),
+  };
+};
+
+// ============================================================================
+// buildUrl / buildQueryString
+// ============================================================================
+
+describe('ApiClient.buildUrl', () => {
+  it.each([
+    ['エンドポイントなし', 'https://api.example.com', undefined, undefined, 'https://api.example.com/'],
+    ['スラッシュなしエンドポイント', 'https://api.example.com', 'users', undefined, 'https://api.example.com/users'],
+    ['スラッシュありエンドポイント', 'https://api.example.com', '/users', undefined, 'https://api.example.com/users'],
+    ['クエリパラメータあり', 'https://api.example.com', '/users', { page: 1 }, 'https://api.example.com/users?page=1'],
+    ['複数クエリ', 'https://api.example.com', '/search', { q: 'test', page: 2 }, 'https://api.example.com/search?q=test&page=2'],
+    ['null値は除外', 'https://api.example.com', '/users', { id: null, name: 'bob' }, 'https://api.example.com/users?name=bob'],
+    ['baseUrl末尾スラッシュを除去', 'https://api.example.com/', '/users', undefined, 'https://api.example.com/users'],
+  ])('%s', (_label, baseUrl, endpoint, query, expected) => {
+    expect(ApiClient.buildUrl(baseUrl, endpoint, query)).toBe(expected);
+  });
+
+  it('配列クエリは同じキーで複数展開する', () => {
+    const url = ApiClient.buildUrl('https://api.example.com', '/q', { ids: [1, 2, 3] });
+    expect(url).toBe('https://api.example.com/q?ids=1&ids=2&ids=3');
+  });
+
+  it('特殊文字はURLエンコードする', () => {
+    const url = ApiClient.buildUrl('https://api.example.com', '/q', { q: 'hello world' });
+    expect(url).toBe('https://api.example.com/q?q=hello%20world');
+  });
+});
+
+// ============================================================================
+// withBearerAuth
+// ============================================================================
+
+describe('ApiClient.withBearerAuth', () => {
+  it('Authorization: Bearer <token> ヘッダーを追加する', async () => {
+    const transport = mockTransport();
+    const authed = ApiClient.withBearerAuth(transport, 'my-token');
+    await authed.fetch('https://example.com', { method: 'GET' });
+
+    const call = transport.calls[0];
+    expect(call.options?.headers?.['Authorization']).toBe('Bearer my-token');
+  });
+
+  it('既存ヘッダーを上書きしない（Authorization 以外）', async () => {
+    const transport = mockTransport();
+    const authed = ApiClient.withBearerAuth(transport, 'token');
+    await authed.fetch('https://example.com', {
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const call = transport.calls[0];
+    expect(call.options?.headers?.['Accept']).toBe('application/json');
+    expect(call.options?.headers?.['Authorization']).toBe('Bearer token');
+  });
+
+  it('元の transport を変更しない（イミュータブル）', async () => {
+    const transport = mockTransport();
+    ApiClient.withBearerAuth(transport, 'token');
+    // authed を呼ばずに元の transport を直接呼ぶ
+    await transport.fetch('https://example.com');
+    expect(transport.calls[0].options?.headers?.['Authorization']).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// createClient — call
+// ============================================================================
+
+describe('ApiClient.createClient — call', () => {
+  it('GET リクエストを送信する', async () => {
+    const transport = mockTransport({ body: { id: 1 } });
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    const result = await client.call({ endpoint: '/users/1', method: 'GET' });
+    expect(transport.calls[0].url).toBe('https://api.example.com/users/1');
+    expect(transport.calls[0].options?.method).toBe('GET');
+    // responseHandler なしは RawResponse をそのまま返す
+    expect((result as RawResponse).body).toEqual({ id: 1 });
+  });
+
+  it('POST リクエストで body を JSON.stringify して送信する', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/users', method: 'POST', body: { name: 'Alice' } });
+
+    const call = transport.calls[0];
+    expect(call.options?.method).toBe('POST');
+    expect(call.options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
+    expect(call.options?.headers?.['Content-Type']).toContain('application/json');
+  });
+
+  it('GET + body は body を無視する（Content-Type も付けない）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/users', method: 'GET', body: { should: 'be ignored' } });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toBeUndefined();
+    expect(call.options?.headers?.['Content-Type']).toBeUndefined();
+  });
+
+  it('responseHandler を経由して値を返す', async () => {
+    const transport = mockTransport({ body: { ok: true, data: [1, 2, 3] } });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport,
+      responseHandler: (res) => (res.body as { data: number[] }).data,
+    });
+
+    const result = await client.call({ endpoint: '/items' });
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  it('クエリパラメータを URL に付与する', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/search', query: { q: 'hello', page: 1 } });
+    expect(transport.calls[0].url).toBe('https://api.example.com/search?q=hello&page=1');
+  });
+
+  it('timeoutMs を FetchOptions に渡す', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/slow', timeoutMs: 5000 });
+    expect(transport.calls[0].options?.timeoutMs).toBe(5000);
+  });
+});
+
+// ============================================================================
+// createClient — HTTPメソッドショートカット
+// ============================================================================
+
+describe('ApiClient.createClient — HTTPメソッドショートカット', () => {
+  let transport: ReturnType<typeof mockTransport>;
+  let client: ReturnType<typeof ApiClient.createClient>;
+
+  beforeEach(() => {
+    transport = mockTransport({ body: { ok: true } });
+    client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+  });
+
+  it('get() は GET リクエストを送る', async () => {
+    await client.get('/users', { page: 1 });
+    expect(transport.calls[0].options?.method).toBe('GET');
+    expect(transport.calls[0].url).toContain('page=1');
+  });
+
+  it('post() は POST リクエストを送る', async () => {
+    await client.post('/users', { name: 'Alice' });
+    expect(transport.calls[0].options?.method).toBe('POST');
+    expect(transport.calls[0].options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
+  });
+
+  it('put() は PUT リクエストを送る', async () => {
+    await client.put('/users/1', { name: 'Bob' });
+    expect(transport.calls[0].options?.method).toBe('PUT');
+  });
+
+  it('patch() は PATCH リクエストを送る', async () => {
+    await client.patch('/users/1', { name: 'Charlie' });
+    expect(transport.calls[0].options?.method).toBe('PATCH');
+  });
+
+  it('delete() は DELETE リクエストを送る', async () => {
+    await client.delete('/users/1');
+    expect(transport.calls[0].options?.method).toBe('DELETE');
+  });
+});
+
+// ============================================================================
+// createClient — extend（イミュータブル）
+// ============================================================================
+
+describe('ApiClient.createClient — extend', () => {
+  it('extend() は新しいクライアントを返し、元のクライアントを変更しない', async () => {
+    const baseTransport = mockTransport({ body: 'base' });
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport: baseTransport });
+
+    let decoratorCalled = false;
+    const extended = client.extend((t) => ({
+      fetch: async (url, options) => {
+        decoratorCalled = true;
+        return t.fetch(url, options);
+      },
+    }));
+
+    // 元のクライアントを使う → デコレータは通らない
+    await client.get('/a');
+    expect(decoratorCalled).toBe(false);
+
+    // 拡張クライアントを使う → デコレータを通る
+    await extended.get('/b');
+    expect(decoratorCalled).toBe(true);
+  });
+});
+
+// ============================================================================
+// createClient — use（プラグイン）
+// ============================================================================
+
+describe('ApiClient.createClient — use', () => {
+  it('use(plugin) でメソッドを追加できる', async () => {
+    const transport = mockTransport({ body: { items: [1, 2, 3] } });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport,
+      responseHandler: (res) => res.body,
+    });
+
+    const extended = client.use((c) => ({
+      getItems: () => c.get('/items'),
+    }));
+
+    const result = await extended.getItems();
+    expect(result).toEqual({ items: [1, 2, 3] });
+    expect(transport.calls[0].url).toBe('https://api.example.com/items');
+  });
+
+  it('use(name, fn) でシングルメソッドを追加できる', async () => {
+    const transport = mockTransport({ body: { total: 42 } });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport,
+      responseHandler: (res) => res.body,
+    });
+
+    const extended = client.use('getTotal', (c) => () => c.get('/total'));
+    const result = await extended.getTotal();
+    expect(result).toEqual({ total: 42 });
+  });
+
+  it('use() は連鎖できる', async () => {
+    const transport = mockTransport({ body: {} });
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    const extended = client
+      .use((c) => ({ methodA: () => c.get('/a') }))
+      .use((c) => ({ methodB: () => c.get('/b') }));
+
+    await extended.methodA();
+    await extended.methodB();
+    expect(transport.calls).toHaveLength(2);
+  });
+
+  it('use(plugin) に非オブジェクトを返すと TypeError をスローする', () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    expect(() =>
+      client.use(() => 'not an object' as unknown as object),
+    ).toThrow(TypeError);
+  });
+});
+
+// ============================================================================
+// createClient — デフォルトヘッダー
+// ============================================================================
+
+describe('ApiClient.createClient — デフォルトヘッダー', () => {
+  it('createClient の headers が全リクエストに付与される', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport,
+      headers: { 'Accept': 'application/json', 'X-Api-Key': 'key123' },
+    });
+
+    await client.get('/data');
+    const call = transport.calls[0];
+    expect(call.options?.headers?.['Accept']).toBe('application/json');
+    expect(call.options?.headers?.['X-Api-Key']).toBe('key123');
+  });
+
+  it('リクエスト固有のヘッダーはデフォルトヘッダーを上書きする', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport,
+      headers: { 'X-Custom': 'default' },
+    });
+
+    await client.call({ method: 'GET', headers: { 'X-Custom': 'override' } });
+    expect(transport.calls[0].options?.headers?.['X-Custom']).toBe('override');
+  });
+});
