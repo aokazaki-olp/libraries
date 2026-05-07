@@ -15,8 +15,8 @@
 
 import { createSign } from 'node:crypto';
 import { HttpCore } from './HttpCore.js';
-import { HttpError } from './types.js';
-import type { Transport } from './types.js';
+import { HttpError } from './httpTypes.js';
+import type { Transport } from './httpTypes.js';
 
 const JWT_LIFETIME_SEC = 180;
 

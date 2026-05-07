@@ -16,7 +16,7 @@
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
 import type { BaseClient } from './ApiClient.js';
-import type { RawResponse } from './types.js';
+import type { RawResponse, Transport } from './httpTypes.js';
 
 const DEFAULT_API_VERSION = 'v60.0'; // 実装時点（2026-05）の最新安定版
 const DEFAULT_MAX_RETRIES = 3;
@@ -28,7 +28,7 @@ interface SalesforceClientOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   logger?: unknown;
-  transport?: import('./types.js').Transport;
+  transport?: Transport;
 }
 
 const sfResponseHandler = (response: RawResponse): unknown => response.body;

@@ -1,19 +1,7 @@
 /**
- * types.ts
- * @description 共通インターフェース・型定義
+ * httpTypes.ts
+ * @description HTTP Transport 層の共通型・エラー定義
  */
-
-// ============================================================================
-// Logger
-// ============================================================================
-
-export interface Logger {
-  trace(...args: unknown[]): void;
-  debug(...args: unknown[]): void;
-  info(...args: unknown[]): void;
-  warn(...args: unknown[]): void;
-  error(...args: unknown[]): void;
-}
 
 // ============================================================================
 // Transport
@@ -51,11 +39,6 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
-export type ResponseHandler<T = unknown> = (
-  response: RawResponse,
-  request: RequestOptions,
-) => T;
-
 // ============================================================================
 // Errors
 // ============================================================================
@@ -88,4 +71,3 @@ export class RetryExhaustedError extends Error {
     super(message, options);
   }
 }
-

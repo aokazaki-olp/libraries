@@ -11,9 +11,9 @@
 import { LoggerFacade } from './LoggerFacade.js';
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
-import { HttpError, RetryExhaustedError } from './types.js';
+import { HttpError, RetryExhaustedError } from './httpTypes.js';
 import type { BaseClient } from './ApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from './types.js';
+import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
 
 export class SlackApiError extends Error {
   override readonly name = 'SlackApiError';

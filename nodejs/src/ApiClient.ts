@@ -14,9 +14,13 @@ import type {
   FetchOptions,
   RawResponse,
   RequestOptions,
-  ResponseHandler,
   Transport,
-} from './types.js';
+} from './httpTypes.js';
+
+export type ResponseHandler<T = unknown> = (
+  response: RawResponse,
+  request: RequestOptions,
+) => T;
 
 // ============================================================================
 // URL・クエリ文字列ユーティリティ

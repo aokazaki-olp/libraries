@@ -9,9 +9,15 @@
  *   - java.util.logging互換
  */
 
-import type { Logger } from './types.js';
-
 type LogMethod = (...args: unknown[]) => void;
+
+export interface Logger {
+  trace(...args: unknown[]): void;
+  debug(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+}
 
 /**
  * 実装オブジェクトをLogger形式に変換するファサード

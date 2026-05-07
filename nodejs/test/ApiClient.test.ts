@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApiClient } from '../src/ApiClient.js';
-import type { RawResponse } from '../src/types.js';
+import type { RawResponse } from '../src/httpTypes.js';
 import { mockTransport } from './helpers.js';
 
 // ============================================================================

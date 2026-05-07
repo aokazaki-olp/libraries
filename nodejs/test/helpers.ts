@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
 
 export const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
   status: 200,

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.js';
-import { HttpError, RetryExhaustedError } from '../src/types.js';
-import type { RawResponse } from '../src/types.js';
+import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
+import type { RawResponse } from '../src/httpTypes.js';
 import { makeRawResponse, makeTransport } from './helpers.js';
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import type { FetchOptions, Transport } from '../src/types.js';
+import type { FetchOptions, Transport } from '../src/httpTypes.js';
 import { makeRawResponse } from './helpers.js';
 
 // ============================================================================
