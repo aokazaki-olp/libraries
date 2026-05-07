@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SalesforceAuth } from '../src/SalesforceAuth.js';
 import { HttpError } from '../src/types.js';
-import type { FetchOptions, RawResponse, Signer, Transport } from '../src/SalesforceAuth.js';
+import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import type { Signer } from '../src/SalesforceAuth.js';
 
 // ============================================================================
 // テストユーティリティ
@@ -50,8 +51,9 @@ describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
     ['undefined', undefined, 'string'],
   ] as [string, unknown, string][])(
     '%s → TypeError（"%s" を含む）',
-    (_label, value, expected) => {
+    (_label, value, hint) => {
       expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
+      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
     },
   );
 
@@ -64,8 +66,9 @@ describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
     ['パスあり', 'https://yourorg.my.salesforce.com/services/oauth2/token', 'パス'],
   ] as [string, string, string][])(
     '%s → TypeError（メッセージに関連文字列を含む）',
-    (_label, value, _hint) => {
+    (_label, value, hint) => {
       expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
+      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
     },
   );
 
@@ -153,7 +156,6 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     const call = transport.calls[0] as { url: string; options: FetchOptions };
     expect(call.options?.method).toBe('POST');
-    // payload がオブジェクトであれば form-urlencoded として送られる
     expect(typeof call.options?.payload).toBe('object');
     const payload = call.options?.payload as Record<string, string>;
     expect(payload?.grant_type).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
@@ -168,7 +170,6 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    // signer.newBlob に渡されたクレームJSON を検証
     const blobCalls = (signer.newBlob as ReturnType<typeof vi.fn>).mock.calls;
     const claimsJson = blobCalls[1][0] as string; // 2回目の呼び出しがclaimsのJSON
     const claims = JSON.parse(claimsJson) as Record<string, unknown>;
@@ -196,7 +197,6 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     expect(caughtError).toBeInstanceOf(HttpError);
     const httpError = caughtError as HttpError;
-    // request.body に assertion が含まれていないこと
     const requestBody = httpError.request?.body as Record<string, unknown> | undefined;
     expect(requestBody?.['assertion']).toBe('[REDACTED]');
   });
