@@ -240,8 +240,6 @@ const createClient = <TResponse = unknown>(
 export const ApiClient = {
   withBearerAuth,
   createClient,
-  buildUrl,
-  buildQueryString,
 };
 
 export type { BaseClient, ClientConfig };

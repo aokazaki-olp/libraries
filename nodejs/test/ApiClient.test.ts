@@ -27,34 +27,6 @@ const mockTransport = (response?: Partial<RawResponse>): Transport & { calls: { 
 };
 
 // ============================================================================
-// buildUrl / buildQueryString
-// ============================================================================
-
-describe('ApiClient.buildUrl', () => {
-  it.each([
-    ['エンドポイントなし', 'https://api.example.com', undefined, undefined, 'https://api.example.com/'],
-    ['スラッシュなしエンドポイント', 'https://api.example.com', 'users', undefined, 'https://api.example.com/users'],
-    ['スラッシュありエンドポイント', 'https://api.example.com', '/users', undefined, 'https://api.example.com/users'],
-    ['クエリパラメータあり', 'https://api.example.com', '/users', { page: 1 }, 'https://api.example.com/users?page=1'],
-    ['複数クエリ', 'https://api.example.com', '/search', { q: 'test', page: 2 }, 'https://api.example.com/search?q=test&page=2'],
-    ['null値は除外', 'https://api.example.com', '/users', { id: null, name: 'bob' }, 'https://api.example.com/users?name=bob'],
-    ['baseUrl末尾スラッシュを除去', 'https://api.example.com/', '/users', undefined, 'https://api.example.com/users'],
-  ])('%s', (_label, baseUrl, endpoint, query, expected) => {
-    expect(ApiClient.buildUrl(baseUrl, endpoint, query)).toBe(expected);
-  });
-
-  it('配列クエリは同じキーで複数展開する', () => {
-    const url = ApiClient.buildUrl('https://api.example.com', '/q', { ids: [1, 2, 3] });
-    expect(url).toBe('https://api.example.com/q?ids=1&ids=2&ids=3');
-  });
-
-  it('特殊文字はURLエンコードする', () => {
-    const url = ApiClient.buildUrl('https://api.example.com', '/q', { q: 'hello world' });
-    expect(url).toBe('https://api.example.com/q?q=hello%20world');
-  });
-});
-
-// ============================================================================
 // withBearerAuth
 // ============================================================================
 
