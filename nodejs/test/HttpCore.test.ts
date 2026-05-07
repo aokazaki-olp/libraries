@@ -304,3 +304,23 @@ describe('HttpCore — デコレータ積み重ね', () => {
     expect(infoLog).toHaveBeenCalledOnce(); // Loggerは最外 → 最終成功1回のみ
   });
 });
+
+// ============================================================================
+// createTransport
+// ============================================================================
+
+describe('HttpCore.createTransport — got 統合', () => {
+  it('非2xxレスポンスで HttpError をスローする', async () => {
+    const mockResponse = {
+      statusCode: 404,
+      headers: { 'content-type': 'application/json' },
+      body: '{"error":"Not Found"}',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    // Got インターフェースに合わせてキャスト
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await expect(transport.fetch('https://example.com/not-found', { method: 'GET' })).rejects.toThrow(HttpError);
+  });
+});
