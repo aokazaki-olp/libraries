@@ -44,13 +44,13 @@ type CompiledEvaluator = (data: object) => unknown;
 
 class LazyTemplate {
   /** プレースホルダーパターン: {{{expression}}} */
-  static readonly PLACEHOLDER_PATTERN = /(\\*)\{\{\{([\s\S]*?)\}\}\}/g;
+  static readonly PLACEHOLDER_PATTERN = /(\\*)\{\{\{([\s\S]*?)\}\}\}/;
 
   /** 演算子・トークンパターン */
-  static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/g;
+  static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/;
 
   /** キーセグメントパターン */
-  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.\[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/g;
+  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.\[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
 
   /** 数値リテラルパターン */
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
