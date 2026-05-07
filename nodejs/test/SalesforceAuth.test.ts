@@ -200,6 +200,24 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     const requestBody = httpError.request?.body as Record<string, unknown> | undefined;
     expect(requestBody?.['assertion']).toBe('[REDACTED]');
   });
+
+  it('JWT の signingInput が header.claims の Base64URL 連結形式になる', async () => {
+    const signer = makeMockSigner();
+    const transport = makeMockTransport({
+      body: { access_token: 'tok', instance_url: 'https://yourorg.my.salesforce.com' },
+    });
+
+    await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
+
+    const signCalls = (signer.computeRsaSha256Signature as ReturnType<typeof vi.fn>).mock.calls;
+    const signingInput = signCalls[0][0] as string;
+    const parts = signingInput.split('.');
+    expect(parts).toHaveLength(2);
+
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<string, unknown>;
+    expect(header['alg']).toBe('RS256');
+    expect(header['typ']).toBe('JWT');
+  });
 });
 
 // ============================================================================

@@ -172,6 +172,18 @@ describe('ApiClient.createClient — extend', () => {
     await extended.get('/b');
     expect(decoratorCalled).toBe(true);
   });
+
+  it('extend() は responseHandler を保持する', async () => {
+    const transport = mockTransport({ body: { result: 42 } });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport(),
+      responseHandler: (res) => (res.body as { result: number }).result,
+    });
+    const extended = client.extend(() => transport);
+    const result = await extended.get('/data');
+    expect(result).toBe(42);
+  });
 });
 
 // ============================================================================
