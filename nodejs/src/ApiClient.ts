@@ -10,7 +10,6 @@
 
 import { LoggerFacade } from './LoggerFacade.js';
 import { HttpCore } from './HttpCore.js';
-import { HttpError } from './types.js';
 import type {
   FetchOptions,
   RawResponse,

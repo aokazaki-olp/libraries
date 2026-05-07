@@ -206,10 +206,13 @@ class LazyTemplate {
     let v = value;
     for (const name of filterNames) {
       const fn = this.filters[name];
-      if (typeof fn === 'function') v = fn(v);
+      if (typeof fn === 'function') {
+        v = fn(v);
+      }
     }
     return v;
   }
+
 
   private parseFilters(rawTerm: string): string[] {
     const segments: string[] = [];
@@ -225,7 +228,9 @@ class LazyTemplate {
       }
     }
 
-    if (current.trim()) segments.push(current.trim());
+    if (current.trim()) {
+      segments.push(current.trim());
+    }
     return segments;
   }
 
@@ -237,14 +242,19 @@ class LazyTemplate {
       const token = m[0];
       if (token === '||') {
         const trimmed = current.trim();
-        if (trimmed) terms.push(trimmed);
+        if (trimmed) {
+          terms.push(trimmed);
+        }
         current = '';
       } else {
         current += token;
       }
     }
 
-    { const trimmed = current.trim(); if (trimmed) terms.push(trimmed); }
+    const trimmed = current.trim();
+    if (trimmed) {
+      terms.push(trimmed);
+    }
 
     const compiled: CompiledEvaluator[] = terms.map(rawTerm => {
       const segments = this.parseFilters(rawTerm);
@@ -281,7 +291,10 @@ class LazyTemplate {
           } else {
             key = Number(bracket);
           }
-          if (key === undefined) { valid = false; break; }
+          if (key === undefined) {
+            valid = false;
+            break;
+          }
           path.push(key);
         }
       }
@@ -290,19 +303,29 @@ class LazyTemplate {
         const rest = term
           .replace(new RegExp(LazyTemplate.KEY_SEGMENT_PATTERN.source, 'g'), '')
           .replace(/[.\s]/g, '');
-        if (rest.length !== 0) valid = false;
+        if (rest.length !== 0) {
+          valid = false;
+        }
       }
 
-      if (!valid || path.length === 0) return () => undefined;
+      if (!valid || path.length === 0) {
+        return () => undefined;
+      }
 
       return (data: object) => {
         let acc: unknown = data;
         for (const key of path) {
-          if (acc == null) return undefined;
+          if (acc == null) {
+            return undefined;
+          }
           const t = typeof acc;
-          if (t !== 'object' && t !== 'function') return undefined;
+          if (t !== 'object' && t !== 'function') {
+            return undefined;
+          }
           const value = (acc as Record<string | number, unknown>)[key];
-          if (value === undefined) return undefined;
+          if (value === undefined) {
+            return undefined;
+          }
           acc = value;
         }
         return this.applyFilters(acc, filterNames);
@@ -312,7 +335,9 @@ class LazyTemplate {
     return (data: object) => {
       for (const fn of compiled) {
         const value = fn(data);
-        if (value !== undefined && value !== null && value !== '') return value;
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
       }
       return '';
     };

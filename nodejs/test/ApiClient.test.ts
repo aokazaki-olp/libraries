@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiClient } from '../src/ApiClient.js';
-import { HttpError } from '../src/types.js';
 import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
 
 // ============================================================================

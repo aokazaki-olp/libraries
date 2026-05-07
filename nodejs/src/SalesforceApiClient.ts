@@ -15,7 +15,7 @@
 
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
-import type { BaseClient, ClientConfig } from './ApiClient.js';
+import type { BaseClient } from './ApiClient.js';
 import type { RawResponse } from './types.js';
 
 const DEFAULT_API_VERSION = 'v60.0';
