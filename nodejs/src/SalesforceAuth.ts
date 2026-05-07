@@ -192,12 +192,10 @@ const getAccessTokenByJwt = async (
 
   const audience = normalizeTokenHost(tokenHost);
 
-  let transport = dependencies.transport;
-  if (!transport) {
-    transport = HttpCore.createTransport();
-    transport = HttpCore.withRetry(transport, { maxRetries, baseDelayMs, logger });
-    transport = HttpCore.withLogger(transport, logger);
-  }
+  const transport = dependencies.transport ?? HttpCore.withLogger(
+    HttpCore.withRetry(HttpCore.createTransport(), { maxRetries, baseDelayMs, logger }),
+    logger,
+  );
 
   const signer = dependencies.signer ?? defaultSigner;
   const url = `${audience}/services/oauth2/token`;

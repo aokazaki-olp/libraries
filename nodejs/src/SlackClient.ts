@@ -230,13 +230,11 @@ const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = 
     transport: injectedTransport,
   } = options;
 
-  let transport: Transport = injectedTransport ?? HttpCore.createTransport();
-
-  if (maxRetries > 0) {
-    transport = withRetry(transport, { maxRetries, baseDelayMs, logger });
-  }
-
-  transport = HttpCore.withLogger(transport, logger);
+  const baseTransport = injectedTransport ?? HttpCore.createTransport();
+  const transport = HttpCore.withLogger(
+    maxRetries > 0 ? withRetry(baseTransport, { maxRetries, baseDelayMs, logger }) : baseTransport,
+    logger,
+  );
 
   const send = async (payload: SlackPayload): Promise<void> => {
     await transport.fetch(webhookUrl, {

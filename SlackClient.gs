@@ -226,16 +226,11 @@ const SlackWebhookClient = (() => {
   const create = (webhookUrl, options = {}) => {
     const maxRetries = options.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
 
-    // Transport 構築（Slack用リトライを使用）
-    let transport = HttpCore.createTransport();
-
-    if (maxRetries !== 0) {
-      transport = SlackCore.withRetry(transport, { maxRetries, logger: options.logger });
-    }
-
-    if (options.logger) {
-      transport = HttpCore.withLogger(transport, options.logger);
-    }
+    const baseTransport = HttpCore.createTransport();
+    const transport = HttpCore.withLogger(
+      maxRetries !== 0 ? SlackCore.withRetry(baseTransport, { maxRetries, logger: options.logger }) : baseTransport,
+      options.logger,
+    );
 
     /**
      * Slack Webhookにペイロードを送信
