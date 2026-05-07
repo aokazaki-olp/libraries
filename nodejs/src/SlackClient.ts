@@ -216,7 +216,7 @@ interface SlackWebhookInstance {
  * @returns { send } クライアント
  * @throws {TypeError} webhookUrl が空文字または文字列でない場合
  * @throws {RetryExhaustedError} リトライ上限に達した場合
- * @throws {SlackWebhookError} Slack Webhook が非2xxを返した場合
+ * @throws {HttpError} Slack Webhook が非2xxを返した場合
  */
 const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = {}): SlackWebhookInstance => {
   if (typeof webhookUrl !== 'string' || webhookUrl === '') {
