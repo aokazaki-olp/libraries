@@ -78,8 +78,8 @@ export class HttpError extends Error {
 export class RetryExhaustedError extends Error {
   override readonly name = 'RetryExhaustedError';
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
   }
 }
 

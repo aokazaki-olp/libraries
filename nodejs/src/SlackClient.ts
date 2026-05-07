@@ -71,7 +71,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
 
               if (attempt === maxRetries) {
                 log?.error(`[Slack] ✖ RETRY exhausted status=429 Retry-After=${secs}s ${method} ${url}`);
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`, { cause: e });
               }
 
               log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=429 Retry-After=${secs}s ${method} ${url}`);
@@ -84,7 +84,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
 
               if (attempt === maxRetries) {
                 log?.error(`[Slack] ✖ RETRY exhausted status=${status} ${method} ${url}`);
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`, { cause: e });
               }
 
               log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`);
@@ -100,7 +100,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
           const delay = Math.pow(2, attempt) * baseDelayMs;
           if (attempt === maxRetries) {
             log?.error(`[Slack] ✖ RETRY exhausted ${method} ${url}`, e);
-            throw new RetryExhaustedError('リトライ回数上限に達しました');
+            throw new RetryExhaustedError('リトライ回数上限に達しました', { cause: e });
           }
           log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`);
           await sleep(delay);

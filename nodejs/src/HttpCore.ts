@@ -168,10 +168,10 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
 
           if (attempt === maxRetries) {
             log?.error(`[HTTP] ✖ RETRY exhausted${statusLabel} ${method} ${url}`);
-            const exhausted = new RetryExhaustedError(
+            throw new RetryExhaustedError(
               `リトライ回数上限に達しました${status != null ? ` (HTTP ${status})` : ''}`,
+              { cause: lastError },
             );
-            throw exhausted;
           }
 
           const delay = Math.pow(2, attempt) * baseDelayMs;
