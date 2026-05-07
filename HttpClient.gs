@@ -402,7 +402,7 @@ const ApiClient = (() => {
    * @returns {Object} クライアント
    */
   const createClient = config => {
-    const baseUrl = trimRightSlash(config.baseUrl ?? '');
+    const baseUrl = trimRightSlash(config.baseUrl);
     const transport = config.transport ?? HttpCore.createTransport();
     const log = LoggerFacade.createLogger(config.logger);
     const headers = config.headers ?? {};

@@ -129,7 +129,7 @@ interface ClientConfig<TResponse = unknown> {
 const createClient = <TResponse = unknown>(
   config: ClientConfig<TResponse>,
 ): BaseClient<TResponse> => {
-  const baseUrl = trimRightSlash(config.baseUrl ?? '');
+  const baseUrl = trimRightSlash(config.baseUrl);
   const transport = config.transport ?? HttpCore.createTransport();
   const log = LoggerFacade.createLogger(config.logger);
   const headers = config.headers ?? {};
