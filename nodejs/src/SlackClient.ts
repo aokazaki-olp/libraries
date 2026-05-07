@@ -1,0 +1,250 @@
+/**
+ * SlackClient.ts
+ * @description Slack用クライアント群（SlackCore / SlackApiClient / SlackWebhookClient）
+ *
+ * 構成:
+ *   SlackCore          - Retry-After対応リトライデコレータ
+ *   SlackApiClient     - Slack Web API用クライアント（Bearer Token認証）
+ *   SlackWebhookClient - Slack Incoming Webhooks用クライアント（URL認証）
+ */
+
+import { LoggerFacade } from './LoggerFacade.js';
+import { ApiClient } from './ApiClient.js';
+import { HttpCore } from './HttpCore.js';
+import { HttpError, RetryExhaustedError, SlackApiError } from './types.js';
+import type { BaseClient } from './ApiClient.js';
+import type { FetchOptions, RawResponse, Transport } from './types.js';
+
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_BASE_DELAY_MS = 1000;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms));
+
+// ============================================================================
+// SlackCore
+// ============================================================================
+
+interface SlackRetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  logger?: unknown;
+}
+
+/**
+ * Slack用のリトライ機能をTransportに追加する。
+ * HTTP 429 の際は Retry-After ヘッダーを尊重し、5xx は指数バックオフで再試行する。
+ *
+ * @param transport ラップ対象Transport
+ * @param options リトライ設定
+ * @returns リトライ機能付きTransport
+ */
+const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Transport => {
+  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  const log = LoggerFacade.createLogger(options.logger);
+
+  return {
+    fetch: async (url: string, fetchOptions?: FetchOptions): Promise<RawResponse> => {
+      const method = fetchOptions?.method ?? 'GET';
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await transport.fetch(url, fetchOptions);
+        } catch (e) {
+          if (e instanceof RetryExhaustedError) throw e;
+
+          lastError = e;
+
+          if (e instanceof HttpError) {
+            const { status } = e;
+
+            if (status === 429) {
+              const raw = e.headers['Retry-After'] ?? e.headers['retry-after'];
+              const rawStr = Array.isArray(raw) ? raw[0] : (raw ?? '');
+              const secs = parseInt(rawStr, 10);
+              const delayMs = (Number.isFinite(secs) && secs > 0 ? secs : 1) * 1000;
+
+              if (attempt === maxRetries) {
+                log?.error(`[Slack] ✖ RETRY exhausted status=429 Retry-After=${secs}s ${method} ${url}`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`);
+              }
+
+              log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=429 Retry-After=${secs}s ${method} ${url}`);
+              await sleep(delayMs);
+              continue;
+            }
+
+            if (status >= 500 && status < 600) {
+              const delay = Math.pow(2, attempt) * baseDelayMs;
+
+              if (attempt === maxRetries) {
+                log?.error(`[Slack] ✖ RETRY exhausted status=${status} ${method} ${url}`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`);
+              }
+
+              log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`);
+              await sleep(delay);
+              continue;
+            }
+
+            // 4xx（429以外）はリトライしない
+            throw e;
+          }
+
+          // ネットワークエラー等 → 指数バックオフ
+          const delay = Math.pow(2, attempt) * baseDelayMs;
+          if (attempt === maxRetries) {
+            log?.error(`[Slack] ✖ RETRY exhausted ${method} ${url}`, e);
+            throw new RetryExhaustedError('リトライ回数上限に達しました');
+          }
+          log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`);
+          await sleep(delay);
+        }
+      }
+
+      throw lastError ?? new RetryExhaustedError('リトライ回数上限に達しました');
+    },
+  };
+};
+
+export const SlackCore = { withRetry };
+
+// ============================================================================
+// SlackApiClient
+// ============================================================================
+
+const SLACK_BASE_URL = 'https://slack.com/api';
+
+interface SlackApiResponse {
+  ok: boolean;
+  error?: string;
+  response_metadata?: { messages?: string[] };
+  [key: string]: unknown;
+}
+
+const slackResponseHandler = (response: RawResponse): unknown => {
+  const body = response.body as SlackApiResponse | null;
+  if (body && body.ok === false) {
+    const errorCode = body.error ?? 'slack_error';
+    throw new SlackApiError(
+      `Slack APIエラー: ${errorCode}`,
+      errorCode,
+      body.response_metadata,
+      response,
+    );
+  }
+  return body;
+};
+
+interface SlackApiClientOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  logger?: unknown;
+  transport?: Transport;
+}
+
+/**
+ * Slack Web API クライアントを作成する。
+ *
+ * @param token Slack API トークン
+ * @param options オプション設定
+ * @returns クライアント（call/get/post/use/extend）
+ */
+const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}): BaseClient => {
+  const {
+    maxRetries = DEFAULT_MAX_RETRIES,
+    baseDelayMs = DEFAULT_BASE_DELAY_MS,
+    logger,
+    transport: injectedTransport,
+  } = options;
+
+  return ApiClient.createClient({
+    baseUrl: SLACK_BASE_URL,
+    transport: injectedTransport ?? HttpCore.createTransport(),
+    logger,
+    responseHandler: slackResponseHandler,
+  })
+    .extend(t => ApiClient.withBearerAuth(t, token))
+    .extend(t => withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend(t => HttpCore.withLogger(t, logger));
+};
+
+export const SlackApiClient = { create: createSlackApiClient };
+
+// ============================================================================
+// SlackWebhookClient
+// ============================================================================
+
+interface SlackPayload {
+  text?: string;
+  blocks?: unknown[];
+  attachments?: unknown[];
+  channel?: string;
+  username?: string;
+  icon_emoji?: string;
+  icon_url?: string;
+  [key: string]: unknown;
+}
+
+interface SlackWebhookOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  timeoutMs?: number;
+  logger?: unknown;
+  transport?: Transport;
+}
+
+interface SlackWebhookInstance {
+  send(payload: SlackPayload): Promise<void>;
+}
+
+/**
+ * Slack Incoming Webhook クライアントを作成する。
+ *
+ * @param webhookUrl Webhook URL
+ * @param options オプション設定
+ * @returns { send } クライアント
+ */
+const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = {}): SlackWebhookInstance => {
+  const {
+    maxRetries = DEFAULT_MAX_RETRIES,
+    baseDelayMs = DEFAULT_BASE_DELAY_MS,
+    timeoutMs,
+    logger,
+    transport: injectedTransport,
+  } = options;
+
+  let transport: Transport = injectedTransport ?? HttpCore.createTransport();
+
+  if (maxRetries > 0) {
+    transport = withRetry(transport, { maxRetries, baseDelayMs, logger });
+  }
+
+  transport = HttpCore.withLogger(transport, logger);
+
+  const send = async (payload: SlackPayload): Promise<void> => {
+    await transport.fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      payload: JSON.stringify(payload),
+      ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}),
+    });
+  };
+
+  return { send };
+};
+
+/**
+ * Slack Incoming Webhook に一回限り送信する（静的メソッド）。
+ */
+const sendWebhook = (webhookUrl: string, payload: SlackPayload, options?: SlackWebhookOptions): Promise<void> =>
+  createWebhookClient(webhookUrl, options).send(payload);
+
+export const SlackWebhookClient = {
+  create: createWebhookClient,
+  send: sendWebhook,
+};
+
+export type { SlackRetryOptions, SlackApiClientOptions, SlackWebhookOptions, SlackPayload, SlackWebhookInstance };
