@@ -89,15 +89,3 @@ export class RetryExhaustedError extends Error {
   }
 }
 
-export class SlackApiError extends Error {
-  override readonly name = 'SlackApiError';
-
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly metadata?: unknown,
-    public readonly response?: RawResponse,
-  ) {
-    super(message);
-  }
-}

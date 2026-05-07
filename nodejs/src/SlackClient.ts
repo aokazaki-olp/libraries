@@ -11,9 +11,22 @@
 import { LoggerFacade } from './LoggerFacade.js';
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
-import { HttpError, RetryExhaustedError, SlackApiError } from './types.js';
+import { HttpError, RetryExhaustedError } from './types.js';
 import type { BaseClient } from './ApiClient.js';
 import type { FetchOptions, RawResponse, Transport } from './types.js';
+
+export class SlackApiError extends Error {
+  override readonly name = 'SlackApiError';
+
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly metadata?: unknown,
+    public readonly response?: RawResponse,
+  ) {
+    super(message);
+  }
+}
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
