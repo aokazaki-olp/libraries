@@ -133,7 +133,7 @@ const createClient = <TResponse = unknown>(
   const transport = config.transport ?? HttpCore.createTransport();
   const log = LoggerFacade.createLogger(config.logger);
   const headers = config.headers ?? {};
-  const responseHandler = config.responseHandler ?? null;
+  const responseHandler = config.responseHandler;
 
   const call = async (request: RequestOptions): Promise<TResponse> => {
     const method = (request.method ?? 'GET').toUpperCase();
@@ -177,7 +177,7 @@ const createClient = <TResponse = unknown>(
       logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport),
-      responseHandler: responseHandler ?? undefined,
+      responseHandler,
     });
 
   const createExtended = <TMethods extends object>(
