@@ -55,7 +55,7 @@ class LazyTemplate {
   /** 数値リテラルパターン */
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
-  /** バックスラッシュ一時退避センチネル (PUA U+E000) */
+  /** バックスラッシュ一時退避センチネル (PUA U+E000 で囲みテンプレート本文との衝突を回避) */
   static readonly BACKSLASH_SENTINEL = '__LT_BS__';
 
   /** プリミティブフィルター 18個 */

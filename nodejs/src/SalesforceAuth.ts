@@ -152,7 +152,7 @@ interface TokenResult {
  * @param options.privateKey - PEM形式 (PKCS#8) の RSA秘密鍵
  * @param options.tokenHost - 組織固有の My Domain URL（ホスト部のみ）
  * @param options.logger - LoggerFacade 互換ロガー
- * @param dependencies - 依存注入（テスト用）
+ * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns {{ accessToken: string, instanceUrl: string }}
  * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
  * @throws {HttpError} token endpoint が非 2xx を返した場合
