@@ -90,7 +90,7 @@ type HttpMethods<TResponse> = {
   post(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   put(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   patch(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  delete(endpoint: string, options?: Partial<RequestOptions>): Promise<TResponse>;
+  delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body'>): Promise<TResponse>;
 };
 
 type BaseClient<TResponse = unknown, TMethods extends object = Record<string, never>> =
@@ -124,7 +124,7 @@ interface ClientConfig<TResponse = unknown> {
  * HTTPクライアントを作成する
  *
  * @param config - クライアント設定
- * @returns クライアント（call/get/post/put/patch/delete/extend/use）
+ * @returns クライアント（call/get/post/put/patch/delete/extend/use）。use() は TypeError をスローする場合がある
  */
 const createClient = <TResponse = unknown>(
   config: ClientConfig<TResponse>,
@@ -218,7 +218,7 @@ const createClient = <TResponse = unknown>(
       patch: (endpoint, body, options) =>
         call({ ...options, method: 'PATCH', endpoint, body }),
       delete: (endpoint, options) =>
-        call({ ...options, method: 'DELETE', endpoint }),
+        call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
     };
 
     client = {

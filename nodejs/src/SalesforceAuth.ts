@@ -46,6 +46,12 @@ const defaultSigner: Signer = {
 // tokenHost バリデーション
 // ============================================================================
 
+/**
+ * tokenHost を正規化・バリデーションする
+ * @param host - 組織固有の My Domain URL（ホスト部のみ、trailing slash なし）
+ * @returns 正規化された tokenHost 文字列
+ * @throws {TypeError} 非string・空文字・大文字混入・trailing slash・Lightning URL・http://・パス指定の場合
+ */
 const normalizeTokenHost = (host: unknown): string => {
   if (typeof host !== 'string') {
     throw new TypeError(

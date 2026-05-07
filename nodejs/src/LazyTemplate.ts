@@ -84,6 +84,11 @@ class LazyTemplate {
   private readonly parts: TemplatePart[];
   private readonly filters: FilterMap;
 
+  /**
+   * @param template - テンプレート文字列（`{{{expression}}}` 構文）
+   * @param filters - カスタムフィルターマップ（PRIMITIVE_FILTERS と合成される）
+   * @throws {TypeError} template が文字列でない場合
+   */
   constructor(template: string, filters: FilterMap = {}) {
     if (typeof template !== 'string') {
       throw new TypeError('template には文字列を指定してください');
@@ -93,6 +98,12 @@ class LazyTemplate {
     this.filters = { ...LazyTemplate.PRIMITIVE_FILTERS, ...filters };
   }
 
+  /**
+   * フィルターを動的に登録する
+   * @param name - フィルター名（空でない文字列）
+   * @param fn - フィルター関数
+   * @throws {TypeError} name が空でない文字列でない場合、または fn が関数でない場合
+   */
   registerFilter(name: string, fn: FilterFn): void {
     if (typeof name !== 'string' || !name) {
       throw new TypeError('name には空でない文字列を指定してください');
@@ -342,6 +353,12 @@ class LazyTemplate {
     };
   }
 
+  /**
+   * テンプレートを評価して文字列を返す
+   * @param data - プレースホルダーに展開するデータオブジェクト
+   * @returns 評価済み文字列
+   * @throws {TypeError} data が null/undefined の場合
+   */
   evaluate(data: object): string {
     if (data == null) {
       throw new TypeError('data にはオブジェクトを指定してください');
@@ -366,6 +383,14 @@ class LazyTemplate {
     return text;
   }
 
+  /**
+   * テンプレートを1回だけ評価するワンショット静的メソッド
+   * @param template - テンプレート文字列
+   * @param data - プレースホルダーに展開するデータオブジェクト
+   * @param filters - カスタムフィルターマップ
+   * @returns 評価済み文字列
+   * @throws {TypeError} template が文字列でない場合、または data が null/undefined の場合
+   */
   static evaluate(template: string, data: object, filters: FilterMap = {}): string {
     return new LazyTemplate(template, filters).evaluate(data);
   }

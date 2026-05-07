@@ -289,6 +289,18 @@ describe('SlackCore.withRetry — ロギング', () => {
 // SlackApiClient.create — バリデーション
 // ============================================================================
 
+describe('SlackApiClient.create — バリデーション', () => {
+  it('token が空文字の場合 TypeError をスローする', () => {
+    expect(() => SlackApiClient.create('')).toThrow(TypeError);
+  });
+});
+
+describe('SlackWebhookClient.create — バリデーション', () => {
+  it('webhookUrl が空文字の場合 TypeError をスローする', () => {
+    expect(() => SlackWebhookClient.create('')).toThrow(TypeError);
+  });
+});
+
 describe('SlackApiClient.create — バリデーション不要（token は string のみ）', () => {
   it('create でクライアントが返る（インターフェース確認）', () => {
     const transport = makeSuccessTransport();

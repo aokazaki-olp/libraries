@@ -154,8 +154,13 @@ interface SlackApiClientOptions {
  * @param token Slack API トークン
  * @param options オプション設定
  * @returns クライアント（call/get/post/use/extend）
+ * @throws {TypeError} token が空文字または文字列でない場合
+ * @throws {SlackApiError} Slack API が ok:false を返した場合
  */
 const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}): BaseClient => {
+  if (typeof token !== 'string' || token === '') {
+    throw new TypeError('token には Slack API トークン (string) を指定してください');
+  }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
@@ -209,8 +214,14 @@ interface SlackWebhookInstance {
  * @param webhookUrl Webhook URL
  * @param options オプション設定
  * @returns { send } クライアント
+ * @throws {TypeError} webhookUrl が空文字または文字列でない場合
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
+ * @throws {SlackWebhookError} Slack Webhook が非2xxを返した場合
  */
 const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = {}): SlackWebhookInstance => {
+  if (typeof webhookUrl !== 'string' || webhookUrl === '') {
+    throw new TypeError('webhookUrl には Slack Webhook URL (string) を指定してください');
+  }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,

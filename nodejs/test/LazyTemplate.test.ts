@@ -142,6 +142,14 @@ describe('LazyTemplate.evaluate — フォールバック', () => {
   it("シングルクォートリテラルのフォールバック", () => {
     expect(new LazyTemplate("{{{name || 'N/A'}}}").evaluate({})).toBe('N/A');
   });
+
+  it('0 はフォールバックを使わず "0" を返す', () => {
+    expect(new LazyTemplate('{{{count || "default"}}}').evaluate({ count: 0 })).toBe('0');
+  });
+
+  it('false はフォールバックを使わず "false" を返す', () => {
+    expect(new LazyTemplate('{{{flag || "N/A"}}}').evaluate({ flag: false })).toBe('false');
+  });
 });
 
 // ============================================================================
@@ -332,6 +340,15 @@ describe('LazyTemplate.registerFilter', () => {
     const t = new LazyTemplate('{{{v | upper}}}');
     t.registerFilter('upper', v => `custom:${v}`);
     expect(t.evaluate({ v: 'hello' })).toBe('custom:hello');
+  });
+
+  it('evaluate 後に registerFilter で上書きしても新フィルターが適用される', () => {
+    const t = new LazyTemplate('{{{value | myFilter}}}');
+    t.registerFilter('myFilter', v => `v1:${v}`);
+    expect(t.evaluate({ value: 'x' })).toBe('v1:x');
+    // キャッシュ済みでも新フィルターが適用される
+    t.registerFilter('myFilter', v => `v2:${v}`);
+    expect(t.evaluate({ value: 'x' })).toBe('v2:x');
   });
 });
 

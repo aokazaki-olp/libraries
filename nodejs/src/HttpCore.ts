@@ -126,7 +126,8 @@ const shouldRetry = (e: unknown): boolean => {
   if (e instanceof HttpError) {
     return e.status === 429 || (e.status >= 500 && e.status < 600);
   }
-  // ネットワークエラー・タイムアウト等もリトライ
+  // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする。
+  // 正しく実装された Transport ではプログラミングエラーはここに到達しない前提。
   return !(e instanceof RetryExhaustedError);
 };
 

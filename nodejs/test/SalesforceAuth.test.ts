@@ -3,18 +3,11 @@ import { SalesforceAuth } from '../src/SalesforceAuth.js';
 import { HttpError } from '../src/types.js';
 import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
 import type { Signer } from '../src/SalesforceAuth.js';
+import { makeRawResponse } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
 // ============================================================================
-
-const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
-  status: 200,
-  headers: {},
-  body: null,
-  text: '',
-  ...overrides,
-});
 
 const makeMockSigner = (): Signer => ({
   computeRsaSha256Signature: vi.fn(() => Buffer.from('mock-signature')),
