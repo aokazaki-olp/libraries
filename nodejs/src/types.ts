@@ -60,6 +60,12 @@ export type ResponseHandler<T = unknown> = (
 // Errors
 // ============================================================================
 
+/**
+ * HTTP 非2xxレスポンスを表すエラー。
+ *
+ * **注意**: `request.body` にはリクエストボディがそのまま含まれる場合がある。
+ * ロガーに渡す前に機密フィールド（トークン・パスワード等）を redact すること。
+ */
 export class HttpError extends Error {
   override readonly name = 'HttpError';
 
