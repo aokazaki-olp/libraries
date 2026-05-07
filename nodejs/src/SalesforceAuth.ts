@@ -202,11 +202,6 @@ const getAccessTokenByJwt = async (
   const jwt = buildJwt(signer, { consumerKey, username, audience, privateKey });
 
   // form-urlencoded で POST（ApiClient.call は JSON.stringify するため使えない）
-  const redactedBody = {
-    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-    assertion: '[REDACTED]',
-  };
-
   let response;
   try {
     response = await transport.fetch(url, {
@@ -226,7 +221,7 @@ const getAccessTokenByJwt = async (
         e.body,
         e.headers,
         e.text,
-        { ...e.request, body: redactedBody },
+        { ...e.request, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: '[REDACTED]' } },
       );
     }
     throw e;
