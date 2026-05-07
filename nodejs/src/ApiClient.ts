@@ -168,6 +168,7 @@ const createClient = <TResponse = unknown>(
 
     return responseHandler
       ? responseHandler(rawResponse, request)
+      // responseHandler 省略時は RawResponse === TResponse を呼び出し側が保証する（型で証明不能）
       : (rawResponse as unknown as TResponse);
   };
 
@@ -205,6 +206,7 @@ const createClient = <TResponse = unknown>(
       }
 
       return createExtended({ ...additionalMethods, ...newMethods });
+    // use のオーバーロードシグネチャは条件型で表現されており、実装シグネチャと型が一致しない
     }) as BaseClient<TResponse, TMethods>['use'];
 
     const httpMethods: HttpMethods<TResponse> = {
@@ -226,6 +228,7 @@ const createClient = <TResponse = unknown>(
       call,
       extend,
       use,
+    // スプレッドによる動的合成は additionalMethods ∪ HttpMethods を型システムが証明できない
     } as unknown as BaseClient<TResponse, TMethods>;
 
     return client;

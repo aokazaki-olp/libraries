@@ -59,7 +59,7 @@ class LazyTemplate {
   static readonly BACKSLASH_SENTINEL = '__LT_BS__';
 
   /** プリミティブフィルター 18個 */
-  static readonly PRIMITIVE_FILTERS: Readonly<FilterMap> = Object.freeze({
+  static readonly PRIMITIVE_FILTERS: Readonly<FilterMap> = {
     trim: (v: unknown) => typeof v === 'string' ? v.trim() : v,
     trimStart: (v: unknown) => typeof v === 'string' ? v.trimStart() : v,
     trimEnd: (v: unknown) => typeof v === 'string' ? v.trimEnd() : v,
@@ -78,7 +78,7 @@ class LazyTemplate {
     default: (v: unknown) => v == null ? '' : v,
     json: (v: unknown) => { try { return JSON.stringify(v); } catch { return '{}'; } },
     jsonPretty: (v: unknown) => { try { return JSON.stringify(v, null, 2); } catch { return '{}'; } },
-  });
+  };
 
   private readonly cache: Map<string, CompiledEvaluator>;
   private readonly parts: TemplatePart[];
