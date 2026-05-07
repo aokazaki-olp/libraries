@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClient.js';
-import { HttpError, RetryExhaustedError, SlackApiError } from '../src/types.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import { SlackApiError } from '../src/SlackClient.js';
+import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
+import type { RawResponse } from '../src/httpTypes.js';
+import { makeTransport } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
@@ -14,19 +16,6 @@ const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => (
   text: '{"ok":true}',
   ...overrides,
 });
-
-const makeTransport = (
-  impl: (url: string, options?: FetchOptions) => Promise<RawResponse>,
-): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
-  const calls: { url: string; options?: FetchOptions }[] = [];
-  return {
-    calls,
-    fetch: vi.fn(async (url, options) => {
-      calls.push({ url, options });
-      return impl(url, options);
-    }),
-  };
-};
 
 const makeSuccessTransport = (body: unknown = { ok: true }) =>
   makeTransport(() => Promise.resolve(makeRawResponse({ body, text: JSON.stringify(body) })));
@@ -300,6 +289,32 @@ describe('SlackCore.withRetry — ロギング', () => {
 // ============================================================================
 // SlackApiClient.create — バリデーション
 // ============================================================================
+
+describe('SlackApiClient.create — バリデーション', () => {
+  it('token が空文字の場合 TypeError をスローする', () => {
+    expect(() => SlackApiClient.create('')).toThrow(TypeError);
+  });
+
+  it.each([[null], [undefined], [123], [true]])(
+    'token=%s（非string）の場合 TypeError をスローする',
+    (token) => {
+      expect(() => SlackApiClient.create(token as unknown as string)).toThrow(TypeError);
+    },
+  );
+});
+
+describe('SlackWebhookClient.create — バリデーション', () => {
+  it('webhookUrl が空文字の場合 TypeError をスローする', () => {
+    expect(() => SlackWebhookClient.create('')).toThrow(TypeError);
+  });
+
+  it.each([[null], [undefined], [123], [true]])(
+    'webhookUrl=%s（非string）の場合 TypeError をスローする',
+    (webhook) => {
+      expect(() => SlackWebhookClient.create(webhook as unknown as string)).toThrow(TypeError);
+    },
+  );
+});
 
 describe('SlackApiClient.create — バリデーション不要（token は string のみ）', () => {
   it('create でクライアントが返る（インターフェース確認）', () => {

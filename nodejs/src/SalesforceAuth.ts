@@ -15,8 +15,8 @@
 
 import { createSign } from 'node:crypto';
 import { HttpCore } from './HttpCore.js';
-import { HttpError } from './types.js';
-import type { Transport } from './types.js';
+import { HttpError } from './httpTypes.js';
+import type { Transport } from './httpTypes.js';
 
 const JWT_LIFETIME_SEC = 180;
 
@@ -46,6 +46,12 @@ const defaultSigner: Signer = {
 // tokenHost バリデーション
 // ============================================================================
 
+/**
+ * tokenHost を正規化・バリデーションする
+ * @param host - 組織固有の My Domain URL（ホスト部のみ、trailing slash なし）
+ * @returns 正規化された tokenHost 文字列
+ * @throws {TypeError} 非string・空文字・大文字混入・trailing slash・Lightning URL・http://・パス指定の場合
+ */
 const normalizeTokenHost = (host: unknown): string => {
   if (typeof host !== 'string') {
     throw new TypeError(
@@ -152,7 +158,9 @@ interface TokenResult {
  * @param options.privateKey - PEM形式 (PKCS#8) の RSA秘密鍵
  * @param options.tokenHost - 組織固有の My Domain URL（ホスト部のみ）
  * @param options.logger - LoggerFacade 互換ロガー
- * @param dependencies - 依存注入（テスト用）
+ * @param options.maxRetries - リトライ最大回数（デフォルト: 3）
+ * @param options.baseDelayMs - 指数バックオフ基準ディレイ ms（デフォルト: 500）
+ * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns {{ accessToken: string, instanceUrl: string }}
  * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
  * @throws {HttpError} token endpoint が非 2xx を返した場合
@@ -184,24 +192,16 @@ const getAccessTokenByJwt = async (
 
   const audience = normalizeTokenHost(tokenHost);
 
-  let transport = dependencies.transport;
-  if (!transport) {
-    transport = HttpCore.createTransport();
-    transport = HttpCore.withRetry(transport, { maxRetries, baseDelayMs, logger });
-    transport = HttpCore.withLogger(transport, logger);
-  }
+  const transport = dependencies.transport ?? HttpCore.withLogger(
+    HttpCore.withRetry(HttpCore.createTransport(), { maxRetries, baseDelayMs, logger }),
+    logger,
+  );
 
   const signer = dependencies.signer ?? defaultSigner;
   const url = `${audience}/services/oauth2/token`;
   const jwt = buildJwt(signer, { consumerKey, username, audience, privateKey });
 
   // form-urlencoded で POST（ApiClient.call は JSON.stringify するため使えない）
-  // payload をオブジェクトで渡すと form-urlencoded としてエンコードされる
-  const redactedBody = {
-    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-    assertion: '[REDACTED]',
-  };
-
   let response;
   try {
     response = await transport.fetch(url, {
@@ -221,15 +221,17 @@ const getAccessTokenByJwt = async (
         e.body,
         e.headers,
         e.text,
-        { ...e.request, body: redactedBody },
+        { ...e.request, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: '[REDACTED]' } },
       );
     }
     throw e;
   }
 
-  const body = response.body as Record<string, unknown> | null;
-  const accessToken = body?.access_token;
-  const instanceUrl = body?.instance_url;
+  const body = response.body;
+  if (typeof body !== 'object' || body === null) {
+    throw new Error(`Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`);
+  }
+  const { access_token: accessToken, instance_url: instanceUrl } = body as Record<string, unknown>;
 
   if (typeof accessToken !== 'string' || accessToken === '') {
     throw new Error('Salesforce token response に access_token が含まれません');

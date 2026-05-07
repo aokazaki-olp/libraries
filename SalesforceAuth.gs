@@ -80,16 +80,15 @@ const SalesforceAuth = (() => {
    * シングルトン化しない(SF-H1)。GAS は実行ごとにプロセスが死ぬので
    * 毎回構築してもオーバーヘッドは無視できる。
    */
-  const buildDefaultTransport = (logger, retryOptions) => {
-    let transport = HttpCore.createTransport();
-    transport = HttpCore.withRetry(transport, {
-      maxRetries: retryOptions.maxRetries,
-      baseDelayMs: retryOptions.baseDelayMs,
-      logger
-    });
-    transport = HttpCore.withLogger(transport, logger);
-    return transport;
-  };
+  const buildDefaultTransport = (logger, retryOptions) =>
+    HttpCore.withLogger(
+      HttpCore.withRetry(HttpCore.createTransport(), {
+        maxRetries: retryOptions.maxRetries,
+        baseDelayMs: retryOptions.baseDelayMs,
+        logger,
+      }),
+      logger,
+    );
 
   const base64UrlEncode = (signer, bytes) =>
     signer.base64EncodeWebSafe(bytes).replace(/=+$/, '');

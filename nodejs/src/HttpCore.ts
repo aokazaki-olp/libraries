@@ -10,8 +10,8 @@
 
 import got, { type Got, type Method, type OptionsInit, type Response } from 'got';
 import { LoggerFacade } from './LoggerFacade.js';
-import { HttpError, RetryExhaustedError } from './types.js';
-import type { FetchOptions, Logger, RawResponse, Transport } from './types.js';
+import { HttpError, RetryExhaustedError } from './httpTypes.js';
+import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
@@ -49,6 +49,7 @@ interface TransportDeps {
  *
  * @param deps - 依存注入（テスト用）
  * @returns Transport
+ * @throws {HttpError} HTTPステータスが2xx以外の場合
  */
 const createTransport = (deps?: TransportDeps): Transport => {
   const http = deps?.got ?? got;
@@ -125,7 +126,8 @@ const shouldRetry = (e: unknown): boolean => {
   if (e instanceof HttpError) {
     return e.status === 429 || (e.status >= 500 && e.status < 600);
   }
-  // ネットワークエラー・タイムアウト等もリトライ
+  // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする。
+  // 正しく実装された Transport ではプログラミングエラーはここに到達しない前提。
   return !(e instanceof RetryExhaustedError);
 };
 
@@ -166,10 +168,10 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
 
           if (attempt === maxRetries) {
             log?.error(`[HTTP] ✖ RETRY exhausted${statusLabel} ${method} ${url}`);
-            const exhausted = new RetryExhaustedError(
+            throw new RetryExhaustedError(
               `リトライ回数上限に達しました${status != null ? ` (HTTP ${status})` : ''}`,
+              { cause: lastError },
             );
-            throw exhausted;
           }
 
           const delay = Math.pow(2, attempt) * baseDelayMs;

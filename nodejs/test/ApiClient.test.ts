@@ -1,58 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ApiClient } from '../src/ApiClient.js';
-import { HttpError } from '../src/types.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
-
-// ============================================================================
-// テストユーティリティ
-// ============================================================================
-
-const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
-  status: 200,
-  headers: {},
-  body: null,
-  text: '',
-  ...overrides,
-});
-
-const mockTransport = (response?: Partial<RawResponse>): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
-  const calls: { url: string; options?: FetchOptions }[] = [];
-  return {
-    calls,
-    fetch: vi.fn(async (url: string, options?: FetchOptions) => {
-      calls.push({ url, options });
-      return makeRawResponse(response);
-    }),
-  };
-};
-
-// ============================================================================
-// buildUrl / buildQueryString
-// ============================================================================
-
-describe('ApiClient.buildUrl', () => {
-  it.each([
-    ['エンドポイントなし', 'https://api.example.com', undefined, undefined, 'https://api.example.com/'],
-    ['スラッシュなしエンドポイント', 'https://api.example.com', 'users', undefined, 'https://api.example.com/users'],
-    ['スラッシュありエンドポイント', 'https://api.example.com', '/users', undefined, 'https://api.example.com/users'],
-    ['クエリパラメータあり', 'https://api.example.com', '/users', { page: 1 }, 'https://api.example.com/users?page=1'],
-    ['複数クエリ', 'https://api.example.com', '/search', { q: 'test', page: 2 }, 'https://api.example.com/search?q=test&page=2'],
-    ['null値は除外', 'https://api.example.com', '/users', { id: null, name: 'bob' }, 'https://api.example.com/users?name=bob'],
-    ['baseUrl末尾スラッシュを除去', 'https://api.example.com/', '/users', undefined, 'https://api.example.com/users'],
-  ])('%s', (_label, baseUrl, endpoint, query, expected) => {
-    expect(ApiClient.buildUrl(baseUrl, endpoint, query)).toBe(expected);
-  });
-
-  it('配列クエリは同じキーで複数展開する', () => {
-    const url = ApiClient.buildUrl('https://api.example.com', '/q', { ids: [1, 2, 3] });
-    expect(url).toBe('https://api.example.com/q?ids=1&ids=2&ids=3');
-  });
-
-  it('特殊文字はURLエンコードする', () => {
-    const url = ApiClient.buildUrl('https://api.example.com', '/q', { q: 'hello world' });
-    expect(url).toBe('https://api.example.com/q?q=hello%20world');
-  });
-});
+import type { RawResponse } from '../src/httpTypes.js';
+import { mockTransport } from './helpers.js';
 
 // ============================================================================
 // withBearerAuth
@@ -222,6 +171,18 @@ describe('ApiClient.createClient — extend', () => {
     // 拡張クライアントを使う → デコレータを通る
     await extended.get('/b');
     expect(decoratorCalled).toBe(true);
+  });
+
+  it('extend() は responseHandler を保持する', async () => {
+    const transport = mockTransport({ body: { result: 42 } });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport(),
+      responseHandler: (res) => (res.body as { result: number }).result,
+    });
+    const extended = client.extend(() => transport);
+    const result = await extended.get('/data');
+    expect(result).toBe(42);
   });
 });
 

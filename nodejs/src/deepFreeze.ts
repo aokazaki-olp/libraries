@@ -12,6 +12,7 @@
  *
  * @param o 凍結するオブジェクト
  * @returns 凍結されたオブジェクト（引数と同一参照）
+ * @throws {TypeError} o がオブジェクトでない場合（null・プリミティブを含む）
  */
 const deepFreeze = <T extends object>(o: T): Readonly<T> => {
   if (!o || typeof o !== 'object') {

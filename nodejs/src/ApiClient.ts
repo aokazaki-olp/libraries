@@ -10,14 +10,17 @@
 
 import { LoggerFacade } from './LoggerFacade.js';
 import { HttpCore } from './HttpCore.js';
-import { HttpError } from './types.js';
 import type {
   FetchOptions,
   RawResponse,
   RequestOptions,
-  ResponseHandler,
   Transport,
-} from './types.js';
+} from './httpTypes.js';
+
+export type ResponseHandler<T = unknown> = (
+  response: RawResponse,
+  request: RequestOptions,
+) => T;
 
 // ============================================================================
 // URL・クエリ文字列ユーティリティ
@@ -91,7 +94,7 @@ type HttpMethods<TResponse> = {
   post(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   put(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   patch(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  delete(endpoint: string, options?: Partial<RequestOptions>): Promise<TResponse>;
+  delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body'>): Promise<TResponse>;
 };
 
 type BaseClient<TResponse = unknown, TMethods extends object = Record<string, never>> =
@@ -125,16 +128,16 @@ interface ClientConfig<TResponse = unknown> {
  * HTTPクライアントを作成する
  *
  * @param config - クライアント設定
- * @returns クライアント（call/get/post/put/patch/delete/extend/use）
+ * @returns クライアント（call/get/post/put/patch/delete/extend/use）。use() は TypeError をスローする場合がある
  */
 const createClient = <TResponse = unknown>(
   config: ClientConfig<TResponse>,
 ): BaseClient<TResponse> => {
-  const baseUrl = trimRightSlash(config.baseUrl ?? '');
+  const baseUrl = trimRightSlash(config.baseUrl);
   const transport = config.transport ?? HttpCore.createTransport();
   const log = LoggerFacade.createLogger(config.logger);
   const headers = config.headers ?? {};
-  const responseHandler = config.responseHandler ?? null;
+  const responseHandler = config.responseHandler;
 
   const call = async (request: RequestOptions): Promise<TResponse> => {
     const method = (request.method ?? 'GET').toUpperCase();
@@ -168,7 +171,7 @@ const createClient = <TResponse = unknown>(
 
     return responseHandler
       ? responseHandler(rawResponse, request)
-      : (rawResponse as unknown as TResponse);
+      : (rawResponse as unknown as TResponse); // responseHandler 省略時は RawResponse === TResponse を呼び出し側が保証する
   };
 
   const extend = (decorator: (transport: Transport) => Transport): BaseClient<TResponse> =>
@@ -177,7 +180,7 @@ const createClient = <TResponse = unknown>(
       logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport),
-      responseHandler: responseHandler ?? undefined,
+      responseHandler,
     });
 
   const createExtended = <TMethods extends object>(
@@ -205,7 +208,7 @@ const createClient = <TResponse = unknown>(
       }
 
       return createExtended({ ...additionalMethods, ...newMethods });
-    }) as BaseClient<TResponse, TMethods>['use'];
+    }) as BaseClient<TResponse, TMethods>['use']; // use のオーバーロードシグネチャは条件型で表現されており、実装シグネチャと型が一致しない
 
     const httpMethods: HttpMethods<TResponse> = {
       get: (endpoint, query, options) =>
@@ -217,7 +220,7 @@ const createClient = <TResponse = unknown>(
       patch: (endpoint, body, options) =>
         call({ ...options, method: 'PATCH', endpoint, body }),
       delete: (endpoint, options) =>
-        call({ ...options, method: 'DELETE', endpoint }),
+        call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
     };
 
     client = {
@@ -226,7 +229,7 @@ const createClient = <TResponse = unknown>(
       call,
       extend,
       use,
-    } as unknown as BaseClient<TResponse, TMethods>;
+    } as unknown as BaseClient<TResponse, TMethods>; // スプレッド合成は型システムで証明不能: additionalMethods ∪ HttpMethods
 
     return client;
   };
@@ -237,8 +240,6 @@ const createClient = <TResponse = unknown>(
 export const ApiClient = {
   withBearerAuth,
   createClient,
-  buildUrl,
-  buildQueryString,
 };
 
 export type { BaseClient, ClientConfig };

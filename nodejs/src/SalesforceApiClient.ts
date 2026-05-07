@@ -5,7 +5,7 @@
  *              SOQL クエリや sObject CRUD は呼び出し側で .use() する。
  *
  * 使用例:
- *   const sf = await SalesforceApiClient.create(instanceUrl, accessToken, { logger: console });
+ *   const sf = SalesforceApiClient.create(instanceUrl, accessToken, { logger: console });
  *   const result = await sf.get('/query', { q: 'SELECT Id, Name FROM Account LIMIT 10' });
  *
  *   // .use() でドメインメソッドを追加
@@ -15,10 +15,10 @@
 
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
-import type { BaseClient, ClientConfig } from './ApiClient.js';
-import type { RawResponse } from './types.js';
+import type { BaseClient } from './ApiClient.js';
+import type { RawResponse, Transport } from './httpTypes.js';
 
-const DEFAULT_API_VERSION = 'v60.0';
+const DEFAULT_API_VERSION = 'v60.0'; // 実装時点（2026-05）の最新安定版
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
 const API_VERSION_PATTERN = /^v\d+\.\d+$/;
@@ -28,7 +28,7 @@ interface SalesforceClientOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   logger?: unknown;
-  transport?: import('./types.js').Transport;
+  transport?: Transport;
 }
 
 const sfResponseHandler = (response: RawResponse): unknown => response.body;

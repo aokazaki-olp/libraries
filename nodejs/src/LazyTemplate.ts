@@ -44,22 +44,22 @@ type CompiledEvaluator = (data: object) => unknown;
 
 class LazyTemplate {
   /** プレースホルダーパターン: {{{expression}}} */
-  static readonly PLACEHOLDER_PATTERN = /(\\*)\{\{\{([\s\S]*?)\}\}\}/g;
+  static readonly PLACEHOLDER_PATTERN = /(\\*)\{\{\{([\s\S]*?)\}\}\}/;
 
   /** 演算子・トークンパターン */
-  static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/g;
+  static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/;
 
   /** キーセグメントパターン */
-  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.\[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/g;
+  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.\[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
 
   /** 数値リテラルパターン */
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
-  /** バックスラッシュ一時退避センチネル (PUA U+E000) */
+  /** バックスラッシュ一時退避センチネル (PUA U+E000 で囲みテンプレート本文との衝突を回避) */
   static readonly BACKSLASH_SENTINEL = '__LT_BS__';
 
   /** プリミティブフィルター 18個 */
-  static readonly PRIMITIVE_FILTERS: Readonly<FilterMap> = Object.freeze({
+  static readonly PRIMITIVE_FILTERS = {
     trim: (v: unknown) => typeof v === 'string' ? v.trim() : v,
     trimStart: (v: unknown) => typeof v === 'string' ? v.trimStart() : v,
     trimEnd: (v: unknown) => typeof v === 'string' ? v.trimEnd() : v,
@@ -78,12 +78,17 @@ class LazyTemplate {
     default: (v: unknown) => v == null ? '' : v,
     json: (v: unknown) => { try { return JSON.stringify(v); } catch { return '{}'; } },
     jsonPretty: (v: unknown) => { try { return JSON.stringify(v, null, 2); } catch { return '{}'; } },
-  });
+  } as const satisfies FilterMap;
 
   private readonly cache: Map<string, CompiledEvaluator>;
   private readonly parts: TemplatePart[];
   private readonly filters: FilterMap;
 
+  /**
+   * @param template - テンプレート文字列（`{{{expression}}}` 構文）
+   * @param filters - カスタムフィルターマップ（PRIMITIVE_FILTERS と合成される）
+   * @throws {TypeError} template が文字列でない場合
+   */
   constructor(template: string, filters: FilterMap = {}) {
     if (typeof template !== 'string') {
       throw new TypeError('template には文字列を指定してください');
@@ -93,6 +98,12 @@ class LazyTemplate {
     this.filters = { ...LazyTemplate.PRIMITIVE_FILTERS, ...filters };
   }
 
+  /**
+   * フィルターを動的に登録する
+   * @param name - フィルター名（空でない文字列）
+   * @param fn - フィルター関数
+   * @throws {TypeError} name が空でない文字列でない場合、または fn が関数でない場合
+   */
   registerFilter(name: string, fn: FilterFn): void {
     if (typeof name !== 'string' || !name) {
       throw new TypeError('name には空でない文字列を指定してください');
@@ -206,7 +217,9 @@ class LazyTemplate {
     let v = value;
     for (const name of filterNames) {
       const fn = this.filters[name];
-      if (typeof fn === 'function') v = fn(v);
+      if (typeof fn === 'function') {
+        v = fn(v);
+      }
     }
     return v;
   }
@@ -225,7 +238,9 @@ class LazyTemplate {
       }
     }
 
-    if (current.trim()) segments.push(current.trim());
+    if (current.trim()) {
+      segments.push(current.trim());
+    }
     return segments;
   }
 
@@ -237,14 +252,19 @@ class LazyTemplate {
       const token = m[0];
       if (token === '||') {
         const trimmed = current.trim();
-        if (trimmed) terms.push(trimmed);
+        if (trimmed) {
+          terms.push(trimmed);
+        }
         current = '';
       } else {
         current += token;
       }
     }
 
-    { const trimmed = current.trim(); if (trimmed) terms.push(trimmed); }
+    const trimmed = current.trim();
+    if (trimmed) {
+      terms.push(trimmed);
+    }
 
     const compiled: CompiledEvaluator[] = terms.map(rawTerm => {
       const segments = this.parseFilters(rawTerm);
@@ -281,7 +301,10 @@ class LazyTemplate {
           } else {
             key = Number(bracket);
           }
-          if (key === undefined) { valid = false; break; }
+          if (key === undefined) {
+            valid = false;
+            break;
+          }
           path.push(key);
         }
       }
@@ -290,19 +313,29 @@ class LazyTemplate {
         const rest = term
           .replace(new RegExp(LazyTemplate.KEY_SEGMENT_PATTERN.source, 'g'), '')
           .replace(/[.\s]/g, '');
-        if (rest.length !== 0) valid = false;
+        if (rest.length !== 0) {
+          valid = false;
+        }
       }
 
-      if (!valid || path.length === 0) return () => undefined;
+      if (!valid || path.length === 0) {
+        return () => undefined;
+      }
 
       return (data: object) => {
         let acc: unknown = data;
         for (const key of path) {
-          if (acc == null) return undefined;
+          if (acc == null) {
+            return undefined;
+          }
           const t = typeof acc;
-          if (t !== 'object' && t !== 'function') return undefined;
+          if (t !== 'object' && t !== 'function') {
+            return undefined;
+          }
           const value = (acc as Record<string | number, unknown>)[key];
-          if (value === undefined) return undefined;
+          if (value === undefined) {
+            return undefined;
+          }
           acc = value;
         }
         return this.applyFilters(acc, filterNames);
@@ -312,12 +345,20 @@ class LazyTemplate {
     return (data: object) => {
       for (const fn of compiled) {
         const value = fn(data);
-        if (value !== undefined && value !== null && value !== '') return value;
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
       }
       return '';
     };
   }
 
+  /**
+   * テンプレートを評価して文字列を返す
+   * @param data - プレースホルダーに展開するデータオブジェクト
+   * @returns 評価済み文字列
+   * @throws {TypeError} data が null/undefined の場合
+   */
   evaluate(data: object): string {
     if (data == null) {
       throw new TypeError('data にはオブジェクトを指定してください');
@@ -342,6 +383,14 @@ class LazyTemplate {
     return text;
   }
 
+  /**
+   * テンプレートを1回だけ評価するワンショット静的メソッド
+   * @param template - テンプレート文字列
+   * @param data - プレースホルダーに展開するデータオブジェクト
+   * @param filters - カスタムフィルターマップ
+   * @returns 評価済み文字列
+   * @throws {TypeError} template が文字列でない場合、または data が null/undefined の場合
+   */
   static evaluate(template: string, data: object, filters: FilterMap = {}): string {
     return new LazyTemplate(template, filters).evaluate(data);
   }

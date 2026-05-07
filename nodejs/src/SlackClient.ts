@@ -11,9 +11,22 @@
 import { LoggerFacade } from './LoggerFacade.js';
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
-import { HttpError, RetryExhaustedError, SlackApiError } from './types.js';
+import { HttpError, RetryExhaustedError } from './httpTypes.js';
 import type { BaseClient } from './ApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from './types.js';
+import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
+
+export class SlackApiError extends Error {
+  override readonly name = 'SlackApiError';
+
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly metadata?: unknown,
+    public readonly response?: RawResponse,
+  ) {
+    super(message);
+  }
+}
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
@@ -38,6 +51,7 @@ interface SlackRetryOptions {
  * @param transport ラップ対象Transport
  * @param options リトライ設定
  * @returns リトライ機能付きTransport
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
  */
 const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -53,7 +67,9 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          if (e instanceof RetryExhaustedError) throw e;
+          if (e instanceof RetryExhaustedError) {
+            throw e;
+          }
 
           lastError = e;
 
@@ -68,7 +84,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
 
               if (attempt === maxRetries) {
                 log?.error(`[Slack] ✖ RETRY exhausted status=429 Retry-After=${secs}s ${method} ${url}`);
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`, { cause: e });
               }
 
               log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=429 Retry-After=${secs}s ${method} ${url}`);
@@ -81,7 +97,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
 
               if (attempt === maxRetries) {
                 log?.error(`[Slack] ✖ RETRY exhausted status=${status} ${method} ${url}`);
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`);
+                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`, { cause: e });
               }
 
               log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`);
@@ -97,7 +113,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
           const delay = Math.pow(2, attempt) * baseDelayMs;
           if (attempt === maxRetries) {
             log?.error(`[Slack] ✖ RETRY exhausted ${method} ${url}`, e);
-            throw new RetryExhaustedError('リトライ回数上限に達しました');
+            throw new RetryExhaustedError('リトライ回数上限に達しました', { cause: e });
           }
           log?.warn(`[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`);
           await sleep(delay);
@@ -124,14 +140,19 @@ interface SlackApiResponse {
   [key: string]: unknown;
 }
 
-const slackResponseHandler = (response: RawResponse): unknown => {
-  const body = response.body as SlackApiResponse | null;
-  if (body && body.ok === false) {
-    const errorCode = body.error ?? 'slack_error';
+type ResponseHandler = (response: RawResponse) => unknown;
+
+const slackResponseHandler: ResponseHandler = (response) => {
+  const body = response.body;
+  if (typeof body !== 'object' || body === null) {
+    return body;
+  }
+  const typed = body as SlackApiResponse;
+  if (typed.ok === false) {
     throw new SlackApiError(
-      `Slack APIエラー: ${errorCode}`,
-      errorCode,
-      body.response_metadata,
+      `Slack API エラー: ${typed.error ?? 'unknown'}`,
+      typed.error ?? 'slack_error',
+      typed.response_metadata,
       response,
     );
   }
@@ -151,8 +172,13 @@ interface SlackApiClientOptions {
  * @param token Slack API トークン
  * @param options オプション設定
  * @returns クライアント（call/get/post/use/extend）
+ * @throws {TypeError} token が空文字または文字列でない場合
+ * @throws {SlackApiError} Slack API が ok:false を返した場合
  */
 const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}): BaseClient => {
+  if (typeof token !== 'string' || token === '') {
+    throw new TypeError('token には Slack API トークン (string) を指定してください');
+  }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
@@ -206,8 +232,14 @@ interface SlackWebhookInstance {
  * @param webhookUrl Webhook URL
  * @param options オプション設定
  * @returns { send } クライアント
+ * @throws {TypeError} webhookUrl が空文字または文字列でない場合
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
+ * @throws {HttpError} Slack Webhook が非2xxを返した場合
  */
 const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = {}): SlackWebhookInstance => {
+  if (typeof webhookUrl !== 'string' || webhookUrl === '') {
+    throw new TypeError('webhookUrl には Slack Webhook URL (string) を指定してください');
+  }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
@@ -216,13 +248,11 @@ const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = 
     transport: injectedTransport,
   } = options;
 
-  let transport: Transport = injectedTransport ?? HttpCore.createTransport();
-
-  if (maxRetries > 0) {
-    transport = withRetry(transport, { maxRetries, baseDelayMs, logger });
-  }
-
-  transport = HttpCore.withLogger(transport, logger);
+  const baseTransport = injectedTransport ?? HttpCore.createTransport();
+  const transport = HttpCore.withLogger(
+    maxRetries > 0 ? withRetry(baseTransport, { maxRetries, baseDelayMs, logger }) : baseTransport,
+    logger,
+  );
 
   const send = async (payload: SlackPayload): Promise<void> => {
     await transport.fetch(webhookUrl, {

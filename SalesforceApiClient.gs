@@ -23,7 +23,7 @@
  */
 const SalesforceApiClient = (() => {
   const CONFIG = Object.freeze({
-    DEFAULT_API_VERSION: 'v60.0',
+    DEFAULT_API_VERSION: 'v60.0', // 実装時点（2026-05）の最新安定版
     DEFAULT_MAX_RETRIES: 3,
     DEFAULT_BASE_DELAY_MS: 500
   });
