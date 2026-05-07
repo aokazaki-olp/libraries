@@ -13,8 +13,6 @@ import type { Logger } from './types.js';
 
 type LogMethod = (...args: unknown[]) => void;
 
-type LoggerLike = Record<string, unknown>;
-
 /**
  * 実装オブジェクトをLogger形式に変換するファサード
  *
@@ -33,7 +31,7 @@ const createLogger = (logger: unknown): Logger | null => {
     return null;
   }
 
-  const impl = logger as LoggerLike;
+  const impl = logger as Record<string, unknown>;
 
   const noop: LogMethod = () => {};
 
