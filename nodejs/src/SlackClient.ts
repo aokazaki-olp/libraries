@@ -38,6 +38,7 @@ interface SlackRetryOptions {
  * @param transport ラップ対象Transport
  * @param options リトライ設定
  * @returns リトライ機能付きTransport
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
  */
 const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -53,7 +54,9 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          if (e instanceof RetryExhaustedError) throw e;
+          if (e instanceof RetryExhaustedError) {
+            throw e;
+          }
 
           lastError = e;
 

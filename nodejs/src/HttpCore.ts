@@ -49,6 +49,7 @@ interface TransportDeps {
  *
  * @param deps - 依存注入（テスト用）
  * @returns Transport
+ * @throws {HttpError} HTTPステータスが2xx以外の場合
  */
 const createTransport = (deps?: TransportDeps): Transport => {
   const http = deps?.got ?? got;

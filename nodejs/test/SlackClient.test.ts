@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClient.js';
 import { HttpError, RetryExhaustedError, SlackApiError } from '../src/types.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import type { RawResponse } from '../src/types.js';
+import { makeTransport } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
@@ -14,19 +15,6 @@ const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => (
   text: '{"ok":true}',
   ...overrides,
 });
-
-const makeTransport = (
-  impl: (url: string, options?: FetchOptions) => Promise<RawResponse>,
-): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
-  const calls: { url: string; options?: FetchOptions }[] = [];
-  return {
-    calls,
-    fetch: vi.fn(async (url, options) => {
-      calls.push({ url, options });
-      return impl(url, options);
-    }),
-  };
-};
 
 const makeSuccessTransport = (body: unknown = { ok: true }) =>
   makeTransport(() => Promise.resolve(makeRawResponse({ body, text: JSON.stringify(body) })));

@@ -1,18 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import type { FetchOptions, Transport } from '../src/types.js';
+import { makeRawResponse } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
 // ============================================================================
-
-const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
-  status: 200,
-  headers: {},
-  body: null,
-  text: '',
-  ...overrides,
-});
 
 const mockTransport = (body: unknown = null): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
   const calls: { url: string; options?: FetchOptions }[] = [];

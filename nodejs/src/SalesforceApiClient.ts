@@ -5,7 +5,7 @@
  *              SOQL クエリや sObject CRUD は呼び出し側で .use() する。
  *
  * 使用例:
- *   const sf = await SalesforceApiClient.create(instanceUrl, accessToken, { logger: console });
+ *   const sf = SalesforceApiClient.create(instanceUrl, accessToken, { logger: console });
  *   const result = await sf.get('/query', { q: 'SELECT Id, Name FROM Account LIMIT 10' });
  *
  *   // .use() でドメインメソッドを追加

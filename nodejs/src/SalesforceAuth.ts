@@ -152,6 +152,8 @@ interface TokenResult {
  * @param options.privateKey - PEM形式 (PKCS#8) の RSA秘密鍵
  * @param options.tokenHost - 組織固有の My Domain URL（ホスト部のみ）
  * @param options.logger - LoggerFacade 互換ロガー
+ * @param options.maxRetries - リトライ最大回数（デフォルト: 3）
+ * @param options.baseDelayMs - 指数バックオフ基準ディレイ ms（デフォルト: 500）
  * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns {{ accessToken: string, instanceUrl: string }}
  * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
@@ -196,7 +198,6 @@ const getAccessTokenByJwt = async (
   const jwt = buildJwt(signer, { consumerKey, username, audience, privateKey });
 
   // form-urlencoded で POST（ApiClient.call は JSON.stringify するため使えない）
-  // payload をオブジェクトで渡すと form-urlencoded としてエンコードされる
   const redactedBody = {
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion: '[REDACTED]',

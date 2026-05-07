@@ -1,28 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.js';
 import { HttpError, RetryExhaustedError } from '../src/types.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
+import type { RawResponse } from '../src/types.js';
+import { makeRawResponse, makeTransport } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
 // ============================================================================
 
-const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
-  status: 200,
-  headers: {},
-  body: null,
-  text: '',
-  ...overrides,
-});
-
-const makeTransport = (impl: (url: string, options?: FetchOptions) => Promise<RawResponse>): Transport => ({
-  fetch: vi.fn(impl),
-});
-
-const makeSuccessTransport = (response?: Partial<RawResponse>): Transport =>
+const makeSuccessTransport = (response?: Partial<RawResponse>) =>
   makeTransport(() => Promise.resolve(makeRawResponse(response)));
 
-const makeErrorTransport = (error: unknown): Transport =>
+const makeErrorTransport = (error: unknown) =>
   makeTransport(() => Promise.reject(error));
 
 // ============================================================================

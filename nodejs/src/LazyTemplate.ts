@@ -213,7 +213,6 @@ class LazyTemplate {
     return v;
   }
 
-
   private parseFilters(rawTerm: string): string[] {
     const segments: string[] = [];
     let current = '';

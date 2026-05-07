@@ -1,29 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ApiClient } from '../src/ApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
-
-// ============================================================================
-// テストユーティリティ
-// ============================================================================
-
-const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawResponse => ({
-  status: 200,
-  headers: {},
-  body: null,
-  text: '',
-  ...overrides,
-});
-
-const mockTransport = (response?: Partial<RawResponse>): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
-  const calls: { url: string; options?: FetchOptions }[] = [];
-  return {
-    calls,
-    fetch: vi.fn(async (url: string, options?: FetchOptions) => {
-      calls.push({ url, options });
-      return makeRawResponse(response);
-    }),
-  };
-};
+import type { RawResponse } from '../src/types.js';
+import { mockTransport } from './helpers.js';
 
 // ============================================================================
 // withBearerAuth
