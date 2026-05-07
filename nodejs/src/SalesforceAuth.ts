@@ -227,9 +227,11 @@ const getAccessTokenByJwt = async (
     throw e;
   }
 
-  const body = response.body as Record<string, unknown> | null;
-  const accessToken = body?.access_token;
-  const instanceUrl = body?.instance_url;
+  const body = response.body;
+  if (typeof body !== 'object' || body === null) {
+    throw new Error(`Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`);
+  }
+  const { access_token: accessToken, instance_url: instanceUrl } = body as Record<string, unknown>;
 
   if (typeof accessToken !== 'string' || accessToken === '') {
     throw new Error('Salesforce token response に access_token が含まれません');
