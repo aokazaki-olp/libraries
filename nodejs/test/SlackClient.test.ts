@@ -297,7 +297,7 @@ describe('SlackApiClient.create — バリデーション', () => {
   it.each([[null], [undefined], [123], [true]])(
     'token=%s（非string）の場合 TypeError をスローする',
     (token) => {
-      expect(() => SlackApiClient.create(token as string)).toThrow(TypeError);
+      expect(() => SlackApiClient.create(token as unknown as string)).toThrow(TypeError);
     },
   );
 });
@@ -310,7 +310,7 @@ describe('SlackWebhookClient.create — バリデーション', () => {
   it.each([[null], [undefined], [123], [true]])(
     'webhookUrl=%s（非string）の場合 TypeError をスローする',
     (webhook) => {
-      expect(() => SlackWebhookClient.create(webhook as string)).toThrow(TypeError);
+      expect(() => SlackWebhookClient.create(webhook as unknown as string)).toThrow(TypeError);
     },
   );
 });

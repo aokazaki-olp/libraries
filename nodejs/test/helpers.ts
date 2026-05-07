@@ -12,13 +12,12 @@ export const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawRespon
 export const makeTransport = (
   impl: (url: string, options?: FetchOptions) => Promise<RawResponse>,
 ): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
-  const calls: { url: string; options?: FetchOptions }[] = [];
+  const fetchFn = vi.fn(async (url: string, options?: FetchOptions) => impl(url, options));
   return {
-    calls,
-    fetch: vi.fn(async (url, options) => {
-      calls.push({ url, options });
-      return impl(url, options);
-    }),
+    get calls() {
+      return fetchFn.mock.calls.map(([url, options]) => ({ url, options }));
+    },
+    fetch: fetchFn,
   };
 };
 

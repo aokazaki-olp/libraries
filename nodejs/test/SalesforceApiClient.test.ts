@@ -37,10 +37,12 @@ describe('SalesforceApiClient.create — バリデーション', () => {
   ] as [string, unknown[], string][])(
     '%s → TypeError（メッセージに "%s" を含む）',
     (_label, args, expectedInMessage) => {
-      expect(() => (SalesforceApiClient.create as (...a: unknown[]) => unknown)(...args))
+      // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
+      expect(() => SalesforceApiClient.create(...args))
         .toThrow(TypeError);
       try {
-        (SalesforceApiClient.create as (...a: unknown[]) => unknown)(...args);
+        // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
+        SalesforceApiClient.create(...args);
       } catch (e) {
         expect((e as TypeError).message).toContain(expectedInMessage);
       }
