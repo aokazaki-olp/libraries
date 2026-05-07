@@ -293,12 +293,26 @@ describe('SlackApiClient.create — バリデーション', () => {
   it('token が空文字の場合 TypeError をスローする', () => {
     expect(() => SlackApiClient.create('')).toThrow(TypeError);
   });
+
+  it.each([[null], [undefined], [123], [true]])(
+    'token=%s（非string）の場合 TypeError をスローする',
+    (token) => {
+      expect(() => SlackApiClient.create(token as string)).toThrow(TypeError);
+    },
+  );
 });
 
 describe('SlackWebhookClient.create — バリデーション', () => {
   it('webhookUrl が空文字の場合 TypeError をスローする', () => {
     expect(() => SlackWebhookClient.create('')).toThrow(TypeError);
   });
+
+  it.each([[null], [undefined], [123], [true]])(
+    'webhookUrl=%s（非string）の場合 TypeError をスローする',
+    (webhook) => {
+      expect(() => SlackWebhookClient.create(webhook as string)).toThrow(TypeError);
+    },
+  );
 });
 
 describe('SlackApiClient.create — バリデーション不要（token は string のみ）', () => {

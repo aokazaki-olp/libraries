@@ -127,14 +127,19 @@ interface SlackApiResponse {
   [key: string]: unknown;
 }
 
-const slackResponseHandler = (response: RawResponse): unknown => {
-  const body = response.body as SlackApiResponse | null;
-  if (body && body.ok === false) {
-    const errorCode = body.error ?? 'slack_error';
+type ResponseHandler = (response: RawResponse) => unknown;
+
+const slackResponseHandler: ResponseHandler = (response) => {
+  const body = response.body;
+  if (typeof body !== 'object' || body === null) {
+    return body;
+  }
+  const typed = body as SlackApiResponse;
+  if (typed.ok === false) {
     throw new SlackApiError(
-      `Slack APIエラー: ${errorCode}`,
-      errorCode,
-      body.response_metadata,
+      `Slack API エラー: ${typed.error ?? 'unknown'}`,
+      typed.error ?? 'slack_error',
+      typed.response_metadata,
       response,
     );
   }

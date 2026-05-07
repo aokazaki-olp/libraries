@@ -154,6 +154,16 @@ describe('SlackFilters — escapeJson', () => {
   it('タブを \\t に変換', () => {
     expect(SlackFilters.escapeJson('a\tb')).toBe('a\\tb');
   });
+
+  it.each([
+    ['\x00', '\\u0000'],
+    ['\x01', '\\u0001'],
+    ['\x07', '\\u0007'],
+    ['\x1b', '\\u001b'],
+    ['\x1f', '\\u001f'],
+  ])('制御文字 %s を \\uXXXX にエスケープする', (input, expected) => {
+    expect(SlackFilters.escapeJson(input)).toBe(expected);
+  });
 });
 
 describe('SlackFilters — escapeBlockKit', () => {

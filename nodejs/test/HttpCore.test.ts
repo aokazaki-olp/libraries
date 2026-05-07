@@ -323,4 +323,90 @@ describe('HttpCore.createTransport — got 統合', () => {
     const transport = HttpCore.createTransport({ got: mockGot });
     await expect(transport.fetch('https://example.com/not-found', { method: 'GET' })).rejects.toThrow(HttpError);
   });
+
+  it('200 正常系 + JSON レスポンス: body が parse された object になる', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: '{"ok":true,"data":42}',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/api');
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ ok: true, data: 42 });
+  });
+
+  it('JSON でないテキストレスポンス: body が null で text が文字列になる', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: { 'content-type': 'text/plain' },
+      body: 'plain text response',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/text');
+    expect(result.body).toBe('plain text response');
+    expect(result.text).toBe('plain text response');
+  });
+
+  it('payload が object の場合: fetchOptions.form が設定される', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: {},
+      body: '{"result":"ok"}',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com/form', {
+      method: 'POST',
+      payload: { grant_type: 'client_credentials', client_id: 'xxx' },
+    });
+
+    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    expect(calledOptions.form).toEqual({ grant_type: 'client_credentials', client_id: 'xxx' });
+    expect(calledOptions.body).toBeUndefined();
+  });
+
+  it('payload が string の場合: fetchOptions.body が設定される', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: {},
+      body: '{"result":"ok"}',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com/json', {
+      method: 'POST',
+      payload: '{"key":"value"}',
+    });
+
+    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    expect(calledOptions.body).toBe('{"key":"value"}');
+    expect(calledOptions.form).toBeUndefined();
+  });
+
+  it('timeoutMs が設定される: fetchOptions.timeout.request に反映される', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: {},
+      body: '',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com/', { timeoutMs: 3000 });
+
+    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    expect((calledOptions.timeout as Record<string, unknown>).request).toBe(3000);
+  });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as crypto from 'node:crypto';
 import { SalesforceAuth } from '../src/SalesforceAuth.js';
 import { HttpError } from '../src/types.js';
 import type { FetchOptions, RawResponse, Transport } from '../src/types.js';
@@ -210,6 +211,30 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<string, unknown>;
     expect(header['alg']).toBe('RS256');
     expect(header['typ']).toBe('JWT');
+  });
+});
+
+// ============================================================================
+// getAccessTokenByJwt — defaultSigner (node:crypto)
+// ============================================================================
+
+describe('SalesforceAuth.getAccessTokenByJwt — defaultSigner (node:crypto)', () => {
+  it('signer を省略しても PEM 鍵で JWT を生成して token endpoint に POST できる', async () => {
+    // node:crypto で実際に署名できることを確認するため、実際の RSA 鍵ペアを生成して使う
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+
+    const transport = makeMockTransport({
+      body: { access_token: 'sf-token', instance_url: 'https://yourorg.my.salesforce.com' },
+    });
+
+    const result = await SalesforceAuth.getAccessTokenByJwt(
+      { ...VALID_OPTIONS, privateKey: pem },
+      { transport }, // signer を省略 → defaultSigner (node:crypto) を使用
+    );
+
+    expect(result.accessToken).toBe('sf-token');
+    expect(result.instanceUrl).toBe('https://yourorg.my.salesforce.com');
   });
 });
 
