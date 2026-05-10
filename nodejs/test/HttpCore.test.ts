@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.js';
 import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
 import type { RawResponse } from '../src/httpTypes.js';
-import { makeRawResponse, makeTransport } from './helpers.js';
+import { createMockLogger, makeRawResponse, makeTransport } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
@@ -188,7 +188,7 @@ describe('HttpCore.withRetry — ロギング', () => {
   afterEach(() => vi.useRealTimers());
 
   it('リトライ時に warn ログを出力する', async () => {
-    const warn = vi.fn();
+    const logger = createMockLogger();
     const error = new HttpError('HTTPエラー 503', 503, null);
     let calls = 0;
     const transport = makeTransport(async () => {
@@ -197,29 +197,29 @@ describe('HttpCore.withRetry — ロギング', () => {
       return makeRawResponse();
     });
 
-    const retrying = HttpCore.withRetry(transport, { maxRetries: 2, baseDelayMs: 10, logger: { warn, error: vi.fn() } });
+    const retrying = HttpCore.withRetry(transport, { maxRetries: 2, baseDelayMs: 10, logger });
     const promise = retrying.fetch('https://example.com/api');
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0][0]).toContain('RETRY');
-    expect(warn.mock.calls[0][0]).toContain('503');
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn.mock.calls[0][0]).toContain('RETRY');
+    expect(logger.warn.mock.calls[0][0]).toContain('503');
   });
 
   it('リトライ上限時に error ログを出力する', async () => {
     const error = new HttpError('HTTPエラー 503', 503, null);
-    const errorLog = vi.fn();
+    const logger = createMockLogger();
     const transport = makeErrorTransport(error);
 
-    const retrying = HttpCore.withRetry(transport, { maxRetries: 1, baseDelayMs: 10, logger: { warn: vi.fn(), error: errorLog } });
+    const retrying = HttpCore.withRetry(transport, { maxRetries: 1, baseDelayMs: 10, logger });
     const promise = retrying.fetch('https://example.com');
     const assertion = expect(promise).rejects.toThrow(RetryExhaustedError);
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(errorLog).toHaveBeenCalledOnce();
-    expect(errorLog.mock.calls[0][0]).toContain('exhausted');
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0][0]).toContain('exhausted');
   });
 });
 
@@ -235,39 +235,38 @@ describe('HttpCore.withLogger', () => {
   });
 
   it('リクエスト前に debug、成功後に info ログを出力する', async () => {
-    const debug = vi.fn();
-    const info = vi.fn();
+    const logger = createMockLogger();
     const transport = makeSuccessTransport({ status: 200 });
 
-    const logged = HttpCore.withLogger(transport, { debug, info, error: vi.fn() });
+    const logged = HttpCore.withLogger(transport, logger);
     await logged.fetch('https://example.com/api', { method: 'GET' });
 
-    expect(debug).toHaveBeenCalledOnce();
-    expect(debug.mock.calls[0][0]).toContain('→ GET https://example.com/api');
+    expect(logger.debug).toHaveBeenCalledOnce();
+    expect(logger.debug.mock.calls[0][0]).toContain('→ GET https://example.com/api');
 
-    expect(info).toHaveBeenCalledOnce();
-    expect(info.mock.calls[0][0]).toContain('← 200 GET https://example.com/api');
+    expect(logger.info).toHaveBeenCalledOnce();
+    expect(logger.info.mock.calls[0][0]).toContain('← 200 GET https://example.com/api');
   });
 
   it('エラー時に error ログを出力してエラーを再スローする', async () => {
-    const error = vi.fn();
+    const logger = createMockLogger();
     const httpError = new HttpError('HTTPエラー 500', 500, null);
     const transport = makeErrorTransport(httpError);
 
-    const logged = HttpCore.withLogger(transport, { debug: vi.fn(), info: vi.fn(), error });
+    const logged = HttpCore.withLogger(transport, logger);
     await expect(logged.fetch('https://example.com')).rejects.toThrow(HttpError);
 
-    expect(error).toHaveBeenCalledOnce();
-    expect(error.mock.calls[0][0]).toContain('✖');
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0][0]).toContain('✖');
   });
 
   it('method が未指定の場合 GET とみなしてログに出力する', async () => {
-    const debug = vi.fn();
+    const logger = createMockLogger();
     const transport = makeSuccessTransport();
-    const logged = HttpCore.withLogger(transport, { debug, info: vi.fn(), error: vi.fn() });
+    const logged = HttpCore.withLogger(transport, logger);
 
     await logged.fetch('https://example.com');
-    expect(debug.mock.calls[0][0]).toContain('GET');
+    expect(logger.debug.mock.calls[0][0]).toContain('GET');
   });
 });
 
@@ -280,8 +279,7 @@ describe('HttpCore — デコレータ積み重ね', () => {
   afterEach(() => vi.useRealTimers());
 
   it('withRetry + withLogger を積み重ねて動作する', async () => {
-    const debugLog = vi.fn();
-    const infoLog = vi.fn();
+    const logger = createMockLogger();
 
     let calls = 0;
     const baseTransport = makeTransport(async () => {
@@ -292,7 +290,7 @@ describe('HttpCore — デコレータ積み重ね', () => {
 
     const transport = HttpCore.withLogger(
       HttpCore.withRetry(baseTransport, { maxRetries: 2, baseDelayMs: 50 }),
-      { debug: debugLog, info: infoLog, error: vi.fn(), warn: vi.fn() },
+      logger,
     );
 
     const promise = transport.fetch('https://example.com');
@@ -301,7 +299,7 @@ describe('HttpCore — デコレータ積み重ね', () => {
 
     expect(result.body).toEqual({ data: 'ok' });
     expect(calls).toBe(2);
-    expect(infoLog).toHaveBeenCalledOnce(); // Loggerは最外 → 最終成功1回のみ
+    expect(logger.info).toHaveBeenCalledOnce(); // Loggerは最外 → 最終成功1回のみ
   });
 });
 

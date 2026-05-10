@@ -3,7 +3,7 @@ import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClien
 import { SlackApiError } from '../src/SlackClient.js';
 import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
 import type { RawResponse } from '../src/httpTypes.js';
-import { makeTransport } from './helpers.js';
+import { createMockLogger, makeTransport } from './helpers.js';
 
 // ============================================================================
 // テストユーティリティ
@@ -199,7 +199,7 @@ describe('SlackCore.withRetry — ロギング', () => {
   afterEach(() => vi.useRealTimers());
 
   it('429 リトライ時に warn を出力する', async () => {
-    const warn = vi.fn();
+    const logger = createMockLogger();
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
@@ -209,22 +209,22 @@ describe('SlackCore.withRetry — ロギング', () => {
 
     const retrying = SlackCore.withRetry(transport, {
       maxRetries: 3,
-      logger: { warn, error: vi.fn() },
+      logger,
     });
     const promise = retrying.fetch('https://slack.com/api/test', { method: 'POST' });
     const assertion = expect(promise).resolves.toBeDefined();
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0][0]).toContain('[Slack]');
-    expect(warn.mock.calls[0][0]).toContain('RETRY');
-    expect(warn.mock.calls[0][0]).toContain('429');
-    expect(warn.mock.calls[0][0]).toContain('Retry-After=1s');
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn.mock.calls[0][0]).toContain('[Slack]');
+    expect(logger.warn.mock.calls[0][0]).toContain('RETRY');
+    expect(logger.warn.mock.calls[0][0]).toContain('429');
+    expect(logger.warn.mock.calls[0][0]).toContain('Retry-After=1s');
   });
 
   it('5xx リトライ時に warn を出力する', async () => {
-    const warn = vi.fn();
+    const logger = createMockLogger();
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
@@ -235,36 +235,36 @@ describe('SlackCore.withRetry — ロギング', () => {
     const retrying = SlackCore.withRetry(transport, {
       maxRetries: 3,
       baseDelayMs: 10,
-      logger: { warn, error: vi.fn() },
+      logger,
     });
     const promise = retrying.fetch('https://slack.com/api/test', { method: 'POST' });
     const assertion = expect(promise).resolves.toBeDefined();
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0][0]).toContain('status=503');
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn.mock.calls[0][0]).toContain('status=503');
   });
 
   it('リトライ上限時に error を出力する', async () => {
-    const errorLog = vi.fn();
+    const logger = createMockLogger();
     const transport = makeHttpErrorTransport(503);
     const retrying = SlackCore.withRetry(transport, {
       maxRetries: 1,
       baseDelayMs: 10,
-      logger: { warn: vi.fn(), error: errorLog },
+      logger,
     });
     const promise = retrying.fetch('https://slack.com/api/test');
     const assertion = expect(promise).rejects.toThrow(RetryExhaustedError);
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(errorLog).toHaveBeenCalledOnce();
-    expect(errorLog.mock.calls[0][0]).toContain('exhausted');
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0][0]).toContain('exhausted');
   });
 
   it('method 未指定の場合 GET がログに出る', async () => {
-    const warn = vi.fn();
+    const logger = createMockLogger();
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
@@ -275,14 +275,14 @@ describe('SlackCore.withRetry — ロギング', () => {
     const retrying = SlackCore.withRetry(transport, {
       maxRetries: 2,
       baseDelayMs: 10,
-      logger: { warn, error: vi.fn() },
+      logger,
     });
     const promise = retrying.fetch('https://slack.com/api/test');
     const assertion = expect(promise).resolves.toBeDefined();
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(warn.mock.calls[0][0]).toContain('GET');
+    expect(logger.warn.mock.calls[0][0]).toContain('GET');
   });
 });
 

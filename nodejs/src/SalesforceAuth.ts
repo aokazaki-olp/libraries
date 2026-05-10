@@ -16,6 +16,7 @@
 import { createSign } from 'node:crypto';
 import { HttpCore } from './HttpCore.js';
 import { HttpError } from './httpTypes.js';
+import type { Logger } from './LoggerFacade.js';
 import type { Transport } from './httpTypes.js';
 
 const JWT_LIFETIME_SEC = 180;
@@ -130,7 +131,7 @@ interface JwtOptions {
   username: string;
   privateKey: string;
   tokenHost: string;
-  logger?: unknown;
+  logger?: Logger;
   maxRetries?: number;
   baseDelayMs?: number;
 }

@@ -16,7 +16,8 @@
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
 import type { BaseClient } from './ApiClient.js';
-import type { RawResponse, Transport } from './httpTypes.js';
+import type { Logger } from './LoggerFacade.js';
+import type { Transport } from './httpTypes.js';
 
 const DEFAULT_API_VERSION = 'v60.0';
 const DEFAULT_MAX_RETRIES = 3;
@@ -27,11 +28,9 @@ interface SalesforceClientOptions {
   apiVersion?: string;
   maxRetries?: number;
   baseDelayMs?: number;
-  logger?: unknown;
+  logger?: Logger;
   transport?: Transport;
 }
-
-const sfResponseHandler = (response: RawResponse): unknown => response.body;
 
 /**
  * Salesforce API クライアントを作成する
@@ -42,11 +41,11 @@ const sfResponseHandler = (response: RawResponse): unknown => response.body;
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)
  * @throws {TypeError} instanceUrl / accessToken が空文字の場合、apiVersion の形式が不正な場合
  */
-const create = (
+const create = <TResponse = unknown>(
   instanceUrl: string,
   accessToken: string,
   options: SalesforceClientOptions = {},
-): BaseClient => {
+): BaseClient<TResponse> => {
   if (typeof instanceUrl !== 'string' || instanceUrl === '') {
     throw new TypeError('instanceUrl には Salesforce instance URL (string) を指定してください');
   }
@@ -74,12 +73,13 @@ const create = (
   // - Logger は最外で Retry が最終的に返した1回分を観測する
   // - Logger 通過時点では Authorization ヘッダがまだ付いていない（意図的）
   // - Retry は認証付きリクエストを再送できる
-  return ApiClient.createClient({
+  return ApiClient.createClient<TResponse>({
     baseUrl,
     transport: injectedTransport ?? HttpCore.createTransport(),
     headers: { Accept: 'application/json' },
     logger,
-    responseHandler: sfResponseHandler,
+    // レスポンスボディを TResponse として扱う（SF REST API の型保証は呼び出し側の責務）
+    responseHandler: (response) => response.body as TResponse,
   })
     .extend(t => ApiClient.withBearerAuth(t, accessToken))
     .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
