@@ -220,6 +220,7 @@ const createClient = <TResponse = unknown>(
       patch: (endpoint, body, options) =>
         call({ ...options, method: 'PATCH', endpoint, body }),
       delete: (endpoint, options) =>
+        // Omit<Partial<RequestOptions>, 'body'> はスプレッド時に Partial<RequestOptions> として推論されないためキャスト
         call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
     };
 

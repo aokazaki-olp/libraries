@@ -76,8 +76,20 @@ class LazyTemplate {
     string: (v: unknown) => v == null ? '' : String(v),
     boolean: (v: unknown) => Boolean(v),
     default: (v: unknown) => v == null ? '' : v,
-    json: (v: unknown) => { try { return JSON.stringify(v); } catch { return '{}'; } },
-    jsonPretty: (v: unknown) => { try { return JSON.stringify(v, null, 2); } catch { return '{}'; } },
+    json: (v: unknown) => {
+      try {
+        return JSON.stringify(v);
+      } catch {
+        return '{}';
+      }
+    },
+    jsonPretty: (v: unknown) => {
+      try {
+        return JSON.stringify(v, null, 2);
+      } catch {
+        return '{}';
+      }
+    },
   } as const satisfies FilterMap;
 
   private readonly cache: Map<string, CompiledEvaluator>;
@@ -119,7 +131,9 @@ class LazyTemplate {
     let lastIndex = 0;
 
     for (const m of template.matchAll(new RegExp(LazyTemplate.PLACEHOLDER_PATTERN.source, 'g'))) {
-      if (m.index! > lastIndex) {
+      // matchAll の結果は index が必ず定義される（RegExp.exec の仕様）
+      const index = m.index as number;
+      if (index > lastIndex) {
         parts.push({ type: 'text', value: template.slice(lastIndex, m.index) });
       }
       parts.push({
@@ -127,7 +141,7 @@ class LazyTemplate {
         backslashes: m[1],
         expression: m[2].trim(),
       });
-      lastIndex = m.index! + m[0].length;
+      lastIndex = index + m[0].length;
     }
 
     if (lastIndex < template.length) {
@@ -181,21 +195,36 @@ class LazyTemplate {
     return stripped;
   }
 
+  /**
+   * 式文字列をコンパイルしてキャッシュに登録する
+   * @param expression - テンプレート式（`{{{...}}}` の内側）
+   * @returns コンパイル済み評価関数
+   */
   compile(expression: string): CompiledEvaluator {
     const key = LazyTemplate.stripWhitespaceWithoutStringLiteral(expression);
-    if (this.cache.has(key)) {
-      return this.cache.get(key)!;
+    const cached = this.cache.get(key);
+    if (cached !== undefined) {
+      return cached;
     }
     const fn = this.buildEvaluator(key);
     this.cache.set(key, fn);
     return fn;
   }
 
+  /**
+   * シングルクォートまたはダブルクォートで囲まれたトークンを文字列リテラルとしてパースする
+   * @param token - パース対象トークン
+   * @returns パース済み文字列、パース失敗時は undefined
+   */
   static parseStringLiteral(token: string): string | undefined {
     token = token.trim();
 
     if (token.startsWith('"')) {
-      try { return JSON.parse(token) as string; } catch { return undefined; }
+      try {
+        return JSON.parse(token);
+      } catch {
+        return undefined;
+      }
     }
 
     if (token.startsWith("'")) {
@@ -207,7 +236,11 @@ class LazyTemplate {
         .replaceAll(sentinel, '\\\\')
         .replace(/"/g, '\\"')
       }"`;
-      try { return JSON.parse(quoted) as string; } catch { return undefined; }
+      try {
+        return JSON.parse(quoted);
+      } catch {
+        return undefined;
+      }
     }
 
     return undefined;
@@ -268,7 +301,10 @@ class LazyTemplate {
 
     const compiled: CompiledEvaluator[] = terms.map(rawTerm => {
       const segments = this.parseFilters(rawTerm);
-      const term = segments.shift()!;
+      const term = segments.shift();
+      if (term === undefined) {
+        return () => undefined;
+      }
       const filterNames = segments;
 
       if (LazyTemplate.NUMBER_LITERAL_PATTERN.test(term)) {

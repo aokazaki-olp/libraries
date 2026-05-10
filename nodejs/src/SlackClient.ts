@@ -48,8 +48,8 @@ interface SlackRetryOptions {
  * Slack用のリトライ機能をTransportに追加する。
  * HTTP 429 の際は Retry-After ヘッダーを尊重し、5xx は指数バックオフで再試行する。
  *
- * @param transport ラップ対象Transport
- * @param options リトライ設定
+ * @param transport - ラップ対象Transport
+ * @param options - リトライ設定
  * @returns リトライ機能付きTransport
  * @throws {RetryExhaustedError} リトライ上限に達した場合
  */
@@ -169,8 +169,8 @@ interface SlackApiClientOptions {
 /**
  * Slack Web API クライアントを作成する。
  *
- * @param token Slack API トークン
- * @param options オプション設定
+ * @param token - Slack API トークン
+ * @param options - オプション設定
  * @returns クライアント（call/get/post/use/extend）
  * @throws {TypeError} token が空文字または文字列でない場合
  * @throws {SlackApiError} Slack API が ok:false を返した場合
@@ -229,8 +229,8 @@ interface SlackWebhookInstance {
 /**
  * Slack Incoming Webhook クライアントを作成する。
  *
- * @param webhookUrl Webhook URL
- * @param options オプション設定
+ * @param webhookUrl - Webhook URL
+ * @param options - オプション設定
  * @returns { send } クライアント
  * @throws {TypeError} webhookUrl が空文字または文字列でない場合
  * @throws {RetryExhaustedError} リトライ上限に達した場合
@@ -268,6 +268,11 @@ const createWebhookClient = (webhookUrl: string, options: SlackWebhookOptions = 
 
 /**
  * Slack Incoming Webhook に一回限り送信する（静的メソッド）。
+ *
+ * @param webhookUrl - Webhook URL
+ * @param payload - 送信するペイロード
+ * @param options - オプション設定
+ * @returns 送信完了 Promise
  */
 const sendWebhook = (webhookUrl: string, payload: SlackPayload, options?: SlackWebhookOptions): Promise<void> =>
   createWebhookClient(webhookUrl, options).send(payload);

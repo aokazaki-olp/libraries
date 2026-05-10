@@ -231,6 +231,7 @@ const getAccessTokenByJwt = async (
   if (typeof body !== 'object' || body === null) {
     throw new Error(`Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`);
   }
+  // object 型はプロパティアクセス不可のためキャスト（上のガードで object・非 null を確認済み）
   const { access_token: accessToken, instance_url: instanceUrl } = body as Record<string, unknown>;
 
   if (typeof accessToken !== 'string' || accessToken === '') {

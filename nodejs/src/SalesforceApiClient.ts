@@ -18,7 +18,7 @@ import { HttpCore } from './HttpCore.js';
 import type { BaseClient } from './ApiClient.js';
 import type { RawResponse, Transport } from './httpTypes.js';
 
-const DEFAULT_API_VERSION = 'v60.0'; // 実装時点（2026-05）の最新安定版
+const DEFAULT_API_VERSION = 'v60.0';
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
 const API_VERSION_PATTERN = /^v\d+\.\d+$/;

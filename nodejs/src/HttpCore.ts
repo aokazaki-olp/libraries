@@ -77,6 +77,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
         fetchOptions.timeout = { request: options.timeoutMs };
       }
 
+      // got の型パラメータを指定しないと Response<unknown> になるためキャスト（string ボディが返ることは got の仕様上保証される）
       const response = await http(url, fetchOptions) as Response<string>;
 
       const text = response.body;
