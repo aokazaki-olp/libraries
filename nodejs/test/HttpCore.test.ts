@@ -228,9 +228,9 @@ describe('HttpCore.withRetry — ロギング', () => {
 // ============================================================================
 
 describe('HttpCore.withLogger', () => {
-  it('logger が null の場合、元の transport をそのまま返す', () => {
+  it('logger が未指定の場合、元の transport をそのまま返す', () => {
     const transport = makeSuccessTransport();
-    const logged = HttpCore.withLogger(transport, null);
+    const logged = HttpCore.withLogger(transport, undefined);
     expect(logged).toBe(transport);
   });
 

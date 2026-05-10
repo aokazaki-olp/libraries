@@ -200,7 +200,7 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
  * @param logger - ロガー実装（nullishの場合は透過）
  * @returns ロギング機能付きTransport（loggerがnullishの場合は元のtransportをそのまま返す）
  */
-const withLogger = (transport: Transport, logger?: Logger | null): Transport => {
+const withLogger = (transport: Transport, logger?: Logger): Transport => {
   const log = LoggerFacade.createLogger(logger);
   if (!log) {
     return transport;

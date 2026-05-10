@@ -244,7 +244,12 @@ export const ApiClient = {
   createClient,
 };
 
-/** クライアントにメソッドを追加するプラグイン */
+/**
+ * クライアントにメソッドを追加するプラグイン
+ *
+ * @typeParam TResponse - クライアントのレスポンス型（`BaseClient<TResponse>` に一致させる）
+ * @typeParam TNew - プラグインが追加するメソッドの型
+ */
 export type Plugin<TResponse, TNew extends object> =
   (client: BaseClient<TResponse>) => TNew;
 

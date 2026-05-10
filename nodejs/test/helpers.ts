@@ -2,19 +2,18 @@ import { vi } from 'vitest';
 import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
 import type { Logger } from '../src/LoggerFacade.js';
 
-const makeLogMock = (key: keyof Logger, calls: Record<keyof Logger, unknown[][]>) =>
-  vi.fn((...args: unknown[]) => { calls[key].push(args); });
-
 export const createMockLogger = () => {
   const calls: Record<keyof Logger, unknown[][]> = {
     trace: [], debug: [], info: [], warn: [], error: [],
   };
+  const make = (key: keyof Logger) =>
+    vi.fn((...args: unknown[]) => { calls[key].push(args); });
   return {
-    trace: makeLogMock('trace', calls),
-    debug: makeLogMock('debug', calls),
-    info:  makeLogMock('info',  calls),
-    warn:  makeLogMock('warn',  calls),
-    error: makeLogMock('error', calls),
+    trace: make('trace'),
+    debug: make('debug'),
+    info:  make('info'),
+    warn:  make('warn'),
+    error: make('error'),
     calls,
   };
 };

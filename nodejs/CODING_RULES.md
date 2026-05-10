@@ -379,16 +379,16 @@ client.use(timeoutPlugin(3000));
 
 ### 8.3 Plugin セットの設計
 
-関連するプラグインをまとめる場合は `as const` + `satisfies` でプラグインセットとして提供する。
+関連するプラグインをまとめる場合は `as const` でプラグインセットとして提供する。
 
 ```typescript
 // plugins/salesforce.ts
 
 // ジェネリクスで型を利用者まで届ける
 const soql = <TRow = unknown>(): Plugin<unknown, {
-  query(soql: string): Promise<{ records: TRow[]; totalSize: number; done: boolean }>;
+  query(q: string): Promise<{ records: TRow[]; totalSize: number; done: boolean }>;
 }> => (client) => ({
-  query: (soql) => client.get('/query', { q: soql }) as Promise<...>,
+  query: (q) => client.get('/query', { q }) as Promise<...>,
 });
 
 const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
@@ -398,10 +398,10 @@ const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
   delete(id: string): Promise<void>;
 }> => (client) => ({ ... });
 
-// satisfies でプラグインセットの形を検証しつつ型推論を保つ
-export const SalesforcePlugins = { soql, sobject } satisfies
-  Record<string, (...args: never[]) => Plugin<unknown, object>>;
+export const SalesforcePlugins = { soql, sobject } as const;
 ```
+
+> **`satisfies` について**: 引数なしのプラグイン（`soql`）には `satisfies Record<string, (...args: never[]) => Plugin<unknown, object>>` が適用できるが、必須引数を持つプラグイン（`sobject(type: string)`）は `never[]` を満たせないため使用できない。セット全体に `satisfies` を適用したい場合は引数ありのプラグインをファクトリパターンから外す必要があり、設計トレードオフになる。実用上は `as const` で十分。
 
 利用例:
 

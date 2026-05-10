@@ -54,17 +54,20 @@ const soql = <TRow = unknown>(): Plugin<unknown, {
    */
   queryAll(soql: string): Promise<TRow[]>;
 }> => (client) => ({
-  query: (soql) =>
+  query: (q) =>
     // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される
-    client.get('/query', { q: soql }) as Promise<SoqlResult<TRow>>,
+    client.get('/query', { q }) as Promise<SoqlResult<TRow>>,
 
-  queryAll: async (soql) => {
+  queryAll: async (q) => {
     const records: TRow[] = [];
-    let result = await client.get('/query', { q: soql }) as SoqlResult<TRow>;
+    let result = await client.get('/query', { q }) as SoqlResult<TRow>;
     records.push(...result.records);
     while (!result.done && result.nextRecordsUrl) {
-      // nextRecordsUrl はパス形式 (/services/data/vXX.X/query/...) で返される
-      result = await client.get(result.nextRecordsUrl) as SoqlResult<TRow>;
+      // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
+      // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
+      // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
+      const relPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
+      result = await client.get(relPath) as SoqlResult<TRow>;
       records.push(...result.records);
     }
     return records;
