@@ -271,3 +271,172 @@ class HttpError extends Error {
   }
 }
 ```
+
+---
+
+## 7. ライブラリ設計の規則
+
+このプロジェクトは**薄い汎用ライブラリ**として設計する。業務ロジック（SOQL クエリ・Block Kit 構築等）はプラグイン層に委ね、コアに混入させない。
+
+### 7.1 公開APIの境界
+
+`index.ts` を唯一のエントリーポイントとして、利用者に見せる型・値を明示的に制御する。
+
+```typescript
+// index.ts — 公開するものだけを列挙する
+export { SalesforceApiClient } from './clients/SalesforceApiClient.js';
+export { SlackApiClient, SlackWebhookClient } from './clients/SlackClient.js';
+export type { BaseClient, Plugin, Logger } from './core/httpTypes.js';
+
+// 内部実装は export しない
+// HttpCore, ApiClient.createClient, withBearerAuth 等
+```
+
+### 7.2 Logger はインターフェースで公開する
+
+`logger: unknown` は使わない。`Logger` インターフェースを公開し、利用者が実装を理解できるようにする。
+
+```typescript
+// ✅ インターフェースで契約する
+export interface Logger {
+  debug(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+}
+
+// console は構造的部分型として自動的に合う
+SalesforceApiClient.create(url, token, { logger: console });
+```
+
+`LoggerFacade` は内部実装（アダプタ）として非公開のまま維持する。
+
+### 7.3 ジェネリクスを利用者まで届ける
+
+`unknown` を公開APIの戻り値に漏らさない。型パラメータをファクトリメソッドまで引き上げる。
+
+```typescript
+// ❌ unknown が利用者に漏れる
+const sf = SalesforceApiClient.create(url, token);
+const result = await sf.get('/query'); // result: unknown
+
+// ✅ 型パラメータをファクトリで確定させる
+const sf = SalesforceApiClient.create<SoqlResult>(url, token);
+const result = await sf.get('/query'); // result: SoqlResult
+```
+
+### 7.4 依存の方向を一方向に保つ
+
+```
+plugins/ → core/（型のみ）
+clients/ → core/
+plugins/ は clients/ を import しない
+clients/ は plugins/ を import しない
+```
+
+横断的な依存が生じた場合は設計を見直す。
+
+### 7.5 型で証明できない箇所はコメントで明示する
+
+TypeScript の型システムで表現できない保証（スプレッド合成・`as unknown as` 等）は、なぜ安全かをコメントで説明する。
+
+```typescript
+// スプレッド合成は型システムで証明不能: additionalMethods ∪ HttpMethods
+client = { ...additionalMethods, ...httpMethods, call, extend, use } as unknown as BaseClient<TResponse, TMethods>;
+```
+
+---
+
+## 8. プラグインシステムの規則
+
+### 8.1 Plugin 型
+
+プラグインは `Plugin` 型として一級市民で定義する。クラスは使わない。
+
+```typescript
+// core/httpTypes.ts
+export type Plugin<TResponse, TNew extends object> =
+  (client: BaseClient<TResponse>) => TNew;
+```
+
+### 8.2 Plugin は純粋関数
+
+プラグインはステートレスな純粋関数とする。副作用・外部依存を持たない。
+
+```typescript
+// ✅ 純粋関数
+const greetPlugin: Plugin<unknown, { greet(): string }> =
+  (_client) => ({ greet: () => 'hello' });
+
+// ✅ 設定を受け取る場合はファクトリ（プラグインを返す関数）
+const timeoutPlugin = (ms: number): Plugin<unknown, { withTimeout(): ... }> =>
+  (client) => ({ ... });
+
+// 使い方は統一される
+client.use(greetPlugin);
+client.use(timeoutPlugin(3000));
+```
+
+### 8.3 Plugin セットの設計
+
+関連するプラグインをまとめる場合は `as const` + `satisfies` でプラグインセットとして提供する。
+
+```typescript
+// plugins/salesforce.ts
+
+// ジェネリクスで型を利用者まで届ける
+const soql = <TRow = unknown>(): Plugin<unknown, {
+  query(soql: string): Promise<{ records: TRow[]; totalSize: number; done: boolean }>;
+}> => (client) => ({
+  query: (soql) => client.get('/query', { q: soql }) as Promise<...>,
+});
+
+const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
+  findById(id: string): Promise<TRecord>;
+  create(data: Partial<TRecord>): Promise<{ id: string }>;
+  update(id: string, data: Partial<TRecord>): Promise<void>;
+  delete(id: string): Promise<void>;
+}> => (client) => ({ ... });
+
+// satisfies でプラグインセットの形を検証しつつ型推論を保つ
+export const SalesforcePlugins = { soql, sobject } satisfies
+  Record<string, (...args: never[]) => Plugin<unknown, object>>;
+```
+
+利用例:
+
+```typescript
+type Account = { Id: string; Name: string };
+
+const sf = SalesforceApiClient.create(url, token)
+  .use(SalesforcePlugins.soql<Account>())
+  .use(SalesforcePlugins.sobject<Account>('Account'));
+
+const res = await sf.query('SELECT Id, Name FROM Account');
+// res.records: Account[]  ← 型が付く
+```
+
+### 8.4 プラグインセットと疎結合
+
+プラグインセット（`plugins/`）は `core/` の型のみに依存し、`clients/` を import しない。
+API クライアント固有の知識（エンドポイントパス等）はプラグイン内に閉じ込め、コアに漏らさない。
+
+```typescript
+// ✅ plugins/salesforce.ts
+import type { BaseClient, Plugin } from '../core/httpTypes.js'; // core のみ
+
+// ❌ clients/ を import してはいけない
+import { SalesforceApiClient } from '../clients/SalesforceApiClient.js';
+```
+
+### 8.5 `as` キャストはプラグイン内に閉じ込める
+
+`client.get()` の戻り値は `TResponse`（場合によっては `unknown`）。これをドメイン型に変換するための `as` キャストはプラグイン実装の内部に留め、利用者には型付きの結果のみを公開する。
+
+```typescript
+// プラグイン内部で as を閉じ込める（コメントで理由を明示する）
+query: (soql) =>
+  // BaseClient<unknown> の get 戻り値を SoqlResult<TRow> にキャスト
+  // SF /query エンドポイントは必ずこの形を返すことが SF API 仕様で保証される
+  client.get('/query', { q: soql }) as Promise<SoqlResult<TRow>>,
+```
