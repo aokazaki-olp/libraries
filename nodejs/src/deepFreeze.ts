@@ -22,9 +22,10 @@ const deepFreeze = <T extends object>(o: T): Readonly<T> => {
   Object.freeze(o);
 
   for (const k of Reflect.ownKeys(o)) {
+    // Reflect.ownKeys の string|symbol キーでジェネリック T に添字アクセスできないためキャスト
     const v = (o as Record<string | symbol, unknown>)[k];
     if (v && typeof v === 'object' && !Object.isFrozen(v)) {
-      deepFreeze(v as object);
+      deepFreeze(v);
     }
   }
 

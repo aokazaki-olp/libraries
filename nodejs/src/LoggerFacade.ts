@@ -37,6 +37,7 @@ const createLogger = (logger: unknown): Logger | null => {
     return null;
   }
 
+  // unknown の logger からメソッドを検査するため Record 型にキャスト
   const impl = logger as Record<string, unknown>;
 
   const noop: LogMethod = () => {};

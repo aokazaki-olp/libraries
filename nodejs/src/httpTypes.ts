@@ -64,6 +64,7 @@ export class HttpError extends Error {
   }
 }
 
+/** リトライ上限に達した場合にスローされるエラー。 */
 export class RetryExhaustedError extends Error {
   override readonly name = 'RetryExhaustedError';
 
