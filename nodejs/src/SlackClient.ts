@@ -9,6 +9,7 @@
  */
 
 import { LoggerFacade } from './LoggerFacade.js';
+import type { Logger } from './LoggerFacade.js';
 import { ApiClient } from './ApiClient.js';
 import { HttpCore } from './HttpCore.js';
 import { HttpError, RetryExhaustedError } from './httpTypes.js';
@@ -41,7 +42,7 @@ const sleep = (ms: number): Promise<void> =>
 interface SlackRetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
-  logger?: unknown;
+  logger?: Logger;
 }
 
 /**
@@ -162,7 +163,7 @@ const slackResponseHandler: ResponseHandler = (response) => {
 interface SlackApiClientOptions {
   maxRetries?: number;
   baseDelayMs?: number;
-  logger?: unknown;
+  logger?: Logger;
   transport?: Transport;
 }
 
@@ -218,7 +219,7 @@ interface SlackWebhookOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   timeoutMs?: number;
-  logger?: unknown;
+  logger?: Logger;
   transport?: Transport;
 }
 

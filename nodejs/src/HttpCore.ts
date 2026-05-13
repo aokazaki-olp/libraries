@@ -10,6 +10,7 @@
 
 import got, { type Got, type Method, type OptionsInit, type Response } from 'got';
 import { LoggerFacade } from './LoggerFacade.js';
+import type { Logger } from './LoggerFacade.js';
 import { HttpError, RetryExhaustedError } from './httpTypes.js';
 import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
 
@@ -120,7 +121,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
 interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
-  logger?: unknown;
+  logger?: Logger;
 }
 
 const shouldRetry = (e: unknown): boolean => {
@@ -196,10 +197,10 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
  * リクエスト/レスポンスロギング機能をTransportに追加する
  *
  * @param transport - ラップ対象Transport
- * @param logger - ロガー実装（nullの場合は透過）
- * @returns ロギング機能付きTransport（loggerがnullの場合は元のtransportをそのまま返す）
+ * @param logger - ロガー実装（nullishの場合は透過）
+ * @returns ロギング機能付きTransport（loggerがnullishの場合は元のtransportをそのまま返す）
  */
-const withLogger = (transport: Transport, logger: unknown): Transport => {
+const withLogger = (transport: Transport, logger?: Logger): Transport => {
   const log = LoggerFacade.createLogger(logger);
   if (!log) {
     return transport;

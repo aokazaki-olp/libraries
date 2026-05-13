@@ -9,6 +9,7 @@
  */
 
 import { LoggerFacade } from './LoggerFacade.js';
+import type { Logger } from './LoggerFacade.js';
 import { HttpCore } from './HttpCore.js';
 import type {
   FetchOptions,
@@ -119,7 +120,7 @@ type BaseClient<TResponse = unknown, TMethods extends object = Record<string, ne
 interface ClientConfig<TResponse = unknown> {
   baseUrl: string;
   transport?: Transport;
-  logger?: unknown;
+  logger?: Logger;
   headers?: Record<string, string>;
   responseHandler?: ResponseHandler<TResponse>;
 }
@@ -242,5 +243,14 @@ export const ApiClient = {
   withBearerAuth,
   createClient,
 };
+
+/**
+ * クライアントにメソッドを追加するプラグイン
+ *
+ * @typeParam TResponse - クライアントのレスポンス型（`BaseClient<TResponse>` に一致させる）
+ * @typeParam TNew - プラグインが追加するメソッドの型
+ */
+export type Plugin<TResponse, TNew extends object> =
+  (client: BaseClient<TResponse>) => TNew;
 
 export type { BaseClient, ClientConfig };
