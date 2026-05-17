@@ -32,6 +32,9 @@ export { deepFreeze } from './deepFreeze.js';
 export { SalesforceApiClient } from './SalesforceApiClient.js';
 export type { SalesforceClientOptions } from './SalesforceApiClient.js';
 
+export { GBizInfoApiClient } from './GBizInfoApiClient.js';
+export type { GBizInfoClientOptions } from './GBizInfoApiClient.js';
+
 export { SalesforceAuth } from './SalesforceAuth.js';
 export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.js';
 
