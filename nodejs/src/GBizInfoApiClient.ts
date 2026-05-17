@@ -16,13 +16,14 @@ import type { BaseClient } from './ApiClient.js';
 import type { Logger } from './LoggerFacade.js';
 import type { Transport } from './httpTypes.js';
 
+type GBizInfoApiVersion = 'v1' | 'v2';
+
 const BASE_URL = 'https://api.info.gbiz.go.jp/hojin';
 const AUTH_HEADER = 'X-hojinInfo-api-token';
 const DEFAULT_VERSION: GBizInfoApiVersion = 'v2';
+const SUPPORTED_VERSIONS: readonly GBizInfoApiVersion[] = ['v1', 'v2'];
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
-
-type GBizInfoApiVersion = 'v1' | 'v2';
 
 interface GBizInfoClientOptions {
   version?: GBizInfoApiVersion;
@@ -56,6 +57,15 @@ const create = <TResponse = unknown>(
     transport: injectedTransport,
   } = options;
 
+  // TS 型は as any 等でバイパスされるため、ランタイムでも未対応バージョンを弾く
+  if (!SUPPORTED_VERSIONS.includes(version)) {
+    throw new TypeError(`version には ${SUPPORTED_VERSIONS.join(' / ')} を指定してください`);
+  }
+
+  // 認証は静的なカスタムヘッダ。Bearer ではないので withBearerAuth は使わない。
+  // デコレータ適用順 (内側 → 外側): createClient(headers で token 付与) → Retry → Logger
+  // - Logger は url/method/status のみを観測し headers を観測しない前提のため token は流出しない
+  // - Retry は HttpError を捕捉して再送できる
   return ApiClient.createClient<TResponse>({
     baseUrl: `${BASE_URL}/${version}`,
     transport: injectedTransport ?? HttpCore.createTransport(),
@@ -64,6 +74,7 @@ const create = <TResponse = unknown>(
       [AUTH_HEADER]: token,
     },
     logger,
+    // レスポンスボディを TResponse として扱う (gBizINFO レスポンスの型保証は呼び出し側の責務)
     responseHandler: (response) => response.body as TResponse,
   })
     .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))

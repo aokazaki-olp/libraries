@@ -96,6 +96,19 @@ describe('GBizInfoApiClient.create — API バージョン', () => {
     await client.get('/hojin/1234567890123');
     expect(transport.calls[0].url.startsWith('https://api.info.gbiz.go.jp/hojin/v1/')).toBe(true);
   });
+
+  it('未対応バージョン指定で TypeError', () => {
+    expect(() =>
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
+      GBizInfoApiClient.create(VALID_TOKEN, { version: 'v3' }),
+    ).toThrow(TypeError);
+    try {
+      // @ts-expect-error: 同上
+      GBizInfoApiClient.create(VALID_TOKEN, { version: 'v3' });
+    } catch (e) {
+      expect((e as TypeError).message).toContain('version');
+    }
+  });
 });
 
 // ============================================================================

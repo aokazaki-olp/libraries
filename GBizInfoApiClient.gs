@@ -43,8 +43,8 @@ const GBizInfoApiClient = (() => {
     if (typeof token !== 'string' || token === '') {
       throw new TypeError('token には gBizINFO API token (string) を指定してください');
     }
-    const opts = options || {};
-    const version = opts.version || CONFIG.DEFAULT_VERSION;
+    const opts = options ?? {};
+    const version = opts.version ?? CONFIG.DEFAULT_VERSION;
     if (CONFIG.SUPPORTED_VERSIONS.indexOf(version) === -1) {
       throw new TypeError('version には ' + CONFIG.SUPPORTED_VERSIONS.join(' / ') + ' を指定してください');
     }
