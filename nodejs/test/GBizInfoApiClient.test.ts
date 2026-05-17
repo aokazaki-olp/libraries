@@ -5,7 +5,7 @@ import { HttpError } from '../src/httpTypes.js';
 import { createMockLogger, makeRawResponse } from './helpers.js';
 
 const VALID_TOKEN = 'my-token-12345';
-const BASE_URL = 'https://info.gbiz.go.jp/hojin/v1';
+const BASE_URL = 'https://api.info.gbiz.go.jp/hojin/v2';
 
 const mockTransport = (
   responses: Partial<RawResponse> | Partial<RawResponse>[] = {},
@@ -75,6 +75,26 @@ describe('GBizInfoApiClient.create — クライアント構造', () => {
     expect(typeof client.call).toBe('function');
     expect(typeof client.use).toBe('function');
     expect(typeof client.extend).toBe('function');
+  });
+});
+
+// ============================================================================
+// API バージョン
+// ============================================================================
+
+describe('GBizInfoApiClient.create — API バージョン', () => {
+  it('デフォルトは v2 エンドポイント', async () => {
+    const transport = mockTransport({ body: {} });
+    const client = GBizInfoApiClient.create(VALID_TOKEN, { transport });
+    await client.get('/hojin/1234567890123');
+    expect(transport.calls[0].url.startsWith('https://api.info.gbiz.go.jp/hojin/v2/')).toBe(true);
+  });
+
+  it("version: 'v1' 指定で v1 エンドポイントになる", async () => {
+    const transport = mockTransport({ body: {} });
+    const client = GBizInfoApiClient.create(VALID_TOKEN, { transport, version: 'v1' });
+    await client.get('/hojin/1234567890123');
+    expect(transport.calls[0].url.startsWith('https://api.info.gbiz.go.jp/hojin/v1/')).toBe(true);
   });
 });
 

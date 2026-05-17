@@ -13,40 +13,45 @@
  *   - レスポンスは body をそのまま返す(独自クラスでラップしない)
  *
  * 使用例:
- *   const client = GBizInfoApiClient.create(token, logger);
+ *   const client = GBizInfoApiClient.create(token, { logger });        // v2 (デフォルト)
+ *   const client = GBizInfoApiClient.create(token, { version: 'v1' }); // v1 を明示
  *   const res = client.get('/hojin/1234567890123');
  */
 const GBizInfoApiClient = (() => {
   const CONFIG = Object.freeze({
-    BASE_URL: 'https://info.gbiz.go.jp/hojin/v1',
+    BASE_URL: 'https://api.info.gbiz.go.jp/hojin',
     AUTH_HEADER: 'X-hojinInfo-api-token',
+    DEFAULT_VERSION: 'v2',
+    SUPPORTED_VERSIONS: Object.freeze(['v1', 'v2']),
     DEFAULT_MAX_RETRIES: 3,
     DEFAULT_BASE_DELAY_MS: 500
   });
 
-  /**
-   * gBizINFO レスポンスハンドラ(body のみ抽出)
-   *
-   * @param {Object} response レスポンスオブジェクト
-   * @returns {Object} レスポンスボディ
-   */
   const gbizResponseHandler = response => response.body;
 
   /**
    * gBizINFO API クライアントを作成
    *
    * @param {string} token gBizINFO API トークン
-   * @param {Object} [logger] LoggerFacade 互換ロガー
+   * @param {Object} [options] オプション
+   * @param {('v1'|'v2')} [options.version='v2'] APIバージョン
+   * @param {Object} [options.logger] LoggerFacade 互換ロガー
    * @returns {Object} クライアント
-   * @throws {TypeError} token に文字列以外を指定した場合
+   * @throws {TypeError} token が文字列でない、または version が未対応の場合
    */
-  const create = (token, logger) => {
+  const create = (token, options) => {
     if (typeof token !== 'string' || token === '') {
       throw new TypeError('token には gBizINFO API token (string) を指定してください');
     }
+    const opts = options || {};
+    const version = opts.version || CONFIG.DEFAULT_VERSION;
+    if (CONFIG.SUPPORTED_VERSIONS.indexOf(version) === -1) {
+      throw new TypeError('version には ' + CONFIG.SUPPORTED_VERSIONS.join(' / ') + ' を指定してください');
+    }
+    const logger = opts.logger;
 
     return ApiClient.createClient({
-      baseUrl: CONFIG.BASE_URL,
+      baseUrl: CONFIG.BASE_URL + '/' + version,
       transport: HttpCore.createTransport(),
       headers: {
         Accept: 'application/json',

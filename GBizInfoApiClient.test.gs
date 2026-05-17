@@ -153,6 +153,40 @@ const runGBizAuthHeaderTests = () => {
   });
 };
 
+const runGBizVersionTests = () => {
+  const { suite, test, assertTrue, assertThrows } = TestRunner;
+
+  suite('GBizInfoApiClient API バージョン');
+
+  test('デフォルトは v2 エンドポイント', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const client = GBizInfoApiClient.create('t');
+      client.get('/hojin/1234567890123');
+      const call = fetchMock.getCalls()[0];
+      assertTrue(call.url.startsWith('https://api.info.gbiz.go.jp/hojin/v2/'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('version: "v1" 指定で v1 エンドポイントになる', () => {
+    const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: {} });
+    try {
+      const client = GBizInfoApiClient.create('t', { version: 'v1' });
+      client.get('/hojin/1234567890123');
+      const call = fetchMock.getCalls()[0];
+      assertTrue(call.url.startsWith('https://api.info.gbiz.go.jp/hojin/v1/'));
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test('未対応バージョン指定で TypeError', () => {
+    assertThrows(() => GBizInfoApiClient.create('t', { version: 'v3' }), 'version');
+  });
+};
+
 const runGBizUrlBuildingTests = () => {
   const { suite, test, assertTrue } = TestRunner;
 
@@ -164,7 +198,7 @@ const runGBizUrlBuildingTests = () => {
       const client = GBizInfoApiClient.create('t');
       client.get('/hojin/1234567890123');
       const call = fetchMock.getCalls()[0];
-      assertTrue(call.url.startsWith('https://info.gbiz.go.jp/hojin/v1/hojin/1234567890123'));
+      assertTrue(call.url.startsWith('https://api.info.gbiz.go.jp/hojin/v2/hojin/1234567890123'));
     } finally {
       fetchMock.restore();
     }
@@ -332,7 +366,7 @@ const runGBizEdgeCaseTests = () => {
     };
     const fetchMock = MockGBizUrlFetchApp.setup({ status: 200, body: { ok: true } });
     try {
-      const client = GBizInfoApiClient.create('t', logger);
+      const client = GBizInfoApiClient.create('t', { logger });
       client.get('/hojin/1');
       assertTrue(logs.length > 0, 'logger に何らかの記録がある');
     } finally {
@@ -400,6 +434,9 @@ function runAllGBizInfoTests() {
 
   console.log('Running GBizInfo 認証ヘッダ tests...');
   runGBizAuthHeaderTests();
+
+  console.log('Running GBizInfo API バージョン tests...');
+  runGBizVersionTests();
 
   console.log('Running GBizInfo URL 構築 tests...');
   runGBizUrlBuildingTests();
