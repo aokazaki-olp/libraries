@@ -391,6 +391,27 @@ const ApiClient = (() => {
   });
 
   /**
+   * クエリパラメータ認証をtransportに追加
+   * （APIキーや認証IDがURLクエリで渡されるAPI向け）
+   *
+   * @param {Object} transport 基本トランスポート
+   * @param {Object} params URLに追加する認証用クエリパラメータ
+   * @returns {Object} クエリ認証付きトランスポート
+   */
+  const withQueryAuth = (transport, params) => {
+    const authQuery = buildQueryString(params);
+    return {
+      fetch: (url, options) => {
+        if (!authQuery) {
+          return transport.fetch(url, options);
+        }
+        const separator = url.includes('?') ? '&' : '?';
+        return transport.fetch(url + separator + authQuery, options);
+      }
+    };
+  };
+
+  /**
    * HTTPクライアントを作成
    *
    * @param {Object} config 設定オブジェクト
@@ -474,7 +495,7 @@ const ApiClient = (() => {
     return ClientHelper.createClient(call, { extend });
   };
 
-  return { withBearerAuth, createClient };
+  return { withBearerAuth, withQueryAuth, createClient };
 })();
 
 /**
