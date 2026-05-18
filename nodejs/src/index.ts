@@ -35,6 +35,13 @@ export type { SalesforceClientOptions } from './SalesforceApiClient.js';
 export { GBizInfoApiClient } from './GBizInfoApiClient.js';
 export type { GBizInfoClientOptions } from './GBizInfoApiClient.js';
 
+export { InvoiceApiClient } from './InvoiceApiClient.js';
+export type {
+  InvoiceClientOptions,
+  InvoiceApiVersion,
+  InvoiceResponseType,
+} from './InvoiceApiClient.js';
+
 export { SalesforceAuth } from './SalesforceAuth.js';
 export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.js';
 

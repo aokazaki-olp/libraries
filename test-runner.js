@@ -132,6 +132,7 @@ loadAndRun('resolveSheet.gs');
 loadAndRun('loadAsObjects.gs');
 loadAndRun('GoogleSearchConsoleApiClient.gs');
 loadAndRun('GBizInfoApiClient.gs');
+loadAndRun('InvoiceApiClient.gs');
 loadAndRun('SalesforceApiClient.gs');
 loadAndRun('SalesforceAuth.gs');
 
@@ -147,6 +148,7 @@ loadAndRun('resolveSheet.test.gs');
 loadAndRun('loadAsObjects.test.gs');
 loadAndRun('GoogleSearchConsoleApiClient.test.gs');
 loadAndRun('GBizInfoApiClient.test.gs');
+loadAndRun('InvoiceApiClient.test.gs');
 loadAndRun('SalesforceApiClient.test.gs');
 loadAndRun('SalesforceAuth.test.gs');
 
@@ -165,6 +167,7 @@ const suites = [
   { name: 'loadAsObjects', fn: 'runAllLoadAsObjectsTests()' },
   { name: 'GoogleSearchConsoleApiClient', fn: 'runAllGscTests()' },
   { name: 'GBizInfoApiClient', fn: 'runAllGBizInfoTests()' },
+  { name: 'InvoiceApiClient', fn: 'runAllInvoiceTests()' },
   { name: 'SalesforceApiClient', fn: 'runAllSalesforceApiClientTests()' },
   { name: 'SalesforceAuth', fn: 'runAllSalesforceAuthTests()' }
 ];
