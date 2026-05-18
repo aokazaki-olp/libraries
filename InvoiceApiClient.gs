@@ -43,6 +43,8 @@ const InvoiceApiClient = (() => {
    * @param {Object} [options] オプション
    * @param {('1')} [options.version='1'] データバージョン
    * @param {('01'|'21'|'31')} [options.type='21'] レスポンス形式 (01=CSV / 21=JSON / 31=XML)
+   * @param {number} [options.maxRetries=3] リトライ回数上限
+   * @param {number} [options.baseDelayMs=500] リトライ初期遅延 (ms)
    * @param {Object} [options.logger] LoggerFacade 互換ロガー
    * @returns {Object} クライアント
    * @throws {TypeError} applicationId が文字列でない、または version が未対応の場合
@@ -57,6 +59,8 @@ const InvoiceApiClient = (() => {
       throw new TypeError('version には ' + CONFIG.SUPPORTED_VERSIONS.join(' / ') + ' を指定してください');
     }
     const type = opts.type ?? CONFIG.DEFAULT_TYPE;
+    const maxRetries = opts.maxRetries ?? CONFIG.DEFAULT_MAX_RETRIES;
+    const baseDelayMs = opts.baseDelayMs ?? CONFIG.DEFAULT_BASE_DELAY_MS;
     const logger = opts.logger;
 
     return ApiClient.createClient({
@@ -69,8 +73,8 @@ const InvoiceApiClient = (() => {
       responseHandler: invoiceResponseHandler
     })
       .extend(transport => HttpCore.withRetry(transport, {
-        maxRetries: CONFIG.DEFAULT_MAX_RETRIES,
-        baseDelayMs: CONFIG.DEFAULT_BASE_DELAY_MS,
+        maxRetries,
+        baseDelayMs,
         logger
       }))
       .extend(transport => HttpCore.withLogger(transport, logger))

@@ -74,9 +74,11 @@ const create = <TResponse = unknown>(
 
   // 認証はクエリパラメータ (id) + 必須共通クエリ (type, version)。
   // デコレータ適用順 (内側 → 外側): createClient → Retry → Logger → QueryAuth
-  // - QueryAuth を最外層に置くことで、Logger は id 抜きの URL を観測する
-  //   （ただし transport.fetch が受け取った url を直接ログ出力する実装の場合は流出する。
-  //   現状の HttpCore.withLogger は url を含むため、利用者が許容する前提）。
+  // fetch 呼び出しは外側から内側へ伝播するため、QueryAuth が最外層に居ても
+  // 内側の Logger は id を付与済みの URL を観測する。
+  // 現状の HttpCore.withLogger は `${method} ${url}` 形式で URL をログ出力するため、
+  // 認証 id はログに残る前提。マスクが必要になったら withLogger 側か
+  // createClient の auth スロット化で構造的に解決する。
   return ApiClient.createClient<TResponse>({
     baseUrl: `${BASE_URL}/${API_PATH_VERSION}`,
     transport: injectedTransport ?? HttpCore.createTransport(),
