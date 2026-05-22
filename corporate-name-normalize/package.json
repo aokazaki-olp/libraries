@@ -1,0 +1,9 @@
+{
+  "name": "corporate-name-normalize",
+  "version": "1.0.0",
+  "private": true,
+  "description": "法人名正規化・名寄せユーティリティ",
+  "scripts": {
+    "test": "node test/normalize.test.js"
+  }
+}
