@@ -1508,6 +1508,45 @@ const runEdgeCaseTests = () => {
   });
 };
 
+  // ─── plugin と HTTP メソッド名衝突テスト ────────────────────────
+
+  suite('ApiClient.use() — HTTP メソッド名衝突');
+
+  test('plugin の delete が HTTP delete に上書きされない', () => {
+    const mockTransport = MockTransport.success({});
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const plugin = c => ({
+      delete: id => c.delete(`/items/${id}`)
+    });
+    const extended = client.use(plugin);
+
+    extended.delete('abc-123');
+    const call = mockTransport.getCalls()[0];
+    // plugin が優先されれば /items/abc-123 になる（修正前は /abc-123 になりバグる）
+    assertTrue(call.url.includes('/items/abc-123'));
+  });
+
+  test('plugin の get が HTTP get に上書きされない', () => {
+    const mockTransport = MockTransport.success({});
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: mockTransport
+    });
+
+    const plugin = c => ({
+      get: id => c.get(`/items/${id}`)
+    });
+    const extended = client.use(plugin);
+
+    extended.get('xyz-999');
+    const call = mockTransport.getCalls()[0];
+    assertTrue(call.url.includes('/items/xyz-999'));
+  });
+
 // ============================================================================
 // インテグレーションテスト（実際のHTTP通信が必要）
 // ============================================================================

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
+import { SalesforcePlugins } from '../src/plugins/salesforce.js';
 import { ApiClient } from '../src/ApiClient.js';
 import type { RawResponse } from '../src/httpTypes.js';
 import { mockTransport } from './helpers.js';
@@ -241,6 +243,55 @@ describe('ApiClient.createClient — use', () => {
     expect(() =>
       client.use(() => 'not an object' as unknown as object),
     ).toThrow(TypeError);
+  });
+});
+
+// ============================================================================
+// createClient — use() と HTTP メソッド名衝突（回帰防止）
+// ============================================================================
+
+describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝突する場合 plugin が勝つ', () => {
+  it('plugin の delete が HTTP delete に上書きされない', async () => {
+    const transport = mockTransport({ status: 200, body: null });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://example.com',
+      transport,
+      responseHandler: (res) => res.body,
+    }).use((c) => ({
+      delete: (id: string) => c.delete(`/items/${id}`),
+    }));
+
+    await client.delete('abc-123');
+
+    // plugin が優先されれば /items/abc-123 になる（修正前は /abc-123 になりバグる）
+    expect(transport.calls[0].url).toContain('/items/abc-123');
+  });
+
+  it('plugin の get が HTTP get に上書きされない', async () => {
+    const transport = mockTransport({ status: 200, body: null });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://example.com',
+      transport,
+      responseHandler: (res) => res.body,
+    }).use((c) => ({
+      get: (id: string) => c.get(`/items/${id}`),
+    }));
+
+    await client.get('xyz-999');
+
+    expect(transport.calls[0].url).toContain('/items/xyz-999');
+  });
+
+  it('sobject plugin の delete が正しいエンドポイントを叩く', async () => {
+    const transport = mockTransport({ status: 204, body: null });
+    const sf = SalesforceApiClient
+      .create('https://example.my.salesforce.com', 'token', { transport })
+      .use(SalesforcePlugins.sobject('Account'));
+
+    await sf.delete('001xxx');
+
+    expect(transport.calls[0].options?.method).toBe('DELETE');
+    expect(transport.calls[0].url).toContain('/sobjects/Account/001xxx');
   });
 });
 

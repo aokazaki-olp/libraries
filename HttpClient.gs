@@ -269,12 +269,15 @@ const ClientHelper = (() => {
    * @param {Object} [options] オプション
    * @param {Function} [options.extend] extend 関数
    * @returns {Object} クライアント { call, use, get, post, put, patch, delete, [extend] }
+   *   use() で追加した plugin メソッドは HTTP メソッド名（get/post/put/patch/delete）と同名でも plugin が優先される
    */
   const createClient = (call, clientOptions) => {
     const methods = createHttpMethods(call);
 
     const createExtended = additionalMethods => {
-      const client = { ...additionalMethods, call, ...methods };
+      // plugin が HTTP メソッド名（delete 等）と同名メソッドを定義した場合に plugin を優先するため
+      // httpMethods を先に展開し additionalMethods で後勝ちにする。call は常に保持。
+      const client = { ...methods, ...additionalMethods, call };
 
       if (clientOptions?.extend) {
         client.extend = clientOptions.extend;
