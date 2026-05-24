@@ -57,8 +57,15 @@ export type {
 // プラグイン
 // ============================================================================
 
-export { SalesforcePlugins } from './plugins/salesforce.js';
-export type { SoqlResult } from './plugins/salesforce.js';
+export { SalesforceApiClientPlugins } from './plugins/salesforce.js';
+export type {
+  SoqlResult,
+  IngestOperation, IngestState, QueryOperation, QueryState, ColumnDelimiter, LineEnding,
+  CreateIngestJobOptions, IngestJobInfo, ListIngestJobsOptions, ListIngestJobsResponse,
+  CreateQueryJobOptions, QueryJobInfo, ListQueryJobsOptions, ListQueryJobsResponse,
+  GetResultsOptions, QueryResultsPage, GetResultsParallelOptions,
+  WaitOptions, ValidationError, ValidationWarning, ValidationResult,
+} from './plugins/salesforce.js';
 
 export { SlackPlugins } from './plugins/slack.js';
 export type { ChatOptions, SlackBlock } from './plugins/slack.js';

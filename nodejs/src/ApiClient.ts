@@ -175,10 +175,17 @@ const createClient = <TResponse = unknown>(
       headers: mergedHeaders,
     };
 
+    const hasRawBody = typeof request.rawBody === 'string';
     const hasBody = request.body != null;
     const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
-    if (hasBody) {
+    if (hasRawBody) {
+      if (canHaveBody) {
+        options.payload = request.rawBody;
+      } else {
+        log?.warn(`[HTTP] ⚠ ${method}リクエストでrawBodyが検出されました。無視されます。 url=${url}`);
+      }
+    } else if (hasBody) {
       if (canHaveBody) {
         options.payload = JSON.stringify(request.body);
         if (!HttpCore.hasHeader(mergedHeaders, 'Content-Type')) {

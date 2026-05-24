@@ -36,6 +36,8 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   query?: Record<string, unknown>;
   body?: unknown;
+  /** JSON.stringify を経由せず payload に直接セットされる生文字列（CSV アップロード等） */
+  rawBody?: string;
   timeoutMs?: number;
 }
 
