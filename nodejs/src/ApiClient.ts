@@ -155,6 +155,7 @@ interface ClientConfig<TResponse = unknown> {
  *
  * @param config - クライアント設定
  * @returns クライアント（call/get/post/put/patch/delete/extend/use）。use() は TypeError をスローする場合がある
+ * @remarks use() で追加した plugin メソッドは HTTP メソッド名（get/post/put/patch/delete）と同名でも plugin が優先される
  */
 const createClient = <TResponse = unknown>(
   config: ClientConfig<TResponse>,
@@ -257,9 +258,11 @@ const createClient = <TResponse = unknown>(
         call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
     };
 
+    // plugin が HTTP メソッド名（delete 等）と同名メソッドを定義した場合に plugin を優先するため
+    // httpMethods を先に展開し additionalMethods で後勝ちにする。call/extend/use は常に保持。
     client = {
-      ...additionalMethods,
       ...httpMethods,
+      ...additionalMethods,
       call,
       extend,
       use,
