@@ -54,6 +54,7 @@ const SalesforceApiClientPlugins = (() => {
   // 内部定数・ヘルパー
   // ============================================================================
 
+  // Ingest / Query で終了状態が将来変わる可能性に備えて別定数として定義している
   const TERMINAL_INGEST_STATES = Object.freeze(['JobComplete', 'Failed', 'Aborted']);
   const TERMINAL_QUERY_STATES = Object.freeze(['JobComplete', 'Failed', 'Aborted']);
 
@@ -70,7 +71,8 @@ const SalesforceApiClientPlugins = (() => {
     if (pages.length === 1) {
       return pages[0];
     }
-    // 末尾の \r?\n を除去してから結合する（末尾改行による空行挿入を防ぐ）
+    // 末尾の \r?\n を除去してから LF で結合する（末尾改行による空行挿入を防ぐ）
+    // 入力が CRLF であっても結合後は LF に統一される（Salesforce は LF/CRLF 両対応）
     const parts = [pages[0].replace(/\r?\n$/, '')];
     for (let i = 1; i < pages.length; i++) {
       const idx = pages[i].indexOf('\n');
@@ -421,7 +423,7 @@ const SalesforceApiClientPlugins = (() => {
      * @returns {Object} ジョブ一覧 { records, done, nextRecordsUrl }
      * @throws {Error} HTTP 非2xxレスポンス時
      */
-    const listJobs = (options) => client.get('/jobs/ingest', options);
+    const listJobs = options => client.get('/jobs/ingest', options);
 
     /**
      * 処理成功レコードの結果 CSV を取得する
@@ -556,7 +558,7 @@ const SalesforceApiClientPlugins = (() => {
      * @returns {Object} ジョブ一覧 { records, done, nextRecordsUrl }
      * @throws {Error} HTTP 非2xxレスポンス時
      */
-    const listJobs = (options) => client.get('/jobs/query', options);
+    const listJobs = options => client.get('/jobs/query', options);
 
     /**
      * クエリ結果 CSV を 1 ページ取得する（Partial Downloads / Winter '25 対応）
@@ -607,6 +609,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * ⚠️ GAS はシングルスレッド環境のため真の並列ダウンロードは行わない。
      * 全ページを逐次取得してヘッダー行の重複を除去して結合する。
+     * 「Parallel」はチャンクインデックス API による将来の並列化実装に向けた予約名。
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @param {Object} [options] 将来用（現在は未使用）

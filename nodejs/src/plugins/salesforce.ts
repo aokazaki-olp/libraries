@@ -230,6 +230,7 @@ export interface BulkQueryPlugin {
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms));
 
+// Ingest / Query で終了状態が将来変わる可能性に備えて別定数として定義している
 const TERMINAL_INGEST_STATES = new Set<IngestState>(['JobComplete', 'Failed', 'Aborted']);
 const TERMINAL_QUERY_STATES = new Set<QueryState>(['JobComplete', 'Failed', 'Aborted']);
 
@@ -241,7 +242,8 @@ const mergeCsvPages = (pages: string[]): string => {
   if (pages.length === 1) {
     return pages[0];
   }
-  // 末尾の \r?\n を除去してから結合する（csv-stringify 等が付ける末尾改行による空行挿入を防ぐ）
+  // 末尾の \r?\n を除去してから LF で結合する（末尾改行による空行挿入を防ぐ）
+  // 入力が CRLF であっても結合後は LF に統一される（Salesforce は LF/CRLF 両対応）
   const parts = [pages[0].replace(/\r?\n$/, '')];
   for (let i = 1; i < pages.length; i++) {
     const idx = pages[i].indexOf('\n');
@@ -726,7 +728,11 @@ const Utils = {
    * @returns ヘッダー行付き RFC4180 CSV 文字列
    */
   recordsToCsv(records: Record<string, string>[]): string {
-    return stringify(records, { header: true });
+    if (records.length === 0) {
+      return '';
+    }
+    // csv-stringify はデフォルトで末尾 \n を付加するため除去して GAS 版と統一する
+    return stringify(records, { header: true }).replace(/\r?\n$/, '');
   },
 
   /**
