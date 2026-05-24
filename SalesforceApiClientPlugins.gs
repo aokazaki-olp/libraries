@@ -193,7 +193,9 @@ const SalesforceApiClientPlugins = (() => {
         .filter(row => row.some(cell => cell !== ''))
         .map(row => {
           const record = {};
-          headers.forEach((h, j) => { record[h] = row[j] ?? ''; });
+          for (let j = 0; j < headers.length; j++) {
+            record[headers[j]] = row[j] ?? '';
+          }
           return record;
         });
     },
@@ -295,11 +297,11 @@ const SalesforceApiClientPlugins = (() => {
           errors.push({ message: '重複したヘッダー列が含まれています' });
         }
 
-        dataRows.forEach((row, i) => {
+        for (const [i, row] of dataRows.entries()) {
           if (row.length !== columnCount) {
             errors.push({ row: i + 2, message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})` });
           }
-        });
+        }
 
         if (!headers.includes('Id')) {
           warnings.push({ message: 'Id 列がありません（update / upsert / delete 操作では必須）' });

@@ -196,6 +196,33 @@ export interface ValidationResult {
   };
 }
 
+/** bulkIngest() が返すプラグインオブジェクトの型 */
+export interface BulkIngestPlugin {
+  createJob(options: CreateIngestJobOptions): Promise<IngestJobInfo>;
+  upload(jobId: string, csv: string): Promise<void>;
+  close(jobId: string): Promise<IngestJobInfo>;
+  abort(jobId: string): Promise<IngestJobInfo>;
+  deleteJob(jobId: string): Promise<void>;
+  getJob(jobId: string): Promise<IngestJobInfo>;
+  listJobs(options?: ListIngestJobsOptions): Promise<ListIngestJobsResponse>;
+  getSuccessfulResults(jobId: string): Promise<string>;
+  getFailedResults(jobId: string): Promise<string>;
+  getUnprocessedRecords(jobId: string): Promise<string>;
+  waitForCompletion(jobId: string, options?: WaitOptions): Promise<IngestJobInfo>;
+}
+
+/** bulkQuery() が返すプラグインオブジェクトの型 */
+export interface BulkQueryPlugin {
+  createJob(options: CreateQueryJobOptions): Promise<QueryJobInfo>;
+  abort(jobId: string): Promise<void>;
+  deleteJob(jobId: string): Promise<void>;
+  getJob(jobId: string): Promise<QueryJobInfo>;
+  listJobs(options?: ListQueryJobsOptions): Promise<ListQueryJobsResponse>;
+  getResults(jobId: string, options?: GetResultsOptions): Promise<QueryResultsPage>;
+  getResultsParallel(jobId: string, options?: GetResultsParallelOptions): Promise<string>;
+  waitForCompletion(jobId: string, options?: WaitOptions): Promise<QueryJobInfo>;
+}
+
 // ============================================================================
 // 内部ヘルパー
 // ============================================================================
@@ -255,6 +282,7 @@ const soql = <TRow = unknown>(): Plugin<unknown, {
 
   queryAll: async (q) => {
     const records: TRow[] = [];
+    // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される（soql.query と同じ理由）
     let result = await client.get('/query', { q }) as SoqlResult<TRow>;
     records.push(...result.records);
     while (!result.done && result.nextRecordsUrl) {
@@ -262,6 +290,7 @@ const soql = <TRow = unknown>(): Plugin<unknown, {
       // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
       // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
       const relPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
+      // 継続ページも同じく SF REST API 仕様で SoqlResult 形式が保証される
       result = await client.get(relPath) as SoqlResult<TRow>;
       records.push(...result.records);
     }
@@ -308,12 +337,15 @@ const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
     client.get(`/sobjects/${type}/${id}`) as Promise<TRecord>,
 
   create: (data) =>
+    // SF /sobjects/{type} POST のレスポンス形式は SF REST API 仕様で保証される
     client.post(`/sobjects/${type}`, data) as Promise<{ id: string; success: boolean }>,
 
   update: (id, data) =>
+    // SF PATCH は 204 No Content を返し、BaseClient が void 相当を返す
     client.patch(`/sobjects/${type}/${id}`, data) as Promise<void>,
 
   delete: (id) =>
+    // SF DELETE は 204 No Content を返し、BaseClient が void 相当を返す
     client.delete(`/sobjects/${type}/${id}`) as Promise<void>,
 });
 
@@ -342,12 +374,15 @@ const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
  * ⚠️ Abort はロールバックではない
  * abortJob() でジョブを中断しても処理済みレコードは Salesforce に反映済みとなる。
  */
-const bulkIngest = (client: BaseClient<unknown>) => {
+const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
   /**
    * Ingest ジョブを作成する
    * @param options - 操作種別・対象オブジェクト等の設定
    * @returns 作成されたジョブ情報
    */
+  // 以下の as キャストは、BaseClient<unknown> のメソッドが Promise<unknown> を返すことに対し、
+  // SF Bulk API v2 仕様で保証されるレスポンス形状へ変換するもの。プラグイン内部に閉じ込める。
+
   const createJob = (options: CreateIngestJobOptions): Promise<IngestJobInfo> =>
     client.post('/jobs/ingest', options) as Promise<IngestJobInfo>;
 
@@ -404,6 +439,7 @@ const bulkIngest = (client: BaseClient<unknown>) => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListIngestJobsOptions): Promise<ListIngestJobsResponse> =>
+    // options は ListIngestJobsOptions だが client.get の型引数 Record<string, unknown> へ変換が必要
     client.get('/jobs/ingest', options as Record<string, unknown>) as Promise<ListIngestJobsResponse>;
 
   /**
@@ -493,7 +529,10 @@ const bulkIngest = (client: BaseClient<unknown>) => {
  * const fullCsv = await query.getResultsParallel(done.id);
  * ```
  */
-const bulkQuery = (client: BaseClient<unknown>) => {
+const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
+  // 以下の as キャストは、BaseClient<unknown> のメソッドが Promise<unknown> を返すことに対し、
+  // SF Bulk API v2 仕様で保証されるレスポンス形状へ変換するもの。プラグイン内部に閉じ込める。
+
   /**
    * Query ジョブを作成して即座に処理を開始する
    * @param options - クエリ文字列・操作種別等の設定
@@ -530,6 +569,7 @@ const bulkQuery = (client: BaseClient<unknown>) => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListQueryJobsOptions): Promise<ListQueryJobsResponse> =>
+    // options は ListQueryJobsOptions だが client.get の型引数 Record<string, unknown> へ変換が必要
     client.get('/jobs/query', options as Record<string, unknown>) as Promise<ListQueryJobsResponse>;
 
   /**
@@ -568,6 +608,7 @@ const bulkQuery = (client: BaseClient<unknown>) => {
       query['locator'] = options.locator;
     }
 
+    // SF Bulk API v2 Query Results エンドポイントは text/csv を返し、SalesforceApiClient が文字列として処理する
     const csv = await capturingClient.get(`/jobs/query/${jobId}/results`, query) as string;
     return { csv, nextLocator };
   };
@@ -651,6 +692,7 @@ const Utils = {
    * @returns レコードの配列
    */
   csvToRecords(csv: string): Record<string, string>[] {
+    // csv-parse/sync は any を返すため、SF Bulk API v2 CSV の形式（文字列フィールドのみ）に合わせてキャスト
     return parse(csv, { columns: true, skip_empty_lines: true }) as Record<string, string>[];
   },
 
@@ -672,6 +714,7 @@ const Utils = {
     if (!csv || csv.trim() === '') {
       return 0;
     }
+    // csv-parse/sync は any を返すため、件数取得目的で unknown[] にキャスト
     const records = parse(csv, { columns: true, skip_empty_lines: true }) as unknown[];
     return records.length;
   },
@@ -685,6 +728,7 @@ const Utils = {
     if (!csv || csv.trim() === '') {
       return [];
     }
+    // csv-parse/sync は any を返すため、ヘッダー行のみ取得して string[][] にキャスト
     const rows = parse(csv, { columns: false, to_line: 1 }) as string[][];
     return rows[0] ?? [];
   },
@@ -718,6 +762,7 @@ const Utils = {
     let columnCount = 0;
 
     try {
+      // csv-parse/sync は any を返すため、SF Bulk API v2 CSV の形式に合わせてキャスト
       const records = parse(csv, {
         columns: true,
         skip_empty_lines: true,
@@ -740,16 +785,17 @@ const Utils = {
       }
 
       // 列数の一致確認（relax_column_count により解析はできているが不整合行を検出）
+      // csv-parse/sync は any を返すため、行×列の2次元配列として string[][] にキャスト
       const allRows = parse(csv, {
         columns: false,
         skip_empty_lines: true,
         relax_column_count: true,
       }) as string[][];
-      allRows.slice(1).forEach((row, i) => {
+      for (const [i, row] of allRows.slice(1).entries()) {
         if (row.length !== columnCount) {
           errors.push({ row: i + 2, message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})` });
         }
-      });
+      }
 
       if (!headers.includes('Id')) {
         warnings.push({ message: 'Id 列がありません（update / upsert / delete 操作では必須）' });

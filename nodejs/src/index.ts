@@ -65,6 +65,7 @@ export type {
   CreateQueryJobOptions, QueryJobInfo, ListQueryJobsOptions, ListQueryJobsResponse,
   GetResultsOptions, QueryResultsPage, GetResultsParallelOptions,
   WaitOptions, ValidationError, ValidationWarning, ValidationResult,
+  BulkIngestPlugin, BulkQueryPlugin,
 } from './plugins/salesforce.js';
 
 export { SlackPlugins } from './plugins/slack.js';
