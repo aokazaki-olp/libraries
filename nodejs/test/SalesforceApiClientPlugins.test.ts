@@ -425,6 +425,10 @@ describe('SalesforceApiClientPlugins.Utils.csvToRecords', () => {
     expect(SalesforceApiClientPlugins.Utils.csvToRecords('')).toEqual([]);
   });
 
+  it('ヘッダーのみは空配列を返す (mi-1)', () => {
+    expect(SalesforceApiClientPlugins.Utils.csvToRecords('Id,Name')).toEqual([]);
+  });
+
   it('クォートされたフィールドを正しくパースする', () => {
     const csv = 'Id,Name\n001,"Acme, Corp"';
     const result = SalesforceApiClientPlugins.Utils.csvToRecords(csv);
@@ -441,6 +445,10 @@ describe('SalesforceApiClientPlugins.Utils.recordsToCsv', () => {
     const result = SalesforceApiClientPlugins.Utils.recordsToCsv(records);
     expect(result).toContain('Id,Name');
     expect(result).toContain('001xxx,Acme');
+  });
+
+  it('空配列は空文字列を返す (mi-2)', () => {
+    expect(SalesforceApiClientPlugins.Utils.recordsToCsv([])).toBe('');
   });
 
   it('カンマを含む値をクォートする', () => {
@@ -514,5 +522,107 @@ describe('SalesforceApiClientPlugins.Utils.validateCsv', () => {
       columnCount: 2,
       headers: ['Id', 'Name'],
     });
+  });
+});
+
+// ============================================================================
+// soql — queryAll 複数ページ (mi-3)
+// ============================================================================
+
+describe('SalesforceApiClientPlugins.soql — queryAll', () => {
+  it('nextRecordsUrl を辿って全レコードを返す', async () => {
+    let callCount = 0;
+    const transport = makeTransport(() => {
+      if (callCount++ === 0) {
+        return Promise.resolve(
+          makeRawResponse({
+            body: {
+              totalSize: 2,
+              done: false,
+              records: [{ Id: '001xxx' }],
+              nextRecordsUrl: '/services/data/v60.0/query/01gxxx-2000',
+            },
+          }),
+        );
+      }
+      return Promise.resolve(
+        makeRawResponse({ body: { totalSize: 2, done: true, records: [{ Id: '002xxx' }] } }),
+      );
+    });
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport }).use(
+      SalesforceApiClientPlugins.soql(),
+    );
+
+    const records = await sf.queryAll('SELECT Id FROM Account');
+
+    expect(records).toHaveLength(2);
+    expect((records[0] as { Id: string }).Id).toBe('001xxx');
+    expect((records[1] as { Id: string }).Id).toBe('002xxx');
+    expect(transport.calls.length).toBe(2);
+  });
+});
+
+// ============================================================================
+// getResultsParallel — mergeCsvPages エッジケース (mi-4)
+// ============================================================================
+
+describe('SalesforceApiClientPlugins.bulkQuery — getResultsParallel エッジケース (mi-4)', () => {
+  it('1ページ目が末尾改行を持つ場合も正しく結合する', async () => {
+    const page1 = 'Id,Name\n001xxx,Acme\n';
+    const page2 = 'Id,Name\n002xxx,Apex';
+    let callCount = 0;
+    const transport = makeTransport(() => {
+      const locator = callCount === 0 ? 'LOC_NEXT' : 'null';
+      const body = callCount === 0 ? page1 : page2;
+      callCount++;
+      return Promise.resolve(makeRawResponse({ body, headers: { 'Sforce-Locator': locator } }));
+    });
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
+    const query = SalesforceApiClientPlugins.bulkQuery(sf);
+
+    const result = await query.getResultsParallel('qjob001');
+
+    expect(result).toBe('Id,Name\n001xxx,Acme\n002xxx,Apex');
+  });
+
+  it('2ページ目がヘッダー行のみ（データなし）のとき空行が挿入されない', async () => {
+    const page1 = 'Id,Name\n001xxx,Acme';
+    const page2 = 'Id,Name\n';
+    let callCount = 0;
+    const transport = makeTransport(() => {
+      const locator = callCount === 0 ? 'LOC_NEXT' : 'null';
+      const body = callCount === 0 ? page1 : page2;
+      callCount++;
+      return Promise.resolve(makeRawResponse({ body, headers: { 'Sforce-Locator': locator } }));
+    });
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
+    const query = SalesforceApiClientPlugins.bulkQuery(sf);
+
+    const result = await query.getResultsParallel('qjob001');
+
+    expect(result).toBe('Id,Name\n001xxx,Acme');
+  });
+});
+
+// ============================================================================
+// waitForCompletion — remaining < intervalMs (mi-5)
+// ============================================================================
+
+describe('SalesforceApiClientPlugins.bulkIngest — waitForCompletion remaining < intervalMs (mi-5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('intervalMs より残り時間が短い場合でもタイムアウトする', async () => {
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ body: makeIngestJob({ state: 'InProgress' }) })),
+    );
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
+    const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
+
+    // intervalMs(200) > timeoutMs(150): remaining=150 < intervalMs=200 なので sleep(150) になる
+    const promise = bulk.waitForCompletion('job001', { timeoutMs: 150, intervalMs: 200 });
+    const assertion = expect(promise).rejects.toThrow('タイムアウト');
+    await vi.runAllTimersAsync();
+    await assertion;
   });
 });

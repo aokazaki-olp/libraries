@@ -243,6 +243,23 @@ const runSfPluginsUtilsTests = () => {
     assertTrue(result.valid);
     assertTrue(result.warnings.some(w => w.message.includes('0 件')));
   });
+
+  // --- parseCsvRaw / csvToRecords CRLF / クォート内改行 (mi-6) ---
+
+  test('csvToRecords: CRLF 区切りのCSVを正しくパースする', () => {
+    const csv = 'Id,Name\r\n001xxx,Acme\r\n002xxx,Beta';
+    const records = U.csvToRecords(csv);
+    assertEqual(records.length, 2);
+    assertEqual(records[0].Id, '001xxx');
+    assertEqual(records[1].Id, '002xxx');
+  });
+
+  test('csvToRecords: クォートフィールド内の改行を正しくパースする', () => {
+    const csv = 'Id,Note\n001xxx,"Line1\nLine2"';
+    const records = U.csvToRecords(csv);
+    assertEqual(records.length, 1);
+    assertEqual(records[0].Note, 'Line1\nLine2');
+  });
 };
 
 // ============================================================================
@@ -475,8 +492,9 @@ const runSfPluginsBulkIngestTests = () => {
     const utilsMock = MockUtilities.setup();
     const origDateNow = Date.now;
     try {
-      let tick = 0;
-      Date.now = () => tick++ === 0 ? 0 : 200_000;
+      // 毎回100秒ずつ単調増加させる（常に時間が進む）
+      let now = 0;
+      Date.now = () => (now += 100_001);
 
       const client = SalesforceApiClient.create('https://x.my.salesforce.com', 'tok');
       const bulk = SalesforceApiClientPlugins.bulkIngest(client);
@@ -484,6 +502,39 @@ const runSfPluginsBulkIngestTests = () => {
         () => bulk.waitForCompletion('job001', { timeoutMs: 100_000 }),
         'タイムアウト'
       );
+    } finally {
+      Date.now = origDateNow;
+      fetchMock.restore();
+      utilsMock.restore();
+    }
+  });
+
+  test('waitForCompletion: remaining < intervalMs のとき remaining 時間でスリープする', () => {
+    const fetchMock = MockSfUrlFetchApp.setup([
+      { status: 200, body: { id: 'job001', state: 'InProgress' } },
+      { status: 200, body: { id: 'job001', state: 'InProgress' } },
+      { status: 200, body: { id: 'job001', state: 'InProgress' } }
+    ]);
+    const utilsMock = MockUtilities.setup();
+    const origDateNow = Date.now;
+    try {
+      // deadline=100ms, intervalMs=80ms
+      // iter1: remaining=100-5=95  → sleep(min(80,95)=80)
+      // iter2: remaining=100-95=5  → sleep(min(80,5)=5)  ← remaining < intervalMs
+      // iter3: remaining=100-200≤0 → タイムアウト
+      const times = [0, 5, 95, 200];
+      let idx = 0;
+      Date.now = () => times[Math.min(idx++, times.length - 1)];
+
+      const client = SalesforceApiClient.create('https://x.my.salesforce.com', 'tok');
+      const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+      try {
+        bulk.waitForCompletion('job001', { timeoutMs: 100, intervalMs: 80 });
+      } catch (_) { /* タイムアウトは想定内 */ }
+
+      const sleepCalls = utilsMock.getSleepCalls();
+      assertEqual(sleepCalls[0], 80);
+      assertEqual(sleepCalls[1], 5);
     } finally {
       Date.now = origDateNow;
       fetchMock.restore();
@@ -729,8 +780,9 @@ const runSfPluginsBulkQueryTests = () => {
     const utilsMock = MockUtilities.setup();
     const origDateNow = Date.now;
     try {
-      let tick = 0;
-      Date.now = () => tick++ === 0 ? 0 : 200_000;
+      // 毎回100秒ずつ単調増加させる（常に時間が進む）
+      let now = 0;
+      Date.now = () => (now += 100_001);
 
       const client = SalesforceApiClient.create('https://x.my.salesforce.com', 'tok');
       const bulk = SalesforceApiClientPlugins.bulkQuery(client);
@@ -738,6 +790,39 @@ const runSfPluginsBulkQueryTests = () => {
         () => bulk.waitForCompletion('qjob001', { timeoutMs: 100_000 }),
         'タイムアウト'
       );
+    } finally {
+      Date.now = origDateNow;
+      fetchMock.restore();
+      utilsMock.restore();
+    }
+  });
+
+  test('waitForCompletion: remaining < intervalMs のとき remaining 時間でスリープする', () => {
+    const fetchMock = MockSfUrlFetchApp.setup([
+      { status: 200, body: { id: 'qjob001', state: 'InProgress' } },
+      { status: 200, body: { id: 'qjob001', state: 'InProgress' } },
+      { status: 200, body: { id: 'qjob001', state: 'InProgress' } }
+    ]);
+    const utilsMock = MockUtilities.setup();
+    const origDateNow = Date.now;
+    try {
+      // deadline=100ms, intervalMs=80ms
+      // iter1: remaining=100-5=95  → sleep(min(80,95)=80)
+      // iter2: remaining=100-95=5  → sleep(min(80,5)=5)  ← remaining < intervalMs
+      // iter3: remaining=100-200≤0 → タイムアウト
+      const times = [0, 5, 95, 200];
+      let idx = 0;
+      Date.now = () => times[Math.min(idx++, times.length - 1)];
+
+      const client = SalesforceApiClient.create('https://x.my.salesforce.com', 'tok');
+      const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+      try {
+        bulk.waitForCompletion('qjob001', { timeoutMs: 100, intervalMs: 80 });
+      } catch (_) { /* タイムアウトは想定内 */ }
+
+      const sleepCalls = utilsMock.getSleepCalls();
+      assertEqual(sleepCalls[0], 80);
+      assertEqual(sleepCalls[1], 5);
     } finally {
       Date.now = origDateNow;
       fetchMock.restore();

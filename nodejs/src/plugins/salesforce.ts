@@ -241,11 +241,15 @@ const mergeCsvPages = (pages: string[]): string => {
   if (pages.length === 1) {
     return pages[0];
   }
-  const parts = [pages[0]];
+  // 末尾の \r?\n を除去してから結合する（csv-stringify 等が付ける末尾改行による空行挿入を防ぐ）
+  const parts = [pages[0].replace(/\r?\n$/, '')];
   for (let i = 1; i < pages.length; i++) {
     const idx = pages[i].indexOf('\n');
     if (idx >= 0) {
-      parts.push(pages[i].slice(idx + 1));
+      const tail = pages[i].slice(idx + 1).replace(/\r?\n$/, '');
+      if (tail) {
+        parts.push(tail);
+      }
     }
   }
   return parts.join('\n');
@@ -373,6 +377,8 @@ const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
  *
  * ⚠️ Abort はロールバックではない
  * abortJob() でジョブを中断しても処理済みレコードは Salesforce に反映済みとなる。
+ *
+ * @remarks `.use()` パターン非対応。`SalesforceApiClientPlugins.bulkIngest(sfClient)` の形で直接呼び出すこと。
  */
 const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
   /**
@@ -439,8 +445,8 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListIngestJobsOptions): Promise<ListIngestJobsResponse> =>
-    // options は ListIngestJobsOptions だが client.get の型引数 Record<string, unknown> へ変換が必要
-    client.get('/jobs/ingest', options as Record<string, unknown>) as Promise<ListIngestJobsResponse>;
+    // { ...undefined } は空オブジェクトになるため options が undefined でも安全
+    client.get('/jobs/ingest', { ...options }) as Promise<ListIngestJobsResponse>;
 
   /**
    * 処理成功レコードの結果 CSV を取得する
@@ -528,6 +534,8 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
  * // または全ページまとめて取得
  * const fullCsv = await query.getResultsParallel(done.id);
  * ```
+ *
+ * @remarks `.use()` パターン非対応。`SalesforceApiClientPlugins.bulkQuery(sfClient)` の形で直接呼び出すこと。
  */
 const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
   // 以下の as キャストは、BaseClient<unknown> のメソッドが Promise<unknown> を返すことに対し、
@@ -542,7 +550,11 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
     client.post('/jobs/query', options) as Promise<QueryJobInfo>;
 
   /**
-   * ジョブを中断する（DELETE メソッドを使用する Query ジョブ固有の仕様）
+   * ジョブを中断する
+   *
+   * SF Bulk API v2 の仕様上、Query ジョブの中断と削除は同一エンドポイント（DELETE）を使用する。
+   * Ingest ジョブの abort（PATCH）とは異なる点に注意。
+   *
    * @param jobId - 中断対象ジョブ ID
    */
   const abort = (jobId: string): Promise<void> =>
@@ -550,6 +562,10 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
 
   /**
    * ジョブを削除する
+   *
+   * SF Bulk API v2 の仕様上、Query ジョブの削除と中断は同一エンドポイント（DELETE）を使用する。
+   * abort() と同じエンドポイントだが、用途に応じて使い分けること。
+   *
    * @param jobId - 削除対象ジョブ ID
    */
   const deleteJob = (jobId: string): Promise<void> =>
@@ -569,8 +585,8 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListQueryJobsOptions): Promise<ListQueryJobsResponse> =>
-    // options は ListQueryJobsOptions だが client.get の型引数 Record<string, unknown> へ変換が必要
-    client.get('/jobs/query', options as Record<string, unknown>) as Promise<ListQueryJobsResponse>;
+    // { ...undefined } は空オブジェクトになるため options が undefined でも安全
+    client.get('/jobs/query', { ...options }) as Promise<ListQueryJobsResponse>;
 
   /**
    * クエリ結果 CSV を 1 ページ取得する（Partial Downloads / Winter '25 対応）
@@ -585,16 +601,20 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
   const getResults = async (jobId: string, options: GetResultsOptions = {}): Promise<QueryResultsPage> => {
     let nextLocator: string | null = null;
 
-    // Sforce-Locator レスポンスヘッダーをキャプチャするために transport をラップする
-    // SalesforceApiClient の responseHandler は response.body のみを返すため、
-    // ヘッダーは transport デコレータ層で取得する必要がある
+    // Sforce-Locator レスポンスヘッダーをキャプチャするために transport をラップする。
+    // SalesforceApiClient の responseHandler は response.body のみを返すため
+    // ヘッダーは transport デコレータ層で取得する必要がある。
+    // extend() は additionalMethods をリセットするが、capturingClient は .get() のみ使用するため問題ない。
     const capturingClient = client.extend((t) => ({
       fetch: async (url: string, fetchOptions?: FetchOptions) => {
         const response = await t.fetch(url, fetchOptions);
-        const locatorHeader = response.headers['Sforce-Locator'];
+        // HTTP ヘッダーは RFC 7230 でケースインセンシティブなため、小文字正規化して検索する
+        const locatorEntry = Object.entries(response.headers)
+          .find(([k]) => k.toLowerCase() === 'sforce-locator');
+        const rawLocator = locatorEntry?.[1];
         nextLocator =
-          typeof locatorHeader === 'string' && locatorHeader !== 'null'
-            ? locatorHeader
+          typeof rawLocator === 'string' && rawLocator !== 'null'
+            ? rawLocator
             : null;
         return response;
       },
@@ -625,7 +645,8 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @param options.parallelism - 将来用（現在は未使用）
    * @returns ヘッダー行 1 行 + 全データ行を結合した CSV 文字列
    */
-  const getResultsParallel = async (jobId: string, _options: GetResultsParallelOptions = {}): Promise<string> => {
+  const getResultsParallel = async (jobId: string, options: GetResultsParallelOptions = {}): Promise<string> => {
+    void options; // parallelism は将来の並列化実装のために予約されており現在は未使用
     const pages: string[] = [];
     let locator: string | null = null;
 
@@ -692,6 +713,9 @@ const Utils = {
    * @returns レコードの配列
    */
   csvToRecords(csv: string): Record<string, string>[] {
+    if (!csv || csv.trim() === '') {
+      return [];
+    }
     // csv-parse/sync は any を返すため、SF Bulk API v2 CSV の形式（文字列フィールドのみ）に合わせてキャスト
     return parse(csv, { columns: true, skip_empty_lines: true }) as Record<string, string>[];
   },
@@ -762,18 +786,23 @@ const Utils = {
     let columnCount = 0;
 
     try {
-      // csv-parse/sync は any を返すため、SF Bulk API v2 CSV の形式に合わせてキャスト
-      const records = parse(csv, {
-        columns: true,
+      // columns: false で1回だけパースし、行配列から直接検証する（二重パース回避）
+      // csv-parse/sync は any を返すため、行×列の2次元配列として string[][] にキャスト
+      const allRows = parse(csv, {
+        columns: false,
         skip_empty_lines: true,
         relax_column_count: true,
-      }) as Record<string, string>[];
+      }) as string[][];
 
-      if (records.length > 0) {
-        headers = Object.keys(records[0]);
-        columnCount = headers.length;
+      if (allRows.length === 0) {
+        errors.push({ message: 'ヘッダー行がありません' });
+        return { valid: false, errors, warnings, summary: { rowCount: 0, columnCount: 0, headers: [] } };
       }
-      rowCount = records.length;
+
+      headers = allRows[0];
+      columnCount = headers.length;
+      const dataRows = allRows.slice(1);
+      rowCount = dataRows.length;
 
       if (headers.some(h => h === '')) {
         errors.push({ message: '空のヘッダー列が含まれています' });
@@ -784,14 +813,7 @@ const Utils = {
         errors.push({ message: '重複したヘッダー列が含まれています' });
       }
 
-      // 列数の一致確認（relax_column_count により解析はできているが不整合行を検出）
-      // csv-parse/sync は any を返すため、行×列の2次元配列として string[][] にキャスト
-      const allRows = parse(csv, {
-        columns: false,
-        skip_empty_lines: true,
-        relax_column_count: true,
-      }) as string[][];
-      for (const [i, row] of allRows.slice(1).entries()) {
+      for (const [i, row] of dataRows.entries()) {
         if (row.length !== columnCount) {
           errors.push({ row: i + 2, message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})` });
         }

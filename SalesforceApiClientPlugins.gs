@@ -44,7 +44,7 @@
  * GAS はシングルスレッド環境のため真の並列ダウンロードは行わない。
  */
 
-if (typeof SalesforceApiClient === 'undefined') {
+if (typeof SalesforceApiClient === 'undefined' || typeof SalesforceApiClient.create !== 'function') {
   throw new Error('[SalesforceApiClientPlugins] SalesforceApiClient が定義されていません。SalesforceApiClient.gs を先に読み込んでください。');
 }
 
@@ -70,11 +70,15 @@ const SalesforceApiClientPlugins = (() => {
     if (pages.length === 1) {
       return pages[0];
     }
-    const parts = [pages[0]];
+    // 末尾の \r?\n を除去してから結合する（末尾改行による空行挿入を防ぐ）
+    const parts = [pages[0].replace(/\r?\n$/, '')];
     for (let i = 1; i < pages.length; i++) {
       const idx = pages[i].indexOf('\n');
       if (idx >= 0) {
-        parts.push(pages[i].slice(idx + 1));
+        const tail = pages[i].slice(idx + 1).replace(/\r?\n$/, '');
+        if (tail) {
+          parts.push(tail);
+        }
       }
     }
     return parts.join('\n');
@@ -335,6 +339,8 @@ const SalesforceApiClientPlugins = (() => {
   /**
    * Bulk API v2 Ingest プラグイン
    *
+   * .use() パターン非対応。SalesforceApiClientPlugins.bulkIngest(sfClient) の形で直接呼び出すこと。
+   *
    * @param {Object} client SalesforceApiClient.create() で作成したクライアント
    * @returns {{ createJob, upload, close, abort, deleteJob, getJob, listJobs,
    *             getSuccessfulResults, getFailedResults, getUnprocessedRecords,
@@ -351,6 +357,7 @@ const SalesforceApiClientPlugins = (() => {
      * @param {{ operation: string, object: string, externalIdFieldName?: string,
      *           columnDelimiter?: string, lineEnding?: string }} options
      * @returns {Object} 作成されたジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const createJob = options => client.post('/jobs/ingest', options);
 
@@ -360,6 +367,7 @@ const SalesforceApiClientPlugins = (() => {
      * @param {string} jobId アップロード対象ジョブ ID
      * @param {string} csv RFC4180 形式の CSV 文字列（ヘッダー行必須）
      * @returns {void}
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const upload = (jobId, csv) => client.call({
       method: 'PUT',
@@ -373,6 +381,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId クローズ対象ジョブ ID
      * @returns {Object} 更新されたジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const close = jobId => client.patch(`/jobs/ingest/${jobId}`, { state: 'UploadComplete' });
 
@@ -383,6 +392,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 中断対象ジョブ ID
      * @returns {Object} 更新されたジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const abort = jobId => client.patch(`/jobs/ingest/${jobId}`, { state: 'Aborted' });
 
@@ -391,6 +401,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 削除対象ジョブ ID
      * @returns {void}
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const deleteJob = jobId => client.delete(`/jobs/ingest/${jobId}`);
 
@@ -399,6 +410,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @returns {Object} ジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getJob = jobId => client.get(`/jobs/ingest/${jobId}`);
 
@@ -407,6 +419,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {Object} [options] フィルター条件
      * @returns {Object} ジョブ一覧 { records, done, nextRecordsUrl }
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const listJobs = (options) => client.get('/jobs/ingest', options);
 
@@ -415,6 +428,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @returns {string} CSV 文字列
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getSuccessfulResults = jobId => client.get(`/jobs/ingest/${jobId}/successfulResults`);
 
@@ -423,6 +437,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @returns {string} CSV 文字列
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getFailedResults = jobId => client.get(`/jobs/ingest/${jobId}/failedResults`);
 
@@ -431,6 +446,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @returns {string} CSV 文字列
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getUnprocessedRecords = jobId => client.get(`/jobs/ingest/${jobId}/unprocessedrecords`);
 
@@ -484,6 +500,7 @@ const SalesforceApiClientPlugins = (() => {
   /**
    * Bulk API v2 Query プラグイン
    *
+   * @remarks .use() パターン非対応。SalesforceApiClientPlugins.bulkQuery(sfClient) の形で直接呼び出すこと。
    * @param {Object} client SalesforceApiClient.create() で作成したクライアント
    * @returns {{ createJob, abort, deleteJob, getJob, listJobs,
    *             getResults, getResultsParallel, waitForCompletion }}
@@ -495,22 +512,31 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {{ operation: string, query: string, columnDelimiter?: string, lineEnding?: string }} options
      * @returns {Object} 作成されたジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const createJob = options => client.post('/jobs/query', options);
 
     /**
-     * ジョブを中断する（DELETE メソッドを使用する Query ジョブ固有の仕様）
+     * ジョブを中断する
+     *
+     * SF Bulk API v2 の仕様上、Query ジョブの中断と削除は同一エンドポイント（DELETE）を使用する。
+     * Ingest ジョブの abort（PATCH）とは異なる点に注意。
      *
      * @param {string} jobId 中断対象ジョブ ID
      * @returns {void}
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const abort = jobId => client.delete(`/jobs/query/${jobId}`);
 
     /**
      * ジョブを削除する
      *
+     * SF Bulk API v2 の仕様上、Query ジョブの削除と中断は同一エンドポイント（DELETE）を使用する。
+     * abort() と同じエンドポイントだが、用途に応じて使い分けること。
+     *
      * @param {string} jobId 削除対象ジョブ ID
      * @returns {void}
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const deleteJob = jobId => client.delete(`/jobs/query/${jobId}`);
 
@@ -519,6 +545,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {string} jobId 取得対象ジョブ ID
      * @returns {Object} ジョブ情報
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getJob = jobId => client.get(`/jobs/query/${jobId}`);
 
@@ -527,6 +554,7 @@ const SalesforceApiClientPlugins = (() => {
      *
      * @param {Object} [options] フィルター条件
      * @returns {Object} ジョブ一覧 { records, done, nextRecordsUrl }
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const listJobs = (options) => client.get('/jobs/query', options);
 
@@ -540,17 +568,23 @@ const SalesforceApiClientPlugins = (() => {
      * @param {number} [options.maxRecords] 最大取得件数
      * @param {string} [options.locator] 前回レスポンスの nextLocator
      * @returns {{ csv: string, nextLocator: string|null }}
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getResults = (jobId, options = {}) => {
       let nextLocator = null;
 
-      // Sforce-Locator ヘッダーをキャプチャするために transport をラップする
-      // GAS の transport.fetch() は生の UrlFetchApp レスポンスを返すため
-      // getAllHeaders() でヘッダーを取得する
+      // Sforce-Locator ヘッダーをキャプチャするために transport をラップする。
+      // GAS の transport デコレータ層では t.fetch() がまだ interpretResponse() を通していない
+      // 生の UrlFetchApp.HTTPResponse を返すため getAllHeaders() が利用できる。
+      // （withRetry / withLogger は pass-through のみで変換しない）
+      // extend() は additionalMethods をリセットするが、capturingClient は .get() のみ使用するため問題ない。
       const capturingClient = client.extend(t => ({
         fetch: (url, fetchOptions) => {
           const rawResponse = t.fetch(url, fetchOptions);
-          const locatorHeader = rawResponse.getAllHeaders()['Sforce-Locator'];
+          // HTTP ヘッダーは RFC 7230 でケースインセンシティブなため、小文字正規化して検索する
+          const allHeaders = rawResponse.getAllHeaders();
+          const locatorKey = Object.keys(allHeaders).find(k => k.toLowerCase() === 'sforce-locator');
+          const locatorHeader = locatorKey ? allHeaders[locatorKey] : null;
           nextLocator = (locatorHeader && locatorHeader !== 'null') ? locatorHeader : null;
           return rawResponse;
         }
@@ -577,6 +611,7 @@ const SalesforceApiClientPlugins = (() => {
      * @param {string} jobId 取得対象ジョブ ID
      * @param {Object} [options] 将来用（現在は未使用）
      * @returns {string} ヘッダー行 1 行 + 全データ行を結合した CSV 文字列
+     * @throws {Error} HTTP 非2xxレスポンス時
      */
     const getResultsParallel = (jobId, options = {}) => {
       const pages = [];
