@@ -4,6 +4,11 @@
   "private": true,
   "description": "法人名正規化・名寄せユーティリティ",
   "scripts": {
-    "test": "node test/normalize.test.js"
+    "test": "node test/normalize.test.js",
+    "normalize": "node cli/normalize.js",
+    "normalize:gbiz": "tsx cli/normalize.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4"
   }
 }
