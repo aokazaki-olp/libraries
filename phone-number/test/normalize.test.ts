@@ -313,26 +313,27 @@ describe('meta — 全種別テーブル検証', () => {
 // ============================================================================
 
 describe('NDC 分割 — 局番と地域名', () => {
-  const cases: Array<[string, string, string, string]> = [
-    // [input,               ndc,    subscriber,   region]
-    ['03-1234-5678',        '03',   '12345678',   '東京都'],
-    ['06-9876-5432',        '06',   '98765432',   '大阪府（大阪市等）'],
-    ['011-123-4567',        '011',  '1234567',    '北海道（札幌市）'],
-    ['022-333-4444',        '022',  '3334444',    '宮城県（仙台市）'],
-    ['045-123-4567',        '045',  '1234567',    '神奈川県（横浜市）'],
-    ['052-111-2222',        '052',  '1112222',    '愛知県（名古屋市）'],
-    ['075-222-3333',        '075',  '2223333',    '京都府（京都市）'],
-    ['078-333-4444',        '078',  '3334444',    '兵庫県（神戸市）'],
-    ['092-444-5555',        '092',  '4445555',    '福岡県（福岡市）'],
-    ['098-888-1234',        '098',  '8881234',    '沖縄県（那覇市等）'],
-    ['0138-62-1234',        '0138', '621234',     '北海道（函館市）'],
-    ['0166-23-4567',        '0166', '234567',     '北海道（旭川市）'],
+  const cases: Array<[string, string, string, string, string]> = [
+    // [input,            ndc,    local,  subscriber, region]
+    ['03-1234-5678',     '03',   '1234', '5678',     '東京都'],
+    ['06-9876-5432',     '06',   '9876', '5432',     '大阪府（大阪市等）'],
+    ['011-123-4567',     '011',  '123',  '4567',     '北海道（札幌市）'],
+    ['022-333-4444',     '022',  '333',  '4444',     '宮城県（仙台市）'],
+    ['045-123-4567',     '045',  '123',  '4567',     '神奈川県（横浜市）'],
+    ['052-111-2222',     '052',  '111',  '2222',     '愛知県（名古屋市）'],
+    ['075-222-3333',     '075',  '222',  '3333',     '京都府（京都市）'],
+    ['078-333-4444',     '078',  '333',  '4444',     '兵庫県（神戸市）'],
+    ['092-444-5555',     '092',  '444',  '5555',     '福岡県（福岡市）'],
+    ['098-888-1234',     '098',  '888',  '1234',     '沖縄県（那覇市等）'],
+    ['0138-62-1234',     '0138', '62',   '1234',     '北海道（函館市）'],
+    ['0166-23-4567',     '0166', '23',   '4567',     '北海道（旭川市）'],
   ];
 
-  for (const [input, ndc, subscriber, region] of cases) {
-    it(`${input} → NDC="${ndc}"`, () => {
+  for (const [input, ndc, local, subscriber, region] of cases) {
+    it(`${input} → NDC="${ndc}" local="${local}" subscriber="${subscriber}"`, () => {
       const r = ok(input);
       expect(r.parts?.ndc,        'ndc'       ).toBe(ndc);
+      expect(r.parts?.local,      'local'     ).toBe(local);
       expect(r.parts?.subscriber, 'subscriber').toBe(subscriber);
       expect(r.region,            'region'    ).toBe(region);
     });
@@ -343,26 +344,33 @@ describe('NDC 分割 — 局番と地域名', () => {
 // 11. NDC 分割 — 加入者番号の桁数
 // ============================================================================
 
-describe('NDC 分割 — 加入者番号の桁数（合計10桁）', () => {
-  it('2桁NDC(03): subscriber=8桁', () => {
+describe('NDC 分割 — 各フィールドの桁数（合計10桁）', () => {
+  // 加入者番号は常に4桁。market の NDC 長によって local 桁数が変わる。
+  // local = 10 - ndc長 - 4
+
+  it('2桁NDC(03): local=4桁, subscriber=4桁', () => {
     const r = ok('03-1234-5678');
-    expect(r.parts?.ndc.length).toBe(2);
-    expect(r.parts?.subscriber.length).toBe(8);
-    expect((r.parts?.ndc.length ?? 0) + (r.parts?.subscriber.length ?? 0)).toBe(10);
+    expect(r.parts?.ndc.length,        'ndc'       ).toBe(2);
+    expect(r.parts?.local.length,      'local'     ).toBe(4);
+    expect(r.parts?.subscriber.length, 'subscriber').toBe(4);
+    const total = (r.parts?.ndc.length ?? 0)
+                + (r.parts?.local.length ?? 0)
+                + (r.parts?.subscriber.length ?? 0);
+    expect(total, '合計').toBe(10);
   });
 
-  it('3桁NDC(045): subscriber=7桁', () => {
+  it('3桁NDC(045): local=3桁, subscriber=4桁', () => {
     const r = ok('045-123-4567');
-    expect(r.parts?.ndc.length).toBe(3);
-    expect(r.parts?.subscriber.length).toBe(7);
-    expect((r.parts?.ndc.length ?? 0) + (r.parts?.subscriber.length ?? 0)).toBe(10);
+    expect(r.parts?.ndc.length,        'ndc'       ).toBe(3);
+    expect(r.parts?.local.length,      'local'     ).toBe(3);
+    expect(r.parts?.subscriber.length, 'subscriber').toBe(4);
   });
 
-  it('4桁NDC(0138): subscriber=6桁', () => {
+  it('4桁NDC(0138): local=2桁, subscriber=4桁', () => {
     const r = ok('0138-62-1234');
-    expect(r.parts?.ndc.length).toBe(4);
-    expect(r.parts?.subscriber.length).toBe(6);
-    expect((r.parts?.ndc.length ?? 0) + (r.parts?.subscriber.length ?? 0)).toBe(10);
+    expect(r.parts?.ndc.length,        'ndc'       ).toBe(4);
+    expect(r.parts?.local.length,      'local'     ).toBe(2);
+    expect(r.parts?.subscriber.length, 'subscriber').toBe(4);
   });
 });
 

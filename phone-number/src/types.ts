@@ -26,8 +26,9 @@ export interface PhoneMeta {
 }
 
 export interface PhoneParts {
-  ndc:        string;
-  subscriber: string;
+  ndc:        string;  // 市外局番（先頭0含む）例: "03", "045", "0138"
+  local:      string;  // 市内局番 例: "1234", "123", "62"
+  subscriber: string;  // 加入者番号（常に4桁）例: "5678"
 }
 
 export type NormalizeResult =
