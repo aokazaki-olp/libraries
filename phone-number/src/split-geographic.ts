@@ -27,7 +27,7 @@ export const splitGeographic = (national: string): GeoResult | null => {
 
   for (const ndcLen of NDC_LENGTHS) {
     const candidate = national.slice(0, ndcLen);
-    if (NDC_MAP[candidate] !== undefined || isKnownNdcLength(national, ndcLen)) {
+    if (NDC_MAP[candidate] !== undefined) {
       return {
         parts:  { ndc: candidate, subscriber: national.slice(ndcLen) },
         region: NDC_MAP[candidate],
@@ -35,14 +35,6 @@ export const splitGeographic = (national: string): GeoResult | null => {
     }
   }
 
-  // NDC が辞書にない場合: 2桁で分割しておく（フォールバック）
-  return {
-    parts:  { ndc: national.slice(0, 2), subscriber: national.slice(2) },
-    region: undefined,
-  };
+  // NDC が辞書にない場合: 分割根拠がないため null を返す（region も parts も undefined）
+  return null;
 };
-
-// NDC_MAP にヒットしなくても、既知の NDC 長構造から分割可能かを判断する
-// 現行番号計画では 2桁NDC は 03/06 のみ確定しているため、
-// 辞書ヒットのみで十分。このフックは将来の拡張用。
-const isKnownNdcLength = (_national: string, _ndcLen: number): boolean => false;

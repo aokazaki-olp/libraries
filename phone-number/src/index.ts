@@ -15,8 +15,13 @@ export type { PhoneKind, BillPayer, PhoneMeta, PhoneParts, NormalizedPhone, Norm
  *
  * @param input - 電話番号文字列（全角・ハイフン・括弧・+81 等を許容）
  * @returns 正規化結果。パース不能または未知番号の場合は valid: false
+ * @throws {TypeError} input が string でない場合
  */
 export const normalize = (input: string): NormalizeResult => {
+  if (typeof input !== 'string') {
+    throw new TypeError('input には string を指定してください');
+  }
+
   const sanitized = sanitize(input);
   if (!sanitized.ok) {
     return { valid: false, raw: input };
