@@ -22,6 +22,16 @@ interface NdcEntry {
   localLen: number;
 }
 
+// 列カテゴリ
+type ColCategory = 'ndc' | 'full' | 'local' | 'region';
+
+interface ColIndices {
+  ndc:    number;
+  full:   number;  // 番号列（市外+市内、0なし）。-1 の場合は local を使う
+  local:  number;  // 市内局番列。-1 の場合は full を使う
+  region: number;
+}
+
 const fetchText = async (url: string): Promise<string> => {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
@@ -46,31 +56,110 @@ const extractExcelLinks = (html: string): string[] => {
   return [...new Set(links)];
 };
 
-// Excel バッファから市外局番エントリを抽出する
-// 列: 市外局番（NDC の0なし）, 番号（NDC+市内局番の0なし）, MA（地域名）
+// 全角英数字を半角に、空白類を除去して正規化する
+const normalizeLabel = (s: string): string =>
+  s
+    .replace(/[　\s]/g, '')
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+// セルテキストから列カテゴリを推定する
+const detectCategory = (label: string): ColCategory | null => {
+  const n = normalizeLabel(label);
+  // 市外局番: 先頭一致。「市外局番（0AB～J）」等の括弧付きも含む
+  if (/^市外局番/.test(n))                        return 'ndc';
+  // 全番号: 市外+市内を連結した番号列
+  if (/^番号$|^指定番号|^番号（市外局番/.test(n)) return 'full';
+  // 市内局番単独列
+  if (/^市内局番/.test(n))                        return 'local';
+  // 地域名: MA / MA名 / 市外MA名 / 地域名
+  if (/^MA$|^MA名|^市外MA|^地域名|^エリア名/.test(n)) return 'region';
+  return null;
+};
+
+/**
+ * シートのヘッダー行と列インデックスを検出する
+ * 先頭 10 行をスキャンし、ndc + (full|local) + region がそろった行をヘッダーと判定する
+ */
+const detectHeader = (
+  rows: unknown[][],
+): { headerIdx: number; cols: ColIndices } | null => {
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const row = rows[i];
+    let ndcCol = -1, fullCol = -1, localCol = -1, regionCol = -1;
+
+    for (let j = 0; j < row.length; j++) {
+      const label = String(row[j] ?? '');
+      const cat   = detectCategory(label);
+      if (cat === 'ndc'    && ndcCol    < 0) ndcCol    = j;
+      if (cat === 'full'   && fullCol   < 0) fullCol   = j;
+      if (cat === 'local'  && localCol  < 0) localCol  = j;
+      if (cat === 'region' && regionCol < 0) regionCol = j;
+    }
+
+    const hasFullInfo = fullCol >= 0 || localCol >= 0;
+    if (ndcCol >= 0 && hasFullInfo && regionCol >= 0) {
+      return {
+        headerIdx: i,
+        cols: { ndc: ndcCol, full: fullCol, local: localCol, region: regionCol },
+      };
+    }
+  }
+  return null;
+};
+
+// 1シート分のデータを解析する
+const parseSheet = (ws: XLSX.WorkSheet): Map<string, NdcEntry> => {
+  const result = new Map<string, NdcEntry>();
+  const rows   = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+
+  const header = detectHeader(rows);
+  if (!header) return result; // ヘッダー不明のシートはスキップ
+
+  const { headerIdx, cols } = header;
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+
+    const rawNdc    = String(row[cols.ndc]    ?? '').replace(/[^\d]/g, '');
+    const rawFull   = cols.full  >= 0 ? String(row[cols.full]  ?? '').replace(/[^\d]/g, '') : '';
+    const rawLocal  = cols.local >= 0 ? String(row[cols.local] ?? '').replace(/[^\d]/g, '') : '';
+    const region    = String(row[cols.region] ?? '').replace(/[　\s]/g, '');
+
+    if (!rawNdc || !region) continue;
+
+    // 先頭0: 列によって含む場合と含まない場合がある
+    const ndc = rawNdc.startsWith('0') ? rawNdc : '0' + rawNdc;
+
+    let localLen: number;
+    if (rawFull) {
+      // 番号列から: len("0"+番号) - len(ndc)
+      const full = rawFull.startsWith('0') ? rawFull : '0' + rawFull;
+      localLen = full.length - ndc.length;
+    } else if (rawLocal) {
+      // 市内局番列から: そのまま桁数
+      localLen = rawLocal.length;
+    } else {
+      continue;
+    }
+
+    if (localLen <= 0 || localLen > 4) continue;
+    if (result.has(ndc)) continue; // 先頭エントリ優先
+
+    result.set(ndc, { region, localLen });
+  }
+
+  return result;
+};
+
+// Excel バッファから市外局番エントリを抽出する（全シート対象）
 const parseExcel = (buf: ArrayBuffer): Map<string, NdcEntry> => {
   const wb     = XLSX.read(buf, { type: 'array' });
   const result = new Map<string, NdcEntry>();
 
   for (const sheetName of wb.SheetNames) {
-    const ws   = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-
-    for (const row of rows) {
-      const rawNdc  = String(row['市外局番'] ?? '').replace(/[^\d]/g, '');
-      const rawFull = String(row['番号']     ?? '').replace(/[^\d]/g, '');
-      const region  = String(row['MA']       ?? '').trim();
-
-      if (!rawNdc || !rawFull || !region) continue;
-
-      const ndc      = '0' + rawNdc;
-      const fullCode = '0' + rawFull;
-      const localLen = fullCode.length - ndc.length;
-
-      if (localLen <= 0 || localLen > 4) continue;
-      if (result.has(ndc)) continue; // 先頭エントリ優先
-
-      result.set(ndc, { region, localLen });
+    const entries = parseSheet(wb.Sheets[sheetName]);
+    for (const [ndc, entry] of entries) {
+      if (!result.has(ndc)) result.set(ndc, entry);
     }
   }
 
