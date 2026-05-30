@@ -4,18 +4,19 @@
 
 ## 概要
 
-入力文字列に対して以下の処理を段階的に適用し、照合用キー（`matchKey` / `matchKeyKanji`）と表示用正規化名（`normalized`）を生成します。
+入力文字列に対して以下の処理を段階的に適用し、照合用キー（`matchKey` / `matchKeyKanji`）と正規化名（`canonical`）を生成します。
 
 ```
 入力文字列
-  ↓ [1] 基礎正規化（全種別共通）
+  ↓ [1] 基礎正規化（NFKC・記号統一・空白処理）
   ↓ [2] 字体正規化（matchKeyKanji のみ）
-  ↓ [3] 法人格正規化（corporate のみ）
-  ↓ [4] matchKey 生成
+  ↓ [3] 法人格正規化（略称展開・除去）
+  ↓ [4] matchKey 生成（大文字統一）
+  ↓ [5] 幅変換（canonical / name / legalName / matchKey）
 出力: NormalizeResult
 ```
 
-重複の確定判断やファジーマッチは呼び出し側の責務です。このライブラリはその前段階を担います。
+重複の確定判断やファジーマッチは呼び出し側の責務です。
 
 ```
 matchKey 完全一致       → 高信頼度の重複候補
@@ -46,11 +47,14 @@ import { Normalizer } from './src/index.js';
 const normalizer = Normalizer.create();
 
 const result = normalizer.normalize('㈱トヨタ自動車');
-console.log(result.normalized);     // "株式会社トヨタ自動車"
+console.log(result.canonical);      // "株式会社トヨタ自動車"（略称展開・前株のまま）
 console.log(result.legalName);      // "株式会社"
-console.log(result.baseName);       // "トヨタ自動車"
+console.log(result.name);           // "トヨタ自動車"
 console.log(result.matchKey);       // "トヨタ自動車"
-console.log(result.matchKeyKanji);  // "トヨタ自動車"（DB なし時は字体変換なし）
+
+// 後株は後株のまま（前株に統一しない）
+const r2 = normalizer.normalize('トヨタ自動車(株)');
+console.log(r2.canonical);          // "トヨタ自動車株式会社"（略称展開・後株のまま）
 ```
 
 ### 字体正規化あり（DB を生成してから使う）
@@ -68,17 +72,17 @@ console.log(result.matchKey);       // "齋藤商事"（元字体のまま）
 console.log(result.matchKeyKanji);  // "斎藤商事"（通用字体に変換）
 ```
 
-### エンティティ種別の指定
+### 幅変換のカスタマイズ
 
 ```typescript
-// 個人名: 法人格処理をスキップ
-const person = normalizer.normalize('田中太郎', { type: 'person' });
-console.log(person.legalName);  // null
-console.log(person.baseName);   // "田中太郎"
+// デフォルト: 英数半角・記号全角（日本語システム標準）
+const n = Normalizer.create();
+n.normalize('Cisco Systems G.K.').canonical;
+// → "Cisco Systems G．K．"（記号が全角になる）
 
-// 団体名: 法人格処理をスキップ
-const org = normalizer.normalize('テスト協会', { type: 'organization' });
-console.log(org.legalName);     // null
+// matchKey は設定によらず常に全半角
+n.normalize('Cisco Systems G.K.').matchKey;
+// → "CISCO SYSTEMS G．K．"
 ```
 
 ---
@@ -87,44 +91,34 @@ console.log(org.legalName);     // null
 
 ### `Normalizer.create(options?)`
 
-Normalizer インスタンスを生成するファクトリ関数。`dbPath` を指定すると起動時に DB を読み込み、字体正規化が有効になります。
+Normalizer インスタンスを生成するファクトリ関数。
 
 ```typescript
-const normalizer = Normalizer.create(options?: NormalizerOptions): NormalizerInstance
+Normalizer.create(options?: NormalizerOptions): NormalizerInstance
 ```
 
 **`NormalizerOptions`**
 
 | プロパティ | 型 | 必須 | 説明 |
 |---|---|---|---|
-| `dbPath` | `string` | 任意 | `character_variants.db` の絶対パス |
+| `dbPath` | `string` | 任意 | `character_variants.db` の絶対パス。指定すると字体正規化が有効になる |
+| `classWidth` | `ClassWidthConfig` | 任意 | 文字クラス別の幅設定（グローバルデフォルトを上書き） |
+| `fields` | `object` | 任意 | フィールド個別の幅設定（グローバルより優先） |
+| `fields.canonical` | `FieldWidthConfig` | 任意 | `canonical` / `name` / `legalName` フィールドの幅設定 |
+| `fields.matchKey` | `FieldWidthConfig` | 任意 | `matchKey` / `matchKeyKanji` フィールドの幅設定 |
 
-- `dbPath` を省略すると字体正規化はスキップされ（`matchKey === matchKeyKanji`）、DB なしで動作します
 - `dbPath` に空文字を渡すと `TypeError` をスローします
+- `dbPath` を省略すると字体正規化はスキップされ（`matchKey === matchKeyKanji`）、DB なしで動作します
 
 ---
 
-### `normalizer.normalize(raw, options?)`
+### `normalizer.normalize(raw)`
 
 文字列を正規化して `NormalizeResult` を返します。
 
 ```typescript
-normalize(raw: string, options?: NormalizeOptions): NormalizeResult
+normalize(raw: string): NormalizeResult
 ```
-
-**`NormalizeOptions`**
-
-| プロパティ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `type` | `EntityType` | `'corporate'` | エンティティ種別 |
-
-**`EntityType`**
-
-| 値 | 法人格処理 | 説明 |
-|---|---|---|
-| `'corporate'` | あり | 法人（法人格を検出・除去） |
-| `'person'` | なし | 個人名 |
-| `'organization'` | なし | 団体名 |
 
 `raw` が文字列でない場合は `TypeError` をスローします。
 
@@ -135,14 +129,24 @@ normalize(raw: string, options?: NormalizeOptions): NormalizeResult
 | プロパティ | 型 | 説明 |
 |---|---|---|
 | `raw` | `string` | 入力そのまま（NFKC 前） |
-| `normalized` | `string` | 表示用正規化名（法人格を前株形式で先頭に統一） |
-| `baseName` | `string` | 法人格除去後の本体名 |
-| `legalName` | `string \| null` | 検出した法人格の canonical 名（例: `"株式会社"`） |
+| `canonical` | `string` | 正規化名。略称を正式名称に展開するが、前後位置は元のまま保持。幅変換適用済み |
+| `name` | `string` | 法人格除去後の本体名。幅変換適用済み |
+| `legalName` | `string \| null` | 検出した法人格の正式名称（例: `"株式会社"`）。幅変換適用済み |
 | `legalPosition` | `LegalPosition \| null` | 法人格の位置 |
 | `kind` | `string \| null` | 国税庁 kind コード（例: `"301"`） |
-| `matchKey` | `string` | 元字体ベースの照合キー（大文字統一済み） |
-| `matchKeyKanji` | `string` | 通用字体ベースの照合キー（大文字統一済み） |
+| `matchKey` | `string` | 元字体ベースの照合キー（大文字統一・常に半角） |
+| `matchKeyKanji` | `string` | 通用字体ベースの照合キー（大文字統一・常に半角） |
 | `ambiguous` | `boolean` | `true` = 法人格の確信が持てない（人手確認推奨） |
+
+**`canonical` の挙動**
+
+略称は正式名称に展開しますが、前後位置は入力のまま保持します（前株に統一しません）。
+
+```
+"(株)テスト"      → "株式会社テスト"   （前株 → 前株）
+"テスト(株)"      → "テスト株式会社"   （後株 → 後株）
+"テスト株式会社"  → "テスト株式会社"   （変化なし）
+```
 
 **`LegalPosition`**
 
@@ -158,7 +162,7 @@ normalize(raw: string, options?: NormalizeOptions): NormalizeResult
 
 ## 処理フロー詳細
 
-### [1] 基礎正規化（全種別共通）
+### [1] 基礎正規化（全入力共通）
 
 `preNormalize()` が担当します。
 
@@ -214,7 +218,7 @@ DB なし時は `matchKey === matchKeyKanji`（字体変換は行われません
 
 ---
 
-### [3] 法人格正規化（corporate のみ）
+### [3] 法人格正規化
 
 `extractLegalEntity()` が担当します。基礎正規化済み文字列の先頭・末尾からエイリアスを greedy マッチ（長いエイリアス優先）します。
 
@@ -252,15 +256,53 @@ DB なし時は `matchKey === matchKeyKanji`（字体変換は行われません
 
 | キー | 適用処理 |
 |---|---|
-| `matchKey` | [1] 基礎正規化後の `baseName`.toUpperCase() |
-| `matchKeyKanji` | [2] 字体正規化を適用した `baseName`.toUpperCase() |
+| `matchKey` | `name`.toUpperCase() → 幅変換（常に半角） |
+| `matchKeyKanji` | 字体正規化後の `name`.toUpperCase() → 幅変換（常に半角） |
 
 前株・後株・括弧形など異なる表記であっても、同一法人であれば `matchKey` は一致します。
 
 ```typescript
 normalize('株式会社TIS').matchKey  // "TIS"
 normalize('TIS(株)').matchKey      // "TIS"
-normalize('ＴＩＳ株式会社').matchKey // "TIS"  ← 全角英字も統一
+normalize('ＴＩＳ株式会社').matchKey // "TIS"
+```
+
+---
+
+### [5] 幅変換
+
+`width.ts` の `applyWidth()` が担当します。ASCII 文字（U+0021〜U+007E）を文字クラスごとに半角・全角に変換します。
+
+**文字クラス**:
+
+| クラス | 対象 |
+|---|---|
+| `digit` | `0`–`9` |
+| `alpha` | `A`–`Z`、`a`–`z` |
+| `symbol` | `!`–`/`、`:`–`@`、`[`–`` ` ``、`{`–`~` |
+| `default` | それ以外（カナ・漢字等） |
+
+**デフォルト設定**（日本語システム標準）:
+
+| クラス | デフォルト | 備考 |
+|---|---|---|
+| `digit` | `half` | 半角数字 |
+| `alpha` | `half` | 半角英字 |
+| `symbol` | `full` | 全角記号（`.` `(` `)` 等が全角になる） |
+| `default` | `half` | カナ・漢字はそのまま |
+
+**matchKey は設定によらず常に全半角**（`digit: half`、`alpha: half`、`symbol: half`）。
+
+**幅設定のカスタマイズ**:
+
+```typescript
+// グローバルで記号も半角に変更
+const n = Normalizer.create({ classWidth: { symbol: 'half' } });
+
+// canonical フィールドだけ記号を半角に変更
+const n2 = Normalizer.create({
+  fields: { canonical: { classWidth: { symbol: 'half' } } },
+});
 ```
 
 ---
@@ -271,25 +313,23 @@ normalize('ＴＩＳ株式会社').matchKey // "TIS"  ← 全角英字も統一
 
 | # | 条件 | legalName | kind | legalPosition |
 |---|---|---|---|---|
-| ① | 除去後の `baseName` に法人格 canonical 名を含む | 検出値 | 検出値 | `'pre'` or `'post'` |
+| ① | 除去後の `name` に法人格 canonical 名を含む | 検出値 | 検出値 | `'pre'` or `'post'` |
 | ② | 前後で同じ法人格がマッチ | 検出値 | 検出値 | `'both'` |
 | ③ | 前後で異なる法人格がマッチ | `null` | `null` | `null` |
 
 ```typescript
-// ① baseName に法人格名を含む → 前株優先で legalName を決定
+// ① name に法人格名を含む → 前株優先で legalName を決定
 normalize('株式会社有限会社設立サポート')
-// { legalName: "株式会社", baseName: "有限会社設立サポート", ambiguous: true }
+// { legalName: "株式会社", name: "有限会社設立サポート", ambiguous: true }
 
 // ② 前後で同じ法人格
 normalize('(株)テスト(株)')
 // { legalName: "株式会社", legalPosition: "both", ambiguous: true }
 
-// ③ 前後で異なる法人格 → legalName は null、baseName は入力そのまま
+// ③ 前後で異なる法人格 → legalName は null、name は入力そのまま
 normalize('(株)テスト(有)')
-// { legalName: null, kind: null, legalPosition: null, baseName: "(株)テスト(有)", ambiguous: true }
+// { legalName: null, kind: null, legalPosition: null, name: "(株)テスト(有)", ambiguous: true }
 ```
-
-なお、`baseName` に法人格名の一部（例: `合同出版` の `合同`）が含まれても、canonical 名と完全一致しなければ `ambiguous: false` になります。
 
 ---
 
@@ -298,33 +338,29 @@ normalize('(株)テスト(有)')
 ```typescript
 const n = Normalizer.create();
 
-// 全角英字を含む法人名
-n.normalize('ＴＩＳ株式会社')
-// { matchKey: "TIS", legalName: "株式会社", normalized: "株式会社TIS", ... }
+// 略称展開・前後位置は元のまま
+n.normalize('トヨタ自動車㈱').canonical   // "トヨタ自動車株式会社"（後株のまま）
+n.normalize('㈱トヨタ自動車').canonical   // "株式会社トヨタ自動車"（前株のまま）
 
-// 銀行振込系略称（前株）
-n.normalize('カ)田中商事')
-// { legalName: "株式会社", legalPosition: "pre", baseName: "田中商事", ... }
+// matchKey は前後どちらも同じ
+n.normalize('トヨタ自動車株式会社').matchKey  // "トヨタ自動車"
+n.normalize('株式会社トヨタ自動車').matchKey  // "トヨタ自動車"
 
-// 片割れ括弧（行末）
-n.normalize('田中商事(株')
-// { legalName: "株式会社", legalPosition: "post", baseName: "田中商事", ... }
+// 銀行振込系略称
+n.normalize('カ)田中商事').legalName     // "株式会社"
+n.normalize('田中商事(カ').legalName     // "株式会社"
 
 // NPO 法人
-n.normalize('NPO法人テスト支援センター')
-// { legalName: "特定非営利活動法人", baseName: "テスト支援センター", ... }
+n.normalize('NPO法人テスト支援センター').legalName  // "特定非営利活動法人"
+n.normalize('NPO法人テスト支援センター').name        // "テスト支援センター"
 
-// 長音符を含む社名（変換しない）
-n.normalize('ソフトバンク株式会社')
-// { baseName: "ソフトバンク", matchKey: "ソフトバンク", ... }
-
-// 英文入力（法人格検出不可）
-n.normalize('Cisco Systems G.K.')
-// { legalName: null, baseName: "Cisco Systems G.K.", matchKey: "CISCO SYSTEMS G.K.", ... }
+// 英文社名（記号がデフォルト全角になる）
+n.normalize('Cisco Systems G.K.').canonical   // "Cisco Systems G．K．"
+n.normalize('Cisco Systems G.K.').matchKey    // "CISCO SYSTEMS G．K．"（matchKey も全角ドット）
 
 // 空文字
-n.normalize('')
-// { raw: "", matchKey: "", legalName: null, ... }
+n.normalize('').matchKey    // ""
+n.normalize('').legalName   // null
 ```
 
 ---
@@ -394,6 +430,7 @@ normalizer/
     preNormalize.ts                     # [1] 基礎正規化
     variantMap.ts                       # [2] 字体正規化（DB ロード・applyVariantMap）
     legalEntity.ts                      # [3] 法人格正規化
+    width.ts                            # [5] 幅変換（half ↔ full）
     types.ts                            # 共通型定義
   build/
     generate-db.ts                      # MJ縮退マップ JSON → character_variants.db 生成
