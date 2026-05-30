@@ -12,14 +12,12 @@ import type { NormalizeResult, NormalizeOptions, NormalizerOptions } from './typ
 // matchKey 生成
 // ────────────────────────────────────────────────────
 
-/** baseName を大文字統一してマッチキーを生成する */
-const toMatchKey = (baseName: string): string => baseName.toUpperCase();
+const toMatchKey = (name: string): string => name.toUpperCase();
 
-/** baseName に字体正規化を適用してから大文字統一する */
 const toMatchKeyKanji = (
-  baseName: string,
+  name: string,
   variantMap: Map<string, string>,
-): string => applyVariantMap(baseName, variantMap).toUpperCase();
+): string => applyVariantMap(name, variantMap).toUpperCase();
 
 // ────────────────────────────────────────────────────
 // Normalizer インスタンス型
@@ -72,25 +70,25 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
     // [3] 法人格正規化（corporate のみ）
     const legal = type === 'corporate'
       ? extractLegalEntity(preNormed)
-      : { legalName: null, kind: null, legalPosition: 'none' as const, baseName: preNormed, ambiguous: false };
+      : { legalName: null, kind: null, legalPosition: 'none' as const, name: preNormed, ambiguous: false };
 
-    const { legalName, kind, legalPosition, baseName, ambiguous } = legal;
+    const { legalName, kind, legalPosition, name, ambiguous } = legal;
 
     // normalized: 略称を正式名称に展開し、前後位置は元のまま保持
     const normalized = legalName !== null
       ? legalPosition === 'post'
-        ? baseName + legalName
-        : legalName + baseName
+        ? name + legalName
+        : legalName + name
       : preNormed;
 
     // [4] matchKey 生成
-    const matchKey      = toMatchKey(baseName);
-    const matchKeyKanji = toMatchKeyKanji(baseName, variantMap);
+    const matchKey      = toMatchKey(name);
+    const matchKeyKanji = toMatchKeyKanji(name, variantMap);
 
     return {
       raw,
       normalized,
-      baseName,
+      name,
       legalName,
       legalPosition: legalPosition === 'none' ? 'none' : legalPosition,
       kind,

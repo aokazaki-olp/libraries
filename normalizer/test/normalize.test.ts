@@ -57,13 +57,13 @@ section('extractLegalEntity');
 const e1 = extractLegalEntity('株式会社トヨタ自動車');
 assert('前株: legalName',    e1.legalName,      '株式会社');
 assert('前株: legalPosition', e1.legalPosition, 'pre');
-assert('前株: baseName',     e1.baseName,       'トヨタ自動車');
+assert('前株: name',     e1.name,       'トヨタ自動車');
 assert('前株: ambiguous',    e1.ambiguous,      false);
 
 const e2 = extractLegalEntity('トヨタ自動車株式会社');
 assert('後株: legalName',    e2.legalName,      '株式会社');
 assert('後株: legalPosition', e2.legalPosition, 'post');
-assert('後株: baseName',     e2.baseName,       'トヨタ自動車');
+assert('後株: name',     e2.name,       'トヨタ自動車');
 
 const e3 = extractLegalEntity('(株)トヨタ自動車');
 assert('(株)前: legalName',  e3.legalName,      '株式会社');
@@ -114,7 +114,7 @@ assert('全角英字 matchKey', r4.matchKey,   'TIS');
 
 const r5 = normalizer.normalize('田中太郎', { type: 'person' });
 assert('person: legalName', r5.legalName,  null);
-assert('person: baseName',  r5.baseName,   '田中太郎');
+assert('person: name',  r5.name,   '田中太郎');
 
 // ────────────────────────────────────────────────────
 // 結果

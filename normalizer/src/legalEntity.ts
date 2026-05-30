@@ -34,7 +34,7 @@ export interface LegalEntityResult {
   legalName: string | null;
   kind: string | null;
   legalPosition: 'pre' | 'post' | 'both' | 'none' | null;
-  baseName: string;
+  name: string;
   ambiguous: boolean;
 }
 
@@ -232,7 +232,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
       legalName: null,
       kind: null,
       legalPosition: null,
-      baseName: name,
+      name,
       ambiguous: true,
     };
   }
@@ -244,7 +244,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
       legalName: front.entry.canonical,
       kind: front.entry.kind,
       legalPosition: 'both',
-      baseName,
+      name: baseName,
       ambiguous: true,
     };
   }
@@ -257,7 +257,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
       legalName: front.entry.canonical,
       kind: front.entry.kind,
       legalPosition: 'pre',
-      baseName,
+      name: baseName,
       ambiguous,
     };
   }
@@ -270,7 +270,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
       legalName: back.entry.canonical,
       kind: back.entry.kind,
       legalPosition: 'post',
-      baseName,
+      name: baseName,
       ambiguous,
     };
   }
@@ -280,7 +280,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
     legalName: null,
     kind: null,
     legalPosition: 'none',
-    baseName: name,
+    name,
     ambiguous: false,
   };
 };

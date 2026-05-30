@@ -254,28 +254,28 @@ assert('[社福] 正式名称 前', extractLegalEntity('社会福祉法人テス
 assert('[社福] (福) 前', extractLegalEntity('(福)テスト').legalName, '社会福祉法人');
 assert('[社福] 福) 片割れ前', extractLegalEntity('福)テスト').legalName, '社会福祉法人');
 
-subsection('baseName 抽出');
-assert('前株: baseName正確', extractLegalEntity('株式会社トヨタ自動車').baseName, 'トヨタ自動車');
-assert('後株: baseName正確', extractLegalEntity('トヨタ自動車株式会社').baseName, 'トヨタ自動車');
-assert('(株)前: baseName正確', extractLegalEntity('(株)TIS').baseName, 'TIS');
-assert('カ)前: baseName正確', extractLegalEntity('カ)田中商事').baseName, '田中商事');
-assert('(株後: baseName正確', extractLegalEntity('TIS(株').baseName, 'TIS');
+subsection("name 抽出");
+assert('前株: name正確', extractLegalEntity('株式会社トヨタ自動車').name, 'トヨタ自動車');
+assert('後株: name正確', extractLegalEntity('トヨタ自動車株式会社').name, 'トヨタ自動車');
+assert('(株)前: name正確', extractLegalEntity('(株)TIS').name, 'TIS');
+assert('カ)前: name正確', extractLegalEntity('カ)田中商事').name, '田中商事');
+assert('(株後: name正確', extractLegalEntity('TIS(株').name, 'TIS');
 
 subsection('法人格なし');
 assert('法人格なし: legalName', extractLegalEntity('テスト団体').legalName, null);
 assert('法人格なし: legalPosition', extractLegalEntity('テスト団体').legalPosition, 'none');
-assert('法人格なし: baseName', extractLegalEntity('テスト団体').baseName, 'テスト団体');
+assert('法人格なし: baseName', extractLegalEntity('テスト団体').name, 'テスト団体');
 assert('法人格なし: kind', extractLegalEntity('テスト団体').kind, null);
 assert('法人格なし: ambiguous', extractLegalEntity('テスト団体').ambiguous, false);
 assert('英文社名: legalName', extractLegalEntity('Cisco Systems G.K.').legalName, null);
 assert('空文字: legalName', extractLegalEntity('').legalName, null);
 assert('空文字: legalPosition', extractLegalEntity('').legalPosition, 'none');
 
-subsection('ambiguous ①: baseName に法人格名を含む');
+subsection('ambiguous ①: name に法人格名を含む');
 const a1 = extractLegalEntity('株式会社有限会社設立サポート');
 assert('①: legalName', a1.legalName, '株式会社');
 assert('①: legalPosition', a1.legalPosition, 'pre');
-assert('①: baseName', a1.baseName, '有限会社設立サポート');
+assert('①: baseName', a1.name, '有限会社設立サポート');
 assert('①: ambiguous', a1.ambiguous, true);
 
 const a1b = extractLegalEntity('NPO法人株式会社支援機構');
@@ -302,7 +302,7 @@ assert('③: legalName', a3.legalName, null);
 assert('③: kind', a3.kind, null);
 assert('③: legalPosition', a3.legalPosition, null);
 assert('③: ambiguous', a3.ambiguous, true);
-assert('③: baseName は入力そのまま', a3.baseName, '(株)テスト(有)');
+assert('③: baseName は入力そのまま', a3.name, '(株)テスト(有)');
 
 const a3b = extractLegalEntity('株式会社テスト合同会社');
 assert('③ 正式名称: legalName', a3b.legalName, null);
@@ -312,19 +312,19 @@ subsection('greedy マッチ（長いエイリアス優先）');
 // 特定非営利活動法人 vs NPO法人（どちらも有効だが特定非営利活動法人が長い）
 assert('NPO法人 > NPO)', extractLegalEntity('NPO法人テスト').legalName, '特定非営利活動法人');
 // 一般社団法人 vs 社団法人（後者はエイリアスにない）
-assert('一般社団法人 が前にあれば確定', extractLegalEntity('一般社団法人テスト').baseName, 'テスト');
+assert('一般社団法人 が前にあれば確定', extractLegalEntity('一般社団法人テスト').name, 'テスト');
 
-subsection('法人格のみ（baseName が空）');
+subsection('法人格のみ（name が空）');
 const onlyLegal = extractLegalEntity('株式会社');
 assert('法人格のみ: legalName', onlyLegal.legalName, '株式会社');
-assert('法人格のみ: baseName', onlyLegal.baseName, '');
+assert('法人格のみ: baseName', onlyLegal.name, '');
 
 subsection('特殊な社名');
-assert('英字+法人格', extractLegalEntity('TIS株式会社').baseName, 'TIS');
-assert('数字含む社名', extractLegalEntity('株式会社123商事').baseName, '123商事');
-assert('長音符含む社名', extractLegalEntity('ソフトバンク株式会社').baseName, 'ソフトバンク');
-assert('中黒含む社名', extractLegalEntity('山田・太郎株式会社').baseName, '山田・太郎');
-assert('ハイフン含む社名', extractLegalEntity('セブン-イレブン株式会社').baseName, 'セブン-イレブン');
+assert('英字+法人格', extractLegalEntity('TIS株式会社').name, 'TIS');
+assert('数字含む社名', extractLegalEntity('株式会社123商事').name, '123商事');
+assert('長音符含む社名', extractLegalEntity('ソフトバンク株式会社').name, 'ソフトバンク');
+assert('中黒含む社名', extractLegalEntity('山田・太郎株式会社').name, '山田・太郎');
+assert('ハイフン含む社名', extractLegalEntity('セブン-イレブン株式会社').name, 'セブン-イレブン');
 
 // ────────────────────────────────────────────────────
 // normalize() 統合テスト
@@ -353,7 +353,7 @@ assert('(株)後 → 略称展開・後株', n.normalize('テスト(株)').norma
 assert('㈱前 → 略称展開・前株', n.normalize('㈱テスト').normalized, '株式会社テスト');
 assert('法人格なし → preNormed そのまま', n.normalize('テスト団体').normalized, 'テスト団体');
 
-subsection('matchKey: baseName.toUpperCase()');
+subsection("name 抽出");
 assert('日本語社名', n.normalize('株式会社トヨタ自動車').matchKey, 'トヨタ自動車');
 assert('英字社名 大文字統一', n.normalize('TIS株式会社').matchKey, 'TIS');
 assert('英字小文字 → 大文字', n.normalize('tis株式会社').matchKey, 'TIS');
@@ -392,13 +392,13 @@ subsection('type: person → 法人格正規化スキップ');
 const person = n.normalize('株式会社テスト', { type: 'person' });
 assert('person: legalName null', person.legalName, null);
 assert('person: legalPosition none', person.legalPosition, 'none');
-assert('person: baseName = preNormed', person.baseName, '株式会社テスト');
-assert('person: matchKey = baseName.upper', person.matchKey, '株式会社テスト');
+assert('person: name = preNormed', person.name, '株式会社テスト');
+assert('person: matchKey = name.upper', person.matchKey, '株式会社テスト');
 
 subsection('type: organization → 法人格正規化スキップ');
 const org = n.normalize('㈱テスト', { type: 'organization' });
 assert('organization: legalName null', org.legalName, null);
-assert('organization: baseName', org.baseName, '(株)テスト');
+assert('organization: baseName', org.name, '(株)テスト');
 
 subsection('ambiguous フラグ');
 assert('通常: ambiguous false', n.normalize('株式会社テスト').ambiguous, false);
@@ -418,16 +418,16 @@ const tis2 = n.normalize('株式会社TIS');
 assert('TIS: 異表記で matchKey 一致', tis1.matchKey, tis2.matchKey);
 
 const softbank = n.normalize('ソフトバンク株式会社');
-assert('長音符: baseName', softbank.baseName, 'ソフトバンク');
+assert('長音符: baseName', softbank.name, 'ソフトバンク');
 assert('長音符: matchKey', softbank.matchKey, 'ソフトバンク');
 
 const npo = n.normalize('NPO法人テスト支援センター');
 assert('NPO: legalName', npo.legalName, '特定非営利活動法人');
-assert('NPO: baseName', npo.baseName, 'テスト支援センター');
+assert('NPO: baseName', npo.name, 'テスト支援センター');
 
 const cisco = n.normalize('Cisco Systems G.K.');
 assert('英文: legalName null', cisco.legalName, null);
-assert('英文: baseName', cisco.baseName, 'Cisco Systems G.K.');
+assert('英文: baseName', cisco.name, 'Cisco Systems G.K.');
 assert('英文: matchKey 大文字', cisco.matchKey, 'CISCO SYSTEMS G.K.');
 
 subsection('空文字入力');

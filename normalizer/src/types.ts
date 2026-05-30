@@ -12,7 +12,7 @@ export type LegalPosition = 'pre' | 'post' | 'both' | 'none';
 export interface NormalizeResult {
   raw: string;
   normalized: string;
-  baseName: string;
+  name: string;
   legalName: string | null;
   legalPosition: LegalPosition | null;
   kind: string | null;
