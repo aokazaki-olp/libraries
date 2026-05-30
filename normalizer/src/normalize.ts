@@ -7,16 +7,18 @@ import { preNormalize } from './preNormalize.js';
 import { loadVariantMap, applyVariantMap } from './variantMap.js';
 import { extractLegalEntity } from './legalEntity.js';
 import { resolveWidthConfig, applyWidth } from './width.js';
-import type { NormalizeResult, NormalizerOptions, ClassWidthConfig } from './types.js';
+import {
+  hiraganaToKatakana,
+  katakanaToHiragana,
+  applySmallToLarge,
+  buildKanaInvalidCharRe,
+  validateAllowCharClass,
+} from './kana.js';
+import type { NormalizeResult, NormalizerOptions, ClassWidthConfig, KanaOptions } from './types.js';
 
 // 日本語システム標準: 英数半角・記号全角
 const JP_DEFAULT_CLASS_WIDTH: ClassWidthConfig = {
   digit: 'half', alpha: 'half', symbol: 'full', default: 'half',
-};
-
-// matchKey は常に半角（グローバル設定に依存しない）
-const HALF_ALL: ClassWidthConfig = {
-  digit: 'half', alpha: 'half', symbol: 'half', default: 'half',
 };
 
 // ────────────────────────────────────────────────────
@@ -27,13 +29,60 @@ export interface NormalizerInstance {
   /**
    * 文字列を正規化して NormalizeResult を返す
    *
-   * @param raw - 正規化前の文字列
-   * @param options - エンティティ種別等のオプション
+   * @param raw - 正規化対象。name は必須、kana は任意
    * @returns 正規化結果
-   * @throws {TypeError} raw が文字列でない場合
+   * @throws {TypeError} raw が不正な場合
    */
-  normalize(raw: string): NormalizeResult;
+  normalize(raw: { name: string; kana?: string }): NormalizeResult;
 }
+
+// ────────────────────────────────────────────────────
+// kana 処理
+// ────────────────────────────────────────────────────
+
+const processKana = (
+  rawKana: string,
+  opts: KanaOptions,
+  invalidRe: RegExp,
+): { kana: string; kanaMatchKey: string } => {
+  const { kanaMode = 'katakana' } = opts;
+
+  // K-1: NFKC 基礎正規化
+  const s = preNormalize(rawKana);
+
+  // 法人格抽出（best-effort）
+  const legal = extractLegalEntity(s);
+
+  // kanaRaw 組み立て
+  let kanaRaw: string;
+  if (legal.legalName !== null && legal.kanaLegalName !== null && !legal.ambiguous) {
+    const kanaName = legal.name;
+    kanaRaw = legal.legalPosition === 'post'
+      ? kanaName + legal.kanaLegalName
+      : legal.kanaLegalName + kanaName;
+  } else {
+    kanaRaw = s;
+  }
+
+  // K-4: かな変換
+  const convertKana = kanaMode === 'katakana' ? hiraganaToKatakana : katakanaToHiragana;
+  const kanaConverted = convertKana(kanaRaw);
+
+  // kana (canonical): 無効文字 → 空白置換、連続空白 → 1つ、trim
+  // invalidRe は毎回 lastIndex がリセットされるよう再生成が必要（グローバルフラグ）
+  const kana = kanaConverted
+    .replace(buildKanaInvalidCharRe(opts.allowCharClass ?? ''), ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+
+  // kanaMatchKey: K-3（小書き→通常）+ かな文字のみ残す
+  const matchStr = applySmallToLarge(kanaConverted);
+  const kanaMatchKey = kanaMode === 'katakana'
+    ? matchStr.replace(/[^ァ-ヶー]/g, '')
+    : matchStr.replace(/[^ぁ-ゖー]/g, '');
+
+  return { kana, kanaMatchKey };
+};
 
 // ────────────────────────────────────────────────────
 // ファクトリ
@@ -42,16 +91,18 @@ export interface NormalizerInstance {
 /**
  * Normalizer インスタンスを生成する
  *
- * @param options - dbPath・classWidth・fields を指定可能
+ * @param options - dbPath・classWidth・fields・kana を指定可能
  * @returns NormalizerInstance
- * @throws {TypeError} dbPath が空文字の場合
+ * @throws {TypeError} オプションが不正な場合
  */
 const create = (options: NormalizerOptions = {}): NormalizerInstance => {
-  const { dbPath, classWidth = {}, fields = {} } = options;
+  const { dbPath, classWidth = {}, fields = {}, kana: kanaOpts = {} } = options;
 
   if (dbPath !== undefined && (typeof dbPath !== 'string' || dbPath === '')) {
     throw new TypeError('dbPath には空でない文字列を指定してください');
   }
+
+  validateAllowCharClass(kanaOpts.allowCharClass);
 
   const variantMap: Map<string, string> = dbPath !== undefined
     ? loadVariantMap(dbPath)
@@ -62,18 +113,26 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
   const canonicalWidthCfg = resolveWidthConfig(effectiveGlobal, fields.canonical?.classWidth);
   const matchKeyWidthCfg  = resolveWidthConfig(effectiveGlobal, fields.matchKey?.classWidth);
 
-  const normalize = (raw: string): NormalizeResult => {
-    if (typeof raw !== 'string') {
-      throw new TypeError('raw には文字列を指定してください');
+  // kana 用の invalidRe（allowCharClass バリデーション済み）
+  const kanaInvalidRe = buildKanaInvalidCharRe(kanaOpts.allowCharClass ?? '');
+
+  const normalize = (raw: { name: string; kana?: string }): NormalizeResult => {
+    if (typeof raw !== 'object' || raw === null) {
+      throw new TypeError('raw には { name: string } オブジェクトを指定してください');
+    }
+    if (typeof raw.name !== 'string') {
+      throw new TypeError('raw.name には文字列を指定してください');
     }
 
+    const { name: rawName, kana: rawKana } = raw;
+
     // [1] 基礎正規化
-    const preNormed = preNormalize(raw);
+    const preNormed = preNormalize(rawName);
 
     // [3] 法人格正規化
     const legal = extractLegalEntity(preNormed);
 
-    const { legalName, kind, legalPosition, name, ambiguous } = legal;
+    const { legalName, kanaLegalName: _kanaLegalName, kind, legalPosition, name, ambiguous } = legal;
 
     // canonical: 略称を正式名称に展開し、前後位置は元のまま保持
     const canonicalRaw = legalName !== null
@@ -93,8 +152,13 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
     const matchKey       = applyWidth(matchKeyRaw,        matchKeyWidthCfg);
     const matchKeyKanji  = applyWidth(matchKeyKanjiRaw,   matchKeyWidthCfg);
 
+    // [6] kana 処理
+    const kanaResult = rawKana !== undefined
+      ? processKana(rawKana, kanaOpts, kanaInvalidRe)
+      : undefined;
+
     return {
-      raw,
+      raw: rawName,
       canonical,
       name: nameOut,
       legalName: legalNameOut,
@@ -103,6 +167,7 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
       matchKey,
       matchKeyKanji,
       ambiguous,
+      ...(kanaResult !== undefined ? { kana: kanaResult.kana, kanaMatchKey: kanaResult.kanaMatchKey } : {}),
     };
   };
 

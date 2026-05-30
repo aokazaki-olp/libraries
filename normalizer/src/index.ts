@@ -10,6 +10,7 @@ export type {
   LegalPosition,
   NormalizeResult,
   NormalizerOptions,
+  KanaOptions,
   WidthMode,
   ClassWidthConfig,
   FieldWidthConfig,

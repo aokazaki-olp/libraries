@@ -17,10 +17,20 @@ export interface NormalizeResult {
   matchKey: string;
   matchKeyKanji: string;
   ambiguous: boolean;
+  kana?: string;
+  kanaMatchKey?: string;
 }
 
-/** normalize() のオプション */
-export interface NormalizeOptions {
+/** 読み仮名正規化オプション */
+export interface KanaOptions {
+  /** デフォルト: 'katakana' */
+  kanaMode?: 'katakana' | 'hiragana';
+  /**
+   * 有効文字に追加する正規表現文字クラス文字列
+   * [^ぁ-ゖァ-ヶー\s<allowCharClass>] の <allowCharClass> 部分
+   * 例: '\\-=゠・'  '0-9A-Z'
+   */
+  allowCharClass?: string;
 }
 
 export type { WidthMode, ClassWidthConfig } from './width.js';
@@ -41,4 +51,6 @@ export interface NormalizerOptions {
     canonical?: FieldWidthConfig;
     matchKey?: FieldWidthConfig;
   };
+  /** 読み仮名正規化オプション */
+  kana?: KanaOptions;
 }

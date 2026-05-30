@@ -97,22 +97,22 @@ section('Normalizer.create().normalize()');
 
 const normalizer = Normalizer.create();  // db なし
 
-const r1 = normalizer.normalize('㈱トヨタ自動車');
+const r1 = normalizer.normalize({ name: '㈱トヨタ自動車' });
 assert('matchKey',       r1.matchKey,      'トヨタ自動車');
 assert('matchKeyKanji',  r1.matchKeyKanji, 'トヨタ自動車');
 assert('legalName',      r1.legalName,     '株式会社');
 assert('normalized',     r1.canonical,    '株式会社トヨタ自動車');
 
-const r2 = normalizer.normalize('トヨタ自動車㈱');
+const r2 = normalizer.normalize({ name: 'トヨタ自動車㈱' });
 assert('後株 matchKey',  r2.matchKey,      'トヨタ自動車');
 
-const r3 = normalizer.normalize('TIS(株)');
+const r3 = normalizer.normalize({ name: 'TIS(株)' });
 assert('英字 matchKey',  r3.matchKey,      'TIS');
 
-const r4 = normalizer.normalize('ＴＩＳ株式会社');
+const r4 = normalizer.normalize({ name: 'ＴＩＳ株式会社' });
 assert('全角英字 matchKey', r4.matchKey,   'TIS');
 
-const r5 = normalizer.normalize('田中太郎');
+const r5 = normalizer.normalize({ name: '田中太郎' });
 assert('person: legalName', r5.legalName,  null);
 assert('person: name',  r5.name,   '田中太郎');
 

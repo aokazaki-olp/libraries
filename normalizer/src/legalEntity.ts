@@ -14,6 +14,7 @@ type AliasPosition = 'pre' | 'post' | 'both';
 
 interface LegalEntityDef {
   readonly canonical: string;
+  readonly kanaCanonical: string;
   readonly kind: string;
   /** 行頭・行末どちらにもマッチするエイリアス（正式名称・完全括弧形） */
   readonly both: readonly string[];
@@ -26,12 +27,14 @@ interface LegalEntityDef {
 interface AliasEntry {
   readonly alias: string;
   readonly canonical: string;
+  readonly kanaCanonical: string;
   readonly kind: string;
   readonly position: AliasPosition;
 }
 
 export interface LegalEntityResult {
   legalName: string | null;
+  kanaLegalName: string | null;
   kind: string | null;
   legalPosition: 'pre' | 'post' | 'both' | 'none' | null;
   name: string;
@@ -45,41 +48,47 @@ export interface LegalEntityResult {
 const LEGAL_ENTITY_DEFS: readonly LegalEntityDef[] = [
   {
     canonical: '株式会社',
+    kanaCanonical: 'カブシキガイシャ',
     kind: '301',
-    both: ['株式会社', '(株)'],
-    pre:  ['株)', 'カ)'],
-    post: ['(株', '(カ'],
+    both: ['株式会社', '(株)', '(カ)', '(カブ)'],
+    pre:  ['株)', 'カ)', 'カブ)'],
+    post: ['(株', '(カ', '(カブ'],
   },
   {
     canonical: '有限会社',
+    kanaCanonical: 'ユウゲンガイシャ',
     kind: '302',
-    both: ['有限会社', '(有)'],
-    pre:  ['有)', 'ユ)'],
-    post: ['(有', '(ユ'],
+    both: ['有限会社', '(有)', '(ユ)', '(ユウ)'],
+    pre:  ['有)', 'ユ)', 'ユウ)'],
+    post: ['(有', '(ユ', '(ユウ'],
   },
   {
     canonical: '合名会社',
+    kanaCanonical: 'ゴウメイガイシャ',
     kind: '303',
-    both: ['合名会社', '(名)'],
-    pre:  ['名)', 'メ)'],
-    post: ['(名', '(メ'],
+    both: ['合名会社', '(名)', '(メ)', '(メイ)'],
+    pre:  ['名)', 'メ)', 'メイ)'],
+    post: ['(名', '(メ', '(メイ'],
   },
   {
     canonical: '合資会社',
+    kanaCanonical: 'ゴウシガイシャ',
     kind: '304',
-    both: ['合資会社', '(資)'],
+    both: ['合資会社', '(資)', '(シ)'],
     pre:  ['資)', 'シ)'],
     post: ['(資', '(シ'],
   },
   {
     canonical: '合同会社',
+    kanaCanonical: 'ゴウドウガイシャ',
     kind: '305',
-    both: ['合同会社', '(同)'],
-    pre:  ['同)', 'ド)'],
-    post: ['(同', '(ド'],
+    both: ['合同会社', '(同)', '(ド)', '(ドウ)'],
+    pre:  ['同)', 'ド)', 'ドウ)'],
+    post: ['(同', '(ド', '(ドウ'],
   },
   {
     canonical: '特定非営利活動法人',
+    kanaCanonical: 'トクテイヒエイリカツドウホウジン',
     kind: '399',
     both: ['特定非営利活動法人', 'NPO法人', '(NPO)'],
     pre:  ['NPO)'],
@@ -87,52 +96,59 @@ const LEGAL_ENTITY_DEFS: readonly LegalEntityDef[] = [
   },
   {
     canonical: '医療法人',
+    kanaCanonical: 'イリョウホウジン',
     kind: '399',
-    both: ['医療法人', '(医)'],
-    pre:  ['医)'],
-    post: ['(医'],
+    both: ['医療法人', '(医)', '(イ)'],
+    pre:  ['医)', 'イ)'],
+    post: ['(医', '(イ'],
   },
   {
     canonical: '一般社団法人',
+    kanaCanonical: 'イッパンシャダンホウジン',
     kind: '399',
-    both: ['一般社団法人', '(一社)'],
-    pre:  ['一社)'],
-    post: ['(一社'],
+    both: ['一般社団法人', '(一社)', '(イッシャ)'],
+    pre:  ['一社)', 'イッシャ)'],
+    post: ['(一社', '(イッシャ'],
   },
   {
     canonical: '公益社団法人',
+    kanaCanonical: 'コウエキシャダンホウジン',
     kind: '399',
-    both: ['公益社団法人', '(公社)'],
-    pre:  ['公社)'],
-    post: ['(公社'],
+    both: ['公益社団法人', '(公社)', '(コウシャ)'],
+    pre:  ['公社)', 'コウシャ)'],
+    post: ['(公社', '(コウシャ'],
   },
   {
     canonical: '一般財団法人',
+    kanaCanonical: 'イッパンザイダンホウジン',
     kind: '399',
-    both: ['一般財団法人', '(一財)'],
-    pre:  ['一財)'],
-    post: ['(一財'],
+    both: ['一般財団法人', '(一財)', '(イチザイ)'],
+    pre:  ['一財)', 'イチザイ)'],
+    post: ['(一財', '(イチザイ'],
   },
   {
     canonical: '公益財団法人',
+    kanaCanonical: 'コウエキザイダンホウジン',
     kind: '399',
-    both: ['公益財団法人', '(公財)'],
-    pre:  ['公財)'],
-    post: ['(公財'],
+    both: ['公益財団法人', '(公財)', '(コウザイ)'],
+    pre:  ['公財)', 'コウザイ)'],
+    post: ['(公財', '(コウザイ'],
   },
   {
     canonical: '学校法人',
+    kanaCanonical: 'ガッコウホウジン',
     kind: '399',
-    both: ['学校法人', '(学)'],
-    pre:  ['学)'],
-    post: ['(学'],
+    both: ['学校法人', '(学)', '(ガク)'],
+    pre:  ['学)', 'ガク)'],
+    post: ['(学', '(ガク'],
   },
   {
     canonical: '社会福祉法人',
+    kanaCanonical: 'シャカイフクシホウジン',
     kind: '399',
-    both: ['社会福祉法人', '(福)'],
-    pre:  ['福)'],
-    post: ['(福'],
+    both: ['社会福祉法人', '(福)', '(フク)'],
+    pre:  ['福)', 'フク)'],
+    post: ['(福', '(フク'],
   },
 ] as const;
 
@@ -145,13 +161,13 @@ const buildAliasEntries = (): AliasEntry[] => {
 
   for (const def of LEGAL_ENTITY_DEFS) {
     for (const alias of def.both) {
-      entries.push({ alias, canonical: def.canonical, kind: def.kind, position: 'both' });
+      entries.push({ alias, canonical: def.canonical, kanaCanonical: def.kanaCanonical, kind: def.kind, position: 'both' });
     }
     for (const alias of def.pre) {
-      entries.push({ alias, canonical: def.canonical, kind: def.kind, position: 'pre' });
+      entries.push({ alias, canonical: def.canonical, kanaCanonical: def.kanaCanonical, kind: def.kind, position: 'pre' });
     }
     for (const alias of def.post) {
-      entries.push({ alias, canonical: def.canonical, kind: def.kind, position: 'post' });
+      entries.push({ alias, canonical: def.canonical, kanaCanonical: def.kanaCanonical, kind: def.kind, position: 'post' });
     }
   }
 
@@ -217,6 +233,7 @@ const containsLegalEntityName = (baseName: string): boolean => {
  *
  * @param name - preNormalize() 適用済みの文字列
  * @returns 法人格情報と本体名
+ * @throws {TypeError} name が文字列でない場合
  */
 export const extractLegalEntity = (name: string): LegalEntityResult => {
   if (typeof name !== 'string') {
@@ -230,6 +247,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
   if (front !== null && back !== null && front.entry.canonical !== back.entry.canonical) {
     return {
       legalName: null,
+      kanaLegalName: null,
       kind: null,
       legalPosition: null,
       name,
@@ -242,6 +260,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
     const baseName = name.slice(front.alias.length, name.length - back.alias.length);
     return {
       legalName: front.entry.canonical,
+      kanaLegalName: front.entry.kanaCanonical,
       kind: front.entry.kind,
       legalPosition: 'both',
       name: baseName,
@@ -255,6 +274,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
     const ambiguous = containsLegalEntityName(baseName);
     return {
       legalName: front.entry.canonical,
+      kanaLegalName: front.entry.kanaCanonical,
       kind: front.entry.kind,
       legalPosition: 'pre',
       name: baseName,
@@ -268,6 +288,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
     const ambiguous = containsLegalEntityName(baseName);
     return {
       legalName: back.entry.canonical,
+      kanaLegalName: back.entry.kanaCanonical,
       kind: back.entry.kind,
       legalPosition: 'post',
       name: baseName,
@@ -278,6 +299,7 @@ export const extractLegalEntity = (name: string): LegalEntityResult => {
   // 法人格なし
   return {
     legalName: null,
+    kanaLegalName: null,
     kind: null,
     legalPosition: 'none',
     name,

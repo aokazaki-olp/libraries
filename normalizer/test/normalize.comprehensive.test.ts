@@ -342,33 +342,33 @@ subsection('Normalizer.create() バリデーション');
 assertThrows('dbPath 空文字 → TypeError', () => Normalizer.create({ dbPath: '' }), 'TypeError');
 
 subsection('raw フィールド');
-assert('raw は入力そのまま', n.normalize('㈱テスト').raw, '㈱テスト');
-assert('raw は NFKC 前', n.normalize('ＡＢＣ').raw, 'ＡＢＣ');
+assert('raw は入力そのまま', n.normalize({ name: '㈱テスト' }).raw, '㈱テスト');
+assert('raw は NFKC 前', n.normalize({ name: 'ＡＢＣ' }).raw, 'ＡＢＣ');
 
 subsection('canonical: 略称展開・前後位置は元のまま保持');
-assert('前株入力 → 前株', n.normalize('株式会社テスト').canonical, '株式会社テスト');
-assert('後株入力 → 後株のまま', n.normalize('テスト株式会社').canonical, 'テスト株式会社');
-assert('(株)前 → 略称展開・前株', n.normalize('(株)テスト').canonical, '株式会社テスト');
-assert('(株)後 → 略称展開・後株', n.normalize('テスト(株)').canonical, 'テスト株式会社');
-assert('㈱前 → 略称展開・前株', n.normalize('㈱テスト').canonical, '株式会社テスト');
-assert('法人格なし → preNormed そのまま', n.normalize('テスト団体').canonical, 'テスト団体');
+assert('前株入力 → 前株', n.normalize({ name: '株式会社テスト' }).canonical, '株式会社テスト');
+assert('後株入力 → 後株のまま', n.normalize({ name: 'テスト株式会社' }).canonical, 'テスト株式会社');
+assert('(株)前 → 略称展開・前株', n.normalize({ name: '(株)テスト' }).canonical, '株式会社テスト');
+assert('(株)後 → 略称展開・後株', n.normalize({ name: 'テスト(株)' }).canonical, 'テスト株式会社');
+assert('㈱前 → 略称展開・前株', n.normalize({ name: '㈱テスト' }).canonical, '株式会社テスト');
+assert('法人格なし → preNormed そのまま', n.normalize({ name: 'テスト団体' }).canonical, 'テスト団体');
 
 subsection("name 抽出");
-assert('日本語社名', n.normalize('株式会社トヨタ自動車').matchKey, 'トヨタ自動車');
-assert('英字社名 大文字統一', n.normalize('TIS株式会社').matchKey, 'TIS');
-assert('英字小文字 → 大文字', n.normalize('tis株式会社').matchKey, 'TIS');
-assert('全角英字 → 大文字', n.normalize('ＴＩＳ株式会社').matchKey, 'TIS');
+assert('日本語社名', n.normalize({ name: '株式会社トヨタ自動車' }).matchKey, 'トヨタ自動車');
+assert('英字社名 大文字統一', n.normalize({ name: 'TIS株式会社' }).matchKey, 'TIS');
+assert('英字小文字 → 大文字', n.normalize({ name: 'tis株式会社' }).matchKey, 'TIS');
+assert('全角英字 → 大文字', n.normalize({ name: 'ＴＩＳ株式会社' }).matchKey, 'TIS');
 assert('前株と後株で同じ matchKey',
-  n.normalize('株式会社テスト').matchKey,
-  n.normalize('テスト株式会社').matchKey);
+  n.normalize({ name: '株式会社テスト' }).matchKey,
+  n.normalize({ name: 'テスト株式会社' }).matchKey);
 assert('異なる表記で同じ matchKey',
-  n.normalize('㈱テスト').matchKey,
-  n.normalize('(株)テスト').matchKey);
+  n.normalize({ name: '㈱テスト' }).matchKey,
+  n.normalize({ name: '(株)テスト' }).matchKey);
 
 subsection('matchKeyKanji: db なし → matchKey と同じ');
 assert('db なし: matchKey === matchKeyKanji',
-  n.normalize('株式会社テスト').matchKey,
-  n.normalize('株式会社テスト').matchKeyKanji);
+  n.normalize({ name: '株式会社テスト' }).matchKey,
+  n.normalize({ name: '株式会社テスト' }).matchKeyKanji);
 
 subsection('matchKeyKanji: db あり（variantMap 注入で検証）');
 // db なしで作った Normalizer に手動でvariantMapをテストする代わりに
@@ -378,47 +378,47 @@ const nWithMap = Normalizer.create(); // db なし
 // matchKeyKanji は baseName に applyVariantMap を適用してから uppercase
 // db なし時は variantMap が空なので齋藤 → 齋藤 のまま
 assert('db なし: 旧字体は変換されない',
-  nWithMap.normalize('齋藤商事株式会社').matchKeyKanji, '齋藤商事');
+  nWithMap.normalize({ name: '齋藤商事株式会社' }).matchKeyKanji, '齋藤商事');
 assert('db なし: matchKey と matchKeyKanji が等しい',
-  nWithMap.normalize('齋藤商事株式会社').matchKey,
-  nWithMap.normalize('齋藤商事株式会社').matchKeyKanji);
+  nWithMap.normalize({ name: '齋藤商事株式会社' }).matchKey,
+  nWithMap.normalize({ name: '齋藤商事株式会社' }).matchKeyKanji);
 
 subsection('法人格あり');
-const corp = n.normalize('㈱テスト');
+const corp = n.normalize({ name: '㈱テスト' });
 assert('legalName あり', corp.legalName, '株式会社');
 assert('kind', corp.kind, '301');
 
 subsection('ambiguous フラグ');
-assert('通常: ambiguous false', n.normalize('株式会社テスト').ambiguous, false);
-assert('①: ambiguous true', n.normalize('株式会社有限会社設立サポート').ambiguous, true);
-assert('③: ambiguous true, legalName null', n.normalize('(株)テスト(有)').legalName, null);
+assert('通常: ambiguous false', n.normalize({ name: '株式会社テスト' }).ambiguous, false);
+assert('①: ambiguous true', n.normalize({ name: '株式会社有限会社設立サポート' }).ambiguous, true);
+assert('③: ambiguous true, legalName null', n.normalize({ name: '(株)テスト(有)' }).legalName, null);
 
 subsection('全体フロー: 実データ想定');
-const toyota = n.normalize('トヨタ自動車㈱');
+const toyota = n.normalize({ name: 'トヨタ自動車㈱' });
 assert('Toyota: matchKey', toyota.matchKey, 'トヨタ自動車');
 assert('Toyota: legalName', toyota.legalName, '株式会社');
 assert('Toyota: normalized', toyota.canonical, 'トヨタ自動車株式会社');
 assert('Toyota: ambiguous', toyota.ambiguous, false);
 
-const tis1 = n.normalize('TIS(株)');
-const tis2 = n.normalize('株式会社TIS');
+const tis1 = n.normalize({ name: 'TIS(株)' });
+const tis2 = n.normalize({ name: '株式会社TIS' });
 assert('TIS: 異表記で matchKey 一致', tis1.matchKey, tis2.matchKey);
 
-const softbank = n.normalize('ソフトバンク株式会社');
+const softbank = n.normalize({ name: 'ソフトバンク株式会社' });
 assert('長音符: baseName', softbank.name, 'ソフトバンク');
 assert('長音符: matchKey', softbank.matchKey, 'ソフトバンク');
 
-const npo = n.normalize('NPO法人テスト支援センター');
+const npo = n.normalize({ name: 'NPO法人テスト支援センター' });
 assert('NPO: legalName', npo.legalName, '特定非営利活動法人');
 assert('NPO: baseName', npo.name, 'テスト支援センター');
 
-const cisco = n.normalize('Cisco Systems G.K.');
+const cisco = n.normalize({ name: 'Cisco Systems G.K.' });
 assert('英文: legalName null', cisco.legalName, null);
 assert('英文: baseName', cisco.name, 'Cisco Systems G．K．');
 assert('英文: matchKey 大文字', cisco.matchKey, 'CISCO SYSTEMS G．K．');
 
 subsection('空文字入力');
-const empty = n.normalize('');
+const empty = n.normalize({ name: '' });
 assert('空文字: raw', empty.raw, '');
 assert('空文字: matchKey', empty.matchKey, '');
 assert('空文字: legalName', empty.legalName, null);
