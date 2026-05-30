@@ -398,7 +398,7 @@ assert('person: matchKey = name.upper', person.matchKey, '株式会社テスト'
 subsection('type: organization → 法人格正規化スキップ');
 const org = n.normalize('㈱テスト', { type: 'organization' });
 assert('organization: legalName null', org.legalName, null);
-assert('organization: baseName', org.name, '(株)テスト');
+assert('organization: baseName', org.name, '（株）テスト');
 
 subsection('ambiguous フラグ');
 assert('通常: ambiguous false', n.normalize('株式会社テスト').ambiguous, false);
@@ -427,7 +427,7 @@ assert('NPO: baseName', npo.name, 'テスト支援センター');
 
 const cisco = n.normalize('Cisco Systems G.K.');
 assert('英文: legalName null', cisco.legalName, null);
-assert('英文: baseName', cisco.name, 'Cisco Systems G.K.');
+assert('英文: baseName', cisco.name, 'Cisco Systems G．K．');
 assert('英文: matchKey 大文字', cisco.matchKey, 'CISCO SYSTEMS G.K.');
 
 subsection('空文字入力');

@@ -7,7 +7,17 @@ import { preNormalize } from './preNormalize.js';
 import { loadVariantMap, applyVariantMap } from './variantMap.js';
 import { extractLegalEntity } from './legalEntity.js';
 import { resolveWidthConfig, applyWidth } from './width.js';
-import type { NormalizeResult, NormalizeOptions, NormalizerOptions } from './types.js';
+import type { NormalizeResult, NormalizeOptions, NormalizerOptions, ClassWidthConfig } from './types.js';
+
+// 日本語システム標準: 英数半角・記号全角
+const JP_DEFAULT_CLASS_WIDTH: ClassWidthConfig = {
+  digit: 'half', alpha: 'half', symbol: 'full', default: 'half',
+};
+
+// matchKey は常に半角（グローバル設定に依存しない）
+const HALF_ALL: ClassWidthConfig = {
+  digit: 'half', alpha: 'half', symbol: 'half', default: 'half',
+};
 
 // ────────────────────────────────────────────────────
 // Normalizer インスタンス型
@@ -47,8 +57,11 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
     ? loadVariantMap(dbPath)
     : new Map();
 
-  const canonicalWidthCfg = resolveWidthConfig(classWidth, fields.canonical?.classWidth);
-  const matchKeyWidthCfg  = resolveWidthConfig(classWidth, fields.matchKey?.classWidth);
+  // JP 標準をベースにユーザー指定をマージ
+  const effectiveGlobal: ClassWidthConfig = { ...JP_DEFAULT_CLASS_WIDTH, ...classWidth };
+  const canonicalWidthCfg = resolveWidthConfig(effectiveGlobal, fields.canonical?.classWidth);
+  // matchKey は HALF_ALL をベースにユーザー指定のみ上書き（グローバルを継承しない）
+  const matchKeyWidthCfg  = resolveWidthConfig(HALF_ALL, fields.matchKey?.classWidth);
 
   const normalize = (raw: string, opts: NormalizeOptions = {}): NormalizeResult => {
     if (typeof raw !== 'string') {
