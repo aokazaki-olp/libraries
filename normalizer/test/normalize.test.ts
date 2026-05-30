@@ -101,7 +101,7 @@ const r1 = normalizer.normalize('㈱トヨタ自動車');
 assert('matchKey',       r1.matchKey,      'トヨタ自動車');
 assert('matchKeyKanji',  r1.matchKeyKanji, 'トヨタ自動車');
 assert('legalName',      r1.legalName,     '株式会社');
-assert('normalized',     r1.normalized,    '株式会社トヨタ自動車');
+assert('normalized',     r1.canonical,    '株式会社トヨタ自動車');
 
 const r2 = normalizer.normalize('トヨタ自動車㈱');
 assert('後株 matchKey',  r2.matchKey,      'トヨタ自動車');

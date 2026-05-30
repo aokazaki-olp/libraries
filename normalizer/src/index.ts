@@ -12,4 +12,7 @@ export type {
   NormalizeResult,
   NormalizeOptions,
   NormalizerOptions,
+  WidthMode,
+  ClassWidthConfig,
+  FieldWidthConfig,
 } from './types.js';

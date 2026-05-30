@@ -6,18 +6,8 @@
 import { preNormalize } from './preNormalize.js';
 import { loadVariantMap, applyVariantMap } from './variantMap.js';
 import { extractLegalEntity } from './legalEntity.js';
+import { resolveWidthConfig, applyWidth } from './width.js';
 import type { NormalizeResult, NormalizeOptions, NormalizerOptions } from './types.js';
-
-// ────────────────────────────────────────────────────
-// matchKey 生成
-// ────────────────────────────────────────────────────
-
-const toMatchKey = (name: string): string => name.toUpperCase();
-
-const toMatchKeyKanji = (
-  name: string,
-  variantMap: Map<string, string>,
-): string => applyVariantMap(name, variantMap).toUpperCase();
 
 // ────────────────────────────────────────────────────
 // Normalizer インスタンス型
@@ -42,12 +32,12 @@ export interface NormalizerInstance {
 /**
  * Normalizer インスタンスを生成する
  *
- * @param options - dbPath を指定すると字体正規化が有効になる
+ * @param options - dbPath・classWidth・fields を指定可能
  * @returns NormalizerInstance
  * @throws {TypeError} dbPath が空文字の場合
  */
 const create = (options: NormalizerOptions = {}): NormalizerInstance => {
-  const { dbPath } = options;
+  const { dbPath, classWidth = {}, fields = {} } = options;
 
   if (dbPath !== undefined && (typeof dbPath !== 'string' || dbPath === '')) {
     throw new TypeError('dbPath には空でない文字列を指定してください');
@@ -56,6 +46,9 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
   const variantMap: Map<string, string> = dbPath !== undefined
     ? loadVariantMap(dbPath)
     : new Map();
+
+  const canonicalWidthCfg = resolveWidthConfig(classWidth, fields.canonical?.classWidth);
+  const matchKeyWidthCfg  = resolveWidthConfig(classWidth, fields.matchKey?.classWidth);
 
   const normalize = (raw: string, opts: NormalizeOptions = {}): NormalizeResult => {
     if (typeof raw !== 'string') {
@@ -74,22 +67,29 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
 
     const { legalName, kind, legalPosition, name, ambiguous } = legal;
 
-    // normalized: 略称を正式名称に展開し、前後位置は元のまま保持
-    const normalized = legalName !== null
+    // canonical: 略称を正式名称に展開し、前後位置は元のまま保持
+    const canonicalRaw = legalName !== null
       ? legalPosition === 'post'
         ? name + legalName
         : legalName + name
       : preNormed;
 
-    // [4] matchKey 生成
-    const matchKey      = toMatchKey(name);
-    const matchKeyKanji = toMatchKeyKanji(name, variantMap);
+    // [4] matchKey 生成（幅変換前に uppercase）
+    const matchKeyRaw      = name.toUpperCase();
+    const matchKeyKanjiRaw = applyVariantMap(name, variantMap).toUpperCase();
+
+    // [5] 幅変換
+    const canonical      = applyWidth(canonicalRaw,      canonicalWidthCfg);
+    const nameOut        = applyWidth(name,               canonicalWidthCfg);
+    const legalNameOut   = legalName !== null ? applyWidth(legalName, canonicalWidthCfg) : null;
+    const matchKey       = applyWidth(matchKeyRaw,        matchKeyWidthCfg);
+    const matchKeyKanji  = applyWidth(matchKeyKanjiRaw,   matchKeyWidthCfg);
 
     return {
       raw,
-      normalized,
-      name,
-      legalName,
+      canonical,
+      name: nameOut,
+      legalName: legalNameOut,
       legalPosition: legalPosition === 'none' ? 'none' : legalPosition,
       kind,
       matchKey,
