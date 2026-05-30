@@ -345,12 +345,12 @@ subsection('raw フィールド');
 assert('raw は入力そのまま', n.normalize('㈱テスト').raw, '㈱テスト');
 assert('raw は NFKC 前', n.normalize('ＡＢＣ').raw, 'ＡＢＣ');
 
-subsection('normalized: 表示名（前株に統一）');
+subsection('normalized: 略称展開・前後位置は元のまま保持');
 assert('前株入力 → 前株', n.normalize('株式会社テスト').normalized, '株式会社テスト');
-assert('後株入力 → 前株に統一', n.normalize('テスト株式会社').normalized, '株式会社テスト');
-assert('(株)前 → 前株', n.normalize('(株)テスト').normalized, '株式会社テスト');
-assert('(株)後 → 前株', n.normalize('テスト(株)').normalized, '株式会社テスト');
-assert('㈱前 → 前株', n.normalize('㈱テスト').normalized, '株式会社テスト');
+assert('後株入力 → 後株のまま', n.normalize('テスト株式会社').normalized, 'テスト株式会社');
+assert('(株)前 → 略称展開・前株', n.normalize('(株)テスト').normalized, '株式会社テスト');
+assert('(株)後 → 略称展開・後株', n.normalize('テスト(株)').normalized, 'テスト株式会社');
+assert('㈱前 → 略称展開・前株', n.normalize('㈱テスト').normalized, '株式会社テスト');
 assert('法人格なし → preNormed そのまま', n.normalize('テスト団体').normalized, 'テスト団体');
 
 subsection('matchKey: baseName.toUpperCase()');
@@ -410,7 +410,7 @@ subsection('全体フロー: 実データ想定');
 const toyota = n.normalize('トヨタ自動車㈱');
 assert('Toyota: matchKey', toyota.matchKey, 'トヨタ自動車');
 assert('Toyota: legalName', toyota.legalName, '株式会社');
-assert('Toyota: normalized', toyota.normalized, '株式会社トヨタ自動車');
+assert('Toyota: normalized', toyota.normalized, 'トヨタ自動車株式会社');
 assert('Toyota: ambiguous', toyota.ambiguous, false);
 
 const tis1 = n.normalize('TIS(株)');

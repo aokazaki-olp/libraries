@@ -76,9 +76,11 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
 
     const { legalName, kind, legalPosition, baseName, ambiguous } = legal;
 
-    // normalized: 表示用（法人格を前株に統一して再組み立て）
+    // normalized: 略称を正式名称に展開し、前後位置は元のまま保持
     const normalized = legalName !== null
-      ? legalName + baseName
+      ? legalPosition === 'post'
+        ? baseName + legalName
+        : legalName + baseName
       : preNormed;
 
     // [4] matchKey 生成
