@@ -60,8 +60,7 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
   // JP 標準をベースにユーザー指定をマージ
   const effectiveGlobal: ClassWidthConfig = { ...JP_DEFAULT_CLASS_WIDTH, ...classWidth };
   const canonicalWidthCfg = resolveWidthConfig(effectiveGlobal, fields.canonical?.classWidth);
-  // matchKey は HALF_ALL をベースにユーザー指定のみ上書き（グローバルを継承しない）
-  const matchKeyWidthCfg  = resolveWidthConfig(HALF_ALL, fields.matchKey?.classWidth);
+  const matchKeyWidthCfg  = resolveWidthConfig(effectiveGlobal, fields.matchKey?.classWidth);
 
   const normalize = (raw: string, opts: NormalizeOptions = {}): NormalizeResult => {
     if (typeof raw !== 'string') {

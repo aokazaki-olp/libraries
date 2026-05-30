@@ -428,7 +428,7 @@ assert('NPO: baseName', npo.name, 'テスト支援センター');
 const cisco = n.normalize('Cisco Systems G.K.');
 assert('英文: legalName null', cisco.legalName, null);
 assert('英文: baseName', cisco.name, 'Cisco Systems G．K．');
-assert('英文: matchKey 大文字', cisco.matchKey, 'CISCO SYSTEMS G.K.');
+assert('英文: matchKey 大文字', cisco.matchKey, 'CISCO SYSTEMS G．K．');
 
 subsection('空文字入力');
 const empty = n.normalize('');
