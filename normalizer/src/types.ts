@@ -3,8 +3,6 @@
  * @description 正規化ライブラリの共通型定義
  */
 
-export type EntityType = 'corporate' | 'person' | 'organization';
-
 /** 法人格の位置 */
 export type LegalPosition = 'pre' | 'post' | 'both' | 'none';
 
@@ -23,7 +21,6 @@ export interface NormalizeResult {
 
 /** normalize() のオプション */
 export interface NormalizeOptions {
-  type?: EntityType;
 }
 
 export type { WidthMode, ClassWidthConfig } from './width.js';

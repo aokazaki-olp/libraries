@@ -112,7 +112,7 @@ assert('英字 matchKey',  r3.matchKey,      'TIS');
 const r4 = normalizer.normalize('ＴＩＳ株式会社');
 assert('全角英字 matchKey', r4.matchKey,   'TIS');
 
-const r5 = normalizer.normalize('田中太郎', { type: 'person' });
+const r5 = normalizer.normalize('田中太郎');
 assert('person: legalName', r5.legalName,  null);
 assert('person: name',  r5.name,   '田中太郎');
 

@@ -383,28 +383,15 @@ assert('db なし: matchKey と matchKeyKanji が等しい',
   nWithMap.normalize('齋藤商事株式会社').matchKey,
   nWithMap.normalize('齋藤商事株式会社').matchKeyKanji);
 
-subsection('type: corporate（デフォルト）');
-const corp = n.normalize('㈱テスト', { type: 'corporate' });
-assert('corporate: legalName あり', corp.legalName, '株式会社');
-assert('corporate: kind', corp.kind, '301');
-
-subsection('type: person → 法人格正規化スキップ');
-const person = n.normalize('株式会社テスト', { type: 'person' });
-assert('person: legalName null', person.legalName, null);
-assert('person: legalPosition none', person.legalPosition, 'none');
-assert('person: name = preNormed', person.name, '株式会社テスト');
-assert('person: matchKey = name.upper', person.matchKey, '株式会社テスト');
-
-subsection('type: organization → 法人格正規化スキップ');
-const org = n.normalize('㈱テスト', { type: 'organization' });
-assert('organization: legalName null', org.legalName, null);
-assert('organization: baseName', org.name, '（株）テスト');
+subsection('法人格あり');
+const corp = n.normalize('㈱テスト');
+assert('legalName あり', corp.legalName, '株式会社');
+assert('kind', corp.kind, '301');
 
 subsection('ambiguous フラグ');
 assert('通常: ambiguous false', n.normalize('株式会社テスト').ambiguous, false);
 assert('①: ambiguous true', n.normalize('株式会社有限会社設立サポート').ambiguous, true);
 assert('③: ambiguous true, legalName null', n.normalize('(株)テスト(有)').legalName, null);
-assert('person に法人格含む: ambiguous false（スキップ）', n.normalize('株式会社テスト', { type: 'person' }).ambiguous, false);
 
 subsection('全体フロー: 実データ想定');
 const toyota = n.normalize('トヨタ自動車㈱');

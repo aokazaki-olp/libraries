@@ -7,7 +7,7 @@ import { preNormalize } from './preNormalize.js';
 import { loadVariantMap, applyVariantMap } from './variantMap.js';
 import { extractLegalEntity } from './legalEntity.js';
 import { resolveWidthConfig, applyWidth } from './width.js';
-import type { NormalizeResult, NormalizeOptions, NormalizerOptions, ClassWidthConfig } from './types.js';
+import type { NormalizeResult, NormalizerOptions, ClassWidthConfig } from './types.js';
 
 // 日本語システム標準: 英数半角・記号全角
 const JP_DEFAULT_CLASS_WIDTH: ClassWidthConfig = {
@@ -32,7 +32,7 @@ export interface NormalizerInstance {
    * @returns 正規化結果
    * @throws {TypeError} raw が文字列でない場合
    */
-  normalize(raw: string, options?: NormalizeOptions): NormalizeResult;
+  normalize(raw: string): NormalizeResult;
 }
 
 // ────────────────────────────────────────────────────
@@ -62,20 +62,16 @@ const create = (options: NormalizerOptions = {}): NormalizerInstance => {
   const canonicalWidthCfg = resolveWidthConfig(effectiveGlobal, fields.canonical?.classWidth);
   const matchKeyWidthCfg  = resolveWidthConfig(effectiveGlobal, fields.matchKey?.classWidth);
 
-  const normalize = (raw: string, opts: NormalizeOptions = {}): NormalizeResult => {
+  const normalize = (raw: string): NormalizeResult => {
     if (typeof raw !== 'string') {
       throw new TypeError('raw には文字列を指定してください');
     }
 
-    const { type = 'corporate' } = opts;
-
     // [1] 基礎正規化
     const preNormed = preNormalize(raw);
 
-    // [3] 法人格正規化（corporate のみ）
-    const legal = type === 'corporate'
-      ? extractLegalEntity(preNormed)
-      : { legalName: null, kind: null, legalPosition: 'none' as const, name: preNormed, ambiguous: false };
+    // [3] 法人格正規化
+    const legal = extractLegalEntity(preNormed);
 
     const { legalName, kind, legalPosition, name, ambiguous } = legal;
 

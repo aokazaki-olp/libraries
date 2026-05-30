@@ -7,10 +7,8 @@ export { Normalizer } from './normalize.js';
 export type { NormalizerInstance } from './normalize.js';
 
 export type {
-  EntityType,
   LegalPosition,
   NormalizeResult,
-  NormalizeOptions,
   NormalizerOptions,
   WidthMode,
   ClassWidthConfig,
