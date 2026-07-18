@@ -76,12 +76,15 @@ const chat = (): Plugin<unknown, {
     client.post('/chat.postMessage', { channel, text, ...options }) as Promise<void>,
 
   postBlocks: (channel, blocks, options = {}) =>
+    // Slack Web API: 応答本文を使わないため Promise<void> に確定
     client.post('/chat.postMessage', { channel, blocks, ...options }) as Promise<void>,
 
   update: (channel, ts, text, options = {}) =>
+    // Slack Web API: 応答本文を使わないため Promise<void> に確定
     client.post('/chat.update', { channel, ts, text, ...options }) as Promise<void>,
 
   delete: (channel, ts) =>
+    // Slack Web API: 応答本文を使わないため Promise<void> に確定
     client.post('/chat.delete', { channel, ts }) as Promise<void>,
 });
 
@@ -113,9 +116,11 @@ const reactions = (): Plugin<unknown, {
   removeReaction(channel: string, timestamp: string, name: string): Promise<void>;
 }> => (client) => ({
   addReaction: (channel, timestamp, name) =>
+    // Slack Web API: 応答本文を使わないため Promise<void> に確定
     client.post('/reactions.add', { channel, timestamp, name }) as Promise<void>,
 
   removeReaction: (channel, timestamp, name) =>
+    // Slack Web API: 応答本文を使わないため Promise<void> に確定
     client.post('/reactions.remove', { channel, timestamp, name }) as Promise<void>,
 });
 

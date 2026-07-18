@@ -148,6 +148,7 @@ const slackResponseHandler: ResponseHandler = (response) => {
   if (typeof body !== 'object' || body === null) {
     return body;
   }
+  // 直前で object かつ非 null を確認済み。SlackApiResponse として ok を検査
   const typed = body as SlackApiResponse;
   if (typed.ok === false) {
     throw new SlackApiError(

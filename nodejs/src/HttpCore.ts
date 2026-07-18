@@ -57,6 +57,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
 
   return {
     fetch: async (url: string, options: FetchOptions = {}): Promise<RawResponse> => {
+      // options.method は呼び出し側指定の HTTP 動詞前提で Method union として扱う（未知動詞は got 実行時に顕在化）
       const method = (options.method ?? 'GET').toUpperCase() as Method;
 
       const fetchOptions: OptionsInit = {
@@ -99,6 +100,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
           `HTTPエラー ${status}`,
           status,
           body,
+          // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
           response.headers as Record<string, string | string[]>,
           text,
         );
@@ -106,6 +108,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
 
       return {
         status,
+        // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
         headers: response.headers as Record<string, string | string[]>,
         body,
         text,
