@@ -105,7 +105,7 @@ GAS版の規則を継承しつつ、TypeScript の型命名を追加する。
 |---|---|---|
 | **「真の定数」** | `UPPER_SNAKE_CASE` | `const MAX_RETRY_COUNT = 5;` |
 | **「設定値オブジェクト」** | `UPPER_SNAKE_CASE` + `as const` | `const HTTP_STATUS = { OK: 200 } as const;`（`Object.freeze` の代わり） |
-| **「名前空間・モジュールオブジェクト」** | `PascalCase` | `HttpCore`, `SlackPlugins`, `SalesforcePlugins` |
+| **「名前空間・モジュールオブジェクト」** | `PascalCase` | `HttpCore`, `SlackPlugins`, `SalesforceApiClientPlugins` |
 | **「再代入不可な変数」** | `camelCase` | `const currentUser = auth.getUser();` |
 | **型・インターフェース** | `PascalCase` | `interface Transport`, `type HttpMethod` |
 | **型パラメータ（ジェネリクス）** | `T`, `TResult`, `TOptions` 等 | 単純な場合は `T`、意味が必要な場合は `TXxx` |
@@ -117,7 +117,7 @@ GAS版の規則を継承しつつ、TypeScript の型命名を追加する。
 ```typescript
 // 名前空間オブジェクト → PascalCase
 export const HttpCore = { createTransport, withRetry, withLogger };
-export const SalesforcePlugins = { soql, sobject } as const;
+export const SalesforceApiClientPlugins = { soql, sobject } as const;
 
 // 設定値オブジェクト → UPPER_SNAKE_CASE + as const
 const HTTP_STATUS = { OK: 200, TOO_MANY_REQUESTS: 429 } as const;
@@ -465,7 +465,7 @@ const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
   delete(id: string): Promise<void>;
 }> => (client) => ({ ... });
 
-export const SalesforcePlugins = { soql, sobject } as const;
+export const SalesforceApiClientPlugins = { soql, sobject } as const;
 ```
 
 > **`satisfies` について**: 引数なしのプラグイン（`soql`）には `satisfies Record<string, (...args: never[]) => Plugin<unknown, object>>` が適用できるが、必須引数を持つプラグイン（`sobject(type: string)`）は `never[]` を満たせないため使用できない。セット全体に `satisfies` を適用したい場合は引数ありのプラグインをファクトリパターンから外す必要があり、設計トレードオフになる。実用上は `as const` で十分。
@@ -476,8 +476,8 @@ export const SalesforcePlugins = { soql, sobject } as const;
 type Account = { Id: string; Name: string };
 
 const sf = SalesforceApiClient.create(url, token)
-  .use(SalesforcePlugins.soql<Account>())
-  .use(SalesforcePlugins.sobject<Account>('Account'));
+  .use(SalesforceApiClientPlugins.soql<Account>())
+  .use(SalesforceApiClientPlugins.sobject<Account>('Account'));
 
 const res = await sf.query('SELECT Id, Name FROM Account');
 // res.records: Account[]  ← 型が付く
