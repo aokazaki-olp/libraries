@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import { SalesforcePlugins } from '../src/plugins/salesforce.js';
+import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.js';
 import { ApiClient } from '../src/ApiClient.js';
 import type { RawResponse } from '../src/httpTypes.js';
 import { mockTransport } from './helpers.js';
@@ -286,7 +286,7 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
     const transport = mockTransport({ status: 204, body: null });
     const sf = SalesforceApiClient
       .create('https://example.my.salesforce.com', 'token', { transport })
-      .use(SalesforcePlugins.sobject('Account'));
+      .use(SalesforceApiClientPlugins.sobject('Account'));
 
     await sf.delete('001xxx');
 
