@@ -50,7 +50,7 @@ class LazyTemplate {
   static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/;
 
   /** キーセグメントパターン */
-  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.\[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
+  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
 
   /** 数値リテラルパターン */
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
@@ -368,6 +368,7 @@ class LazyTemplate {
           if (t !== 'object' && t !== 'function') {
             return undefined;
           }
+          // 直上のガードで acc は object|function 確定。unknown を index 可能型へ橋渡し
           const value = (acc as Record<string | number, unknown>)[key];
           if (value === undefined) {
             return undefined;
