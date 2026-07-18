@@ -86,6 +86,7 @@ const create = <TResponse = unknown>(
       Accept: 'application/json',
     },
     logger,
+    // レスポンスボディを TResponse として扱う（型保証は呼び出し側の責務）
     responseHandler: (response) => response.body as TResponse,
   })
     .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))

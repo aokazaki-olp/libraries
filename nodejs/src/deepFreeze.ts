@@ -10,7 +10,7 @@
  * - 既に凍結済みのオブジェクトはスキップする（循環参照対策）
  * - Map/Set 等の内部スロットは Object.freeze の仕様上保護されない
  *
- * @param o 凍結するオブジェクト
+ * @param o - 凍結するオブジェクト
  * @returns 凍結されたオブジェクト（引数と同一参照）
  * @throws {TypeError} o がオブジェクトでない場合（null・プリミティブを含む）
  */
@@ -29,6 +29,7 @@ const deepFreeze = <T extends object>(o: T): Readonly<T> => {
     }
   }
 
+  // Object.freeze 済みの同一参照を Readonly<T> として返す
   return o as Readonly<T>;
 };
 

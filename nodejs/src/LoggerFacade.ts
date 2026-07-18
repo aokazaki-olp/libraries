@@ -45,6 +45,7 @@ const createLogger = (logger: unknown): Logger | null => {
   const resolve = (...candidates: string[]): LogMethod => {
     for (const name of candidates) {
       if (typeof impl[name] === 'function') {
+        // 直前で typeof === 'function' を確認済み。LogMethod として呼ぶ
         return (...args: unknown[]) => (impl[name] as LogMethod).call(impl, ...args);
       }
     }

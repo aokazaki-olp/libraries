@@ -271,6 +271,7 @@ const createClient = <TResponse = unknown>(
     return client;
   };
 
+  // 追加メソッド無しの初期クライアント。空オブジェクトを空メソッド集合の起点にする
   return createExtended({} as Record<string, never>);
 };
 
