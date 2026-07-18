@@ -408,8 +408,9 @@ SlackClient.ts / SalesforceApiClient.ts は plugins/ を import しない
 TypeScript の型システムで表現できない保証（スプレッド合成・`as unknown as` 等）は、なぜ安全かをコメントで説明する。
 
 ```typescript
-// スプレッド合成は型システムで証明不能: additionalMethods ∪ HttpMethods
-client = { ...additionalMethods, ...httpMethods, call, extend, use } as unknown as BaseClient<TResponse, TMethods>;
+// スプレッド合成は型システムで証明不能: httpMethods ∪ additionalMethods
+// httpMethods を先に展開し additionalMethods を後勝ちにする（plugin が HTTP メソッド名と衝突しても plugin 優先）
+client = { ...httpMethods, ...additionalMethods, call, extend, use } as unknown as BaseClient<TResponse, TMethods>;
 ```
 
 ---
@@ -428,7 +429,7 @@ export type Plugin<TResponse, TNew extends object> =
 
 ### 8.2 Plugin は純粋関数
 
-プラグインはステートレスな純粋関数とする。副作用・外部依存を持たない。
+プラグイン（ファクトリ）はステートレスな純粋関数とする。ファクトリ自体は副作用を持たない（返すメソッドが行う I/O は除く）。汎用プラグインは外部依存を持たないが、bulk 系のように CSV パース等の外部ライブラリや `.use()` 非対応の直接呼び出しを要するものは例外とし、理由を §8.5 の要領でコメントに明示する。
 
 ```typescript
 // ✅ 純粋関数
@@ -485,7 +486,7 @@ const res = await sf.query('SELECT Id, Name FROM Account');
 
 ### 8.4 プラグインセットと疎結合
 
-プラグインセット（`plugins/`）は `core/` の型のみに依存し、`clients/` を import しない。
+プラグインセット（`plugins/`）は `ApiClient.ts` / `httpTypes.ts` の型のみに依存し、各クライアント実装（`SalesforceApiClient.ts` / `SlackClient.ts` 等）を import しない。
 API クライアント固有の知識（エンドポイントパス等）はプラグイン内に閉じ込め、コアに漏らさない。
 
 ```typescript
