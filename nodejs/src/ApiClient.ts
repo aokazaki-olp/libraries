@@ -90,6 +90,11 @@ const splitFormFields = (
   let files: Record<string, FilePart | readonly FilePart[]> | undefined;
 
   for (const [key, value] of Object.entries(form)) {
+    // buildQueryString と同じ規約: null/undefined のフィールドは省略する（"null"/"undefined" という文字列を送らない）
+    if (value == null) {
+      continue;
+    }
+
     if (Array.isArray(value)) {
       if (value.every(isFilePart)) {
         files ??= {};

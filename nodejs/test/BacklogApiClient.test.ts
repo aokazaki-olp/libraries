@@ -53,13 +53,24 @@ describe('BacklogApiClient.create — バリデーション（auth）', () => {
     ['null', null],
     ['数値', 123],
     ['空オブジェクト', {}],
+    ['空配列', []],
     ['apiKey が空文字', { apiKey: '' }],
     ['accessToken が空文字', { accessToken: '' }],
     ['apiKey が非string', { apiKey: 123 }],
+    ['accessToken が非string', { accessToken: true }],
   ] as [string, unknown][])('auth が %s だと TypeError', (_label, auth) => {
     expect(() =>
       // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       BacklogApiClient.create(SPACE_URL, auth),
+    ).toThrow(TypeError);
+  });
+
+  it('apiKey と accessToken を同時に指定すると TypeError（どちらの認証が勝つか曖昧なため拒否する）', () => {
+    // BacklogAuth は判別なし Union だが、両方のプロパティを持つオブジェクトリテラルは
+    // どちらの構成要素にも余剰プロパティが無いため型としては受理される（excess property check の対象外）。
+    // 実行時バリデーションでのみ弾ける誤用のため @ts-expect-error は不要。
+    expect(() =>
+      BacklogApiClient.create(SPACE_URL, { apiKey: 'k', accessToken: 't' }),
     ).toThrow(TypeError);
   });
 });
@@ -97,6 +108,13 @@ describe('BacklogApiClient.create — URL 構築', () => {
   it('spaceUrl の末尾スラッシュを許容する', async () => {
     const transport = mockTransport({ body: [] });
     const client = BacklogApiClient.create(`${SPACE_URL}/`, { apiKey: 'k' }, { transport });
+    await client.get('/projects');
+    expect(transport.calls[0].url).toBe(`${BASE_URL}/projects`);
+  });
+
+  it('spaceUrl の複数の末尾スラッシュもすべて除去する', async () => {
+    const transport = mockTransport({ body: [] });
+    const client = BacklogApiClient.create(`${SPACE_URL}///`, { apiKey: 'k' }, { transport });
     await client.get('/projects');
     expect(transport.calls[0].url).toBe(`${BASE_URL}/projects`);
   });
@@ -189,6 +207,57 @@ describe('BacklogApiClient.create — エラー正規化', () => {
     expect(err).toBeInstanceOf(HttpError);
     expect(err).not.toBeInstanceOf(BacklogApiError);
   });
+
+  it('errors が空配列の場合は正規化せず HttpError のまま伝播する', async () => {
+    const transport = mockTransport({ status: 400, body: { errors: [] } });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
+    await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
+  });
+
+  it('errors 配列の要素に message/code が欠けている場合は正規化せず HttpError のまま伝播する', async () => {
+    const transport = mockTransport({ status: 400, body: { errors: [{ message: 'ok', code: 1 }, { oops: true }] } });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
+    await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
+  });
+
+  it('エラーボディが配列そのものの場合は正規化せず HttpError のまま伝播する', async () => {
+    const transport = mockTransport({ status: 400, body: [{ message: 'x', code: 1 }] });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
+    await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
+  });
+
+  it('エラーボディが null の場合は正規化せず HttpError のまま伝播する', async () => {
+    const transport = mockTransport({ status: 400, body: null });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
+    await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
+  });
+
+  it('errors 配列が複数件でも先頭要素の message/code を採用し、errors には全件を保持する', async () => {
+    const errors = [
+      { message: 'first error', code: 6 },
+      { message: 'second error', code: 7 },
+    ];
+    const transport = mockTransport({ status: 400, body: { errors } });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    let err: BacklogApiError | undefined;
+    try {
+      await client.get('/projects');
+    } catch (e) {
+      err = e as BacklogApiError;
+    }
+    expect(err?.code).toBe(6);
+    expect(err?.message).toContain('first error');
+    expect(err?.errors).toEqual(errors);
+  });
 });
 
 // ============================================================================
@@ -243,12 +312,30 @@ describe('BacklogApiClient.create — リトライ', () => {
     expect(transport.calls.length).toBe(2);
   });
 
-  it('401（429 以外の 4xx）はリトライしない', async () => {
-    const transport = mockTransport({ status: 401, body: { errors: [{ message: 'auth failed', code: 11 }] } });
+  it.each([400, 401, 403, 404, 422])('status=%i（429 以外の 4xx）はリトライしない', async (status) => {
+    const transport = mockTransport({ status });
     const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'bad' }, { transport });
 
-    await expect(client.get('/projects')).rejects.toThrow(BacklogApiError);
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
     expect(transport.calls.length).toBe(1);
+  });
+
+  it.each([500, 502, 503, 504])('status=%i（5xx）はリトライされる', async (status) => {
+    const transport = mockTransport([
+      { status, body: 'down' },
+      { status: 200, body: { ok: true } },
+    ]);
+    const client = BacklogApiClient.create<{ ok: boolean }>(SPACE_URL, { apiKey: 'k' }, {
+      transport,
+      baseDelayMs: 1,
+    });
+
+    const promise = client.get('/projects');
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(transport.calls.length).toBe(2);
   });
 
   it('連続 503 でリトライ上限に達すると RetryExhaustedError', async () => {
@@ -266,6 +353,57 @@ describe('BacklogApiClient.create — リトライ', () => {
     await assertion;
 
     expect(transport.calls.length).toBe(4);
+  });
+
+  it('maxRetries: 0 の場合、429 でも即座に RetryExhaustedError（一度も待機しない）', async () => {
+    const transport = mockTransport({
+      status: 429,
+      headers: { 'X-RateLimit-Reset': '9999999999' },
+    });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport, maxRetries: 0 });
+
+    await expect(client.get('/projects')).rejects.toThrow(RetryExhaustedError);
+    expect(transport.calls.length).toBe(1);
+  });
+
+  it('ネットワークエラー（非 HttpError）は指数バックオフでリトライされ、上限で RetryExhaustedError になる', async () => {
+    const transport: Transport = {
+      fetch: vi.fn(async () => {
+        throw new Error('ECONNRESET');
+      }),
+    };
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport, maxRetries: 2, baseDelayMs: 1 });
+
+    const promise = client.get('/projects');
+    const assertion = expect(promise).rejects.toThrow(RetryExhaustedError);
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(transport.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('ネットワークエラー（非 HttpError）から途中で回復すれば成功する', async () => {
+    let calls = 0;
+    const transport: Transport = {
+      fetch: vi.fn(async () => {
+        calls++;
+        if (calls < 2) {
+          throw new Error('ECONNRESET');
+        }
+        return makeRawResponse({ body: { ok: true }, text: '{"ok":true}' });
+      }),
+    };
+    const client = BacklogApiClient.create<{ ok: boolean }>(SPACE_URL, { apiKey: 'k' }, {
+      transport,
+      baseDelayMs: 1,
+    });
+
+    const promise = client.get('/projects');
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(calls).toBe(2);
   });
 });
 
@@ -299,6 +437,80 @@ describe('BacklogCore.withRetry', () => {
     const result = await promise;
     expect(result.status).toBe(200);
     expect(calls).toBe(2);
+  });
+
+  it('X-RateLimit-Reset が非数値の場合も baseDelayMs にフォールバックする', async () => {
+    let calls = 0;
+    const transport: Transport = {
+      fetch: vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          throw new HttpError('429', 429, null, { 'X-RateLimit-Reset': 'not-a-number' });
+        }
+        return makeRawResponse();
+      }),
+    };
+
+    const retrying = BacklogCore.withRetry(transport, { maxRetries: 2, baseDelayMs: 250 });
+    const promise = retrying.fetch('https://example.backlog.jp/api/v2/projects');
+    const assertion = expect(promise).resolves.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(250);
+    await assertion;
+  });
+
+  it('X-RateLimit-Reset がヘッダ配列（複数値）で返っても先頭の値を使う', async () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    vi.setSystemTime(now);
+    const resetEpochSec = Math.floor(now.getTime() / 1000) + 3;
+
+    let calls = 0;
+    const transport: Transport = {
+      fetch: vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          throw new HttpError('429', 429, null, { 'X-RateLimit-Reset': [String(resetEpochSec), 'ignored'] });
+        }
+        return makeRawResponse();
+      }),
+    };
+
+    const retrying = BacklogCore.withRetry(transport, { maxRetries: 2 });
+    const promise = retrying.fetch('https://example.backlog.jp/api/v2/projects');
+    const assertion = expect(promise).resolves.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(3000);
+    await assertion;
+  });
+
+  it('X-RateLimit-Reset が小文字ヘッダでも認識する', async () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    vi.setSystemTime(now);
+    const resetEpochSec = Math.floor(now.getTime() / 1000) + 2;
+
+    let calls = 0;
+    const transport: Transport = {
+      fetch: vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          throw new HttpError('429', 429, null, { 'x-ratelimit-reset': String(resetEpochSec) });
+        }
+        return makeRawResponse();
+      }),
+    };
+
+    const retrying = BacklogCore.withRetry(transport, { maxRetries: 2 });
+    const promise = retrying.fetch('https://example.backlog.jp/api/v2/projects');
+    const assertion = expect(promise).resolves.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    await assertion;
   });
 
   it('X-RateLimit-Reset が無い 429 は baseDelayMs にフォールバックする', async () => {

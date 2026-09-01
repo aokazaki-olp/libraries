@@ -428,4 +428,88 @@ describe('ApiClient.createClient — delete() の型制約', () => {
     // @ts-expect-error: delete() は form を受け付けない（Omit で除外済み）
     await client.delete('/x', { form: { a: '1' } });
   });
+
+  it('headers / timeoutMs 等の正当なオプションは引き続き渡せる（回帰確認）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.delete('/x', { headers: { 'X-Reason': 'cleanup' }, timeoutMs: 3000 });
+
+    const call = transport.calls[0];
+    expect(call.options?.method).toBe('DELETE');
+    expect(call.options?.headers?.['X-Reason']).toBe('cleanup');
+    expect(call.options?.timeoutMs).toBe(3000);
+  });
+});
+
+// ============================================================================
+// createClient — call — form のエッジケース
+// ============================================================================
+
+describe('ApiClient.createClient — call — form のエッジケース', () => {
+  it('form と rawBody が両方指定された場合 rawBody が優先される', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/x',
+      method: 'POST',
+      rawBody: 'raw,csv,data',
+      form: { a: '1' },
+    });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toBe('raw,csv,data');
+    expect(call.options?.files).toBeUndefined();
+  });
+
+  it('form と body が両方指定された場合 form が優先される', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/x',
+      method: 'POST',
+      body: { should: 'be ignored' },
+      form: { a: '1' },
+    });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toEqual({ a: '1' });
+    expect(call.options?.headers?.['Content-Type']).toBeUndefined();
+  });
+
+  it('form のスカラーに 0 / false を指定しても正しく "0" / "false" に変換される（falsy 値の欠落防止）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/x', method: 'POST', form: { count: 0, active: false, name: '' } });
+
+    expect(transport.calls[0].options?.payload).toEqual({ count: '0', active: 'false', name: '' });
+  });
+
+  it('form の値が null / undefined のフィールドは省略される（buildQueryString と同じ規約）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/x',
+      method: 'POST',
+      // @ts-expect-error: null/undefined は FormValue に含まれないが、欠落フィールドの実runtime入力を想定
+      form: { a: '1', b: null, c: undefined },
+    });
+
+    expect(transport.calls[0].options?.payload).toEqual({ a: '1' });
+  });
+
+  it('PUT / PATCH でも form が同様に処理される', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/x', method: 'PUT', form: { a: '1' } });
+    await client.call({ endpoint: '/y', method: 'PATCH', form: { b: '2' } });
+
+    expect(transport.calls[0].options?.payload).toEqual({ a: '1' });
+    expect(transport.calls[1].options?.payload).toEqual({ b: '2' });
+  });
 });

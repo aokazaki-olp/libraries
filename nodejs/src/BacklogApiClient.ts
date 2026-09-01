@@ -242,6 +242,9 @@ const create = <TResponse = unknown>(
   if (!('apiKey' in auth) && !('accessToken' in auth)) {
     throw new TypeError('auth には apiKey または accessToken のいずれかを指定してください');
   }
+  if ('apiKey' in auth && 'accessToken' in auth) {
+    throw new TypeError('auth には apiKey と accessToken を同時に指定できません（どちらか一方を指定してください）');
+  }
   if ('apiKey' in auth && (typeof auth.apiKey !== 'string' || auth.apiKey === '')) {
     throw new TypeError('auth.apiKey には空でない string を指定してください');
   }
