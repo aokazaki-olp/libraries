@@ -408,3 +408,197 @@ describe('HttpCore.createTransport — got 統合', () => {
     expect((calledOptions.timeout as Record<string, unknown>).request).toBe(3000);
   });
 });
+
+// ============================================================================
+// createTransport — bytes 抽出（除外リスト方式）
+// ============================================================================
+
+describe('HttpCore.createTransport — bytes 抽出', () => {
+  it('JSON レスポンスでも bytes が Uint8Array で埋まる（既存の body/text 挙動は変わらない）', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: '{"ok":true}',
+      rawBody: Buffer.from('{"ok":true}'),
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/api');
+
+    expect(result.body).toEqual({ ok: true });
+    expect(result.text).toBe('{"ok":true}');
+    expect(result.bytes).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(result.bytes as Uint8Array).toString()).toBe('{"ok":true}');
+  });
+
+  it('rawBody が無い（独自 transport 相当のレスポンス）場合 bytes は undefined', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: '{"ok":true}',
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/api');
+
+    expect(result.bytes).toBeUndefined();
+  });
+
+  it.each(['image/jpeg', 'audio/mpeg', 'video/mp4', 'application/octet-stream', 'application/pdf', 'application/zip'])(
+    'Content-Type=%s は既知のバイナリ系として bytes のみを埋め、text は空文字・body は null にする',
+    async (contentType) => {
+      const binary = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+      const mockResponse = {
+        statusCode: 200,
+        headers: { 'content-type': contentType },
+        body: binary.toString('latin1'),
+        rawBody: binary,
+      };
+      const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+      const mockGot = mockGotFn as unknown as import('got').Got;
+
+      const transport = HttpCore.createTransport({ got: mockGot });
+      const result = await transport.fetch('https://example.com/file');
+
+      expect(result.bytes).toEqual(new Uint8Array(binary));
+      expect(result.text).toBe('');
+      expect(result.body).toBeNull();
+    },
+  );
+
+  it('Content-Type にパラメータが付いていても除外リスト判定できる（例: image/png; charset=binary）', async () => {
+    const binary = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const mockResponse = {
+      statusCode: 200,
+      headers: { 'content-type': 'image/png; charset=binary' },
+      body: binary.toString('latin1'),
+      rawBody: binary,
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/file.png');
+
+    expect(result.bytes).toEqual(new Uint8Array(binary));
+    expect(result.text).toBe('');
+  });
+
+  it('Content-Type 不在の場合は今日と同じ挙動（text/body を埋め、bytes も併せて埋まる）', async () => {
+    const mockResponse = {
+      statusCode: 200,
+      headers: {},
+      body: 'plain text response',
+      rawBody: Buffer.from('plain text response'),
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const result = await transport.fetch('https://example.com/text');
+
+    expect(result.text).toBe('plain text response');
+    expect(result.body).toBe('plain text response');
+    expect(result.bytes).toEqual(new Uint8Array(Buffer.from('plain text response')));
+  });
+
+  it('除外リストに該当し、かつ非2xxの場合は HttpError をスローする（body は null のまま）', async () => {
+    const binary = Buffer.from([0x00, 0x01]);
+    const mockResponse = {
+      statusCode: 500,
+      headers: { 'content-type': 'application/octet-stream' },
+      body: binary.toString('latin1'),
+      rawBody: binary,
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await expect(transport.fetch('https://example.com/file')).rejects.toThrow(HttpError);
+  });
+});
+
+// ============================================================================
+// createTransport — files（multipart 送信）
+// ============================================================================
+
+describe('HttpCore.createTransport — files（multipart 送信）', () => {
+  it('files 指定時は got へ FormData を body として渡す（form / json は使わない）', async () => {
+    const mockResponse = { statusCode: 200, headers: {}, body: '{}' };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com/upload', {
+      method: 'POST',
+      payload: { description: 'hello' },
+      files: {
+        file: {
+          kind: 'file',
+          filename: 'a.txt',
+          contentType: 'text/plain',
+          data: new Uint8Array([104, 105]),
+        },
+      },
+    });
+
+    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    expect(calledOptions.body).toBeInstanceOf(FormData);
+    expect(calledOptions.form).toBeUndefined();
+
+    const form = calledOptions.body as FormData;
+    expect(form.get('description')).toBe('hello');
+
+    const filePart = form.get('file') as File;
+    expect(filePart.name).toBe('a.txt');
+    expect(filePart.type).toBe('text/plain');
+    expect(await filePart.text()).toBe('hi');
+  });
+
+  it('files が配列の場合は同じキーで複数 append される', async () => {
+    const mockResponse = { statusCode: 200, headers: {}, body: '{}' };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com/upload', {
+      method: 'POST',
+      files: {
+        file: [
+          { kind: 'file', filename: 'a.txt', data: new Uint8Array([97]) },
+          { kind: 'file', filename: 'b.txt', data: new Uint8Array([98]) },
+        ],
+      },
+    });
+
+    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    const form = calledOptions.body as FormData;
+    const files = form.getAll('file') as File[];
+    expect(files).toHaveLength(2);
+    expect(files[0].name).toBe('a.txt');
+    expect(files[1].name).toBe('b.txt');
+  });
+
+  it('TransportDeps.formData を注入すると差し替わる', async () => {
+    const mockResponse = { statusCode: 200, headers: {}, body: '{}' };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    let createdCount = 0;
+    const customFormData = (): FormData => {
+      createdCount++;
+      return new FormData();
+    };
+
+    const transport = HttpCore.createTransport({ got: mockGot, formData: customFormData });
+    await transport.fetch('https://example.com/upload', {
+      files: { file: { kind: 'file', filename: 'a.txt', data: new Uint8Array([1]) } },
+    });
+
+    expect(createdCount).toBe(1);
+  });
+});

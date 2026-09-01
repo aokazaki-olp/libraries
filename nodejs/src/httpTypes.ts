@@ -12,6 +12,8 @@ export interface FetchOptions {
   headers?: Record<string, string>;
   /** JSON文字列 or form-urlencodedオブジェクト */
   payload?: string | Record<string, string>;
+  /** multipart のファイルパート。payload と併せて送られる。組み込み transport は常に FormData として送信する。 */
+  files?: Record<string, FilePart | readonly FilePart[]>;
   timeoutMs?: number;
 }
 
@@ -20,11 +22,30 @@ export interface RawResponse {
   headers: Record<string, string | string[]>;
   body: unknown;
   text: string;
+  /** 生バイト。組み込み transport は常に埋める。独自 transport では欠ける場合がある。 */
+  bytes?: Uint8Array;
 }
 
 export interface Transport {
   fetch(url: string, options?: FetchOptions): Promise<RawResponse>;
 }
+
+// ============================================================================
+// multipart フォーム送信
+// ============================================================================
+
+/** multipart のファイルパート。data の型は実行環境ごとに異なる（Node: Uint8Array / GAS: Blob）。 */
+export interface FilePart {
+  kind: 'file';
+  filename: string;
+  contentType?: string;
+  data: Uint8Array;
+}
+
+type FormValue = string | number | boolean | FilePart;
+
+/** RequestOptions.form の値。呼び出し側はスカラーとファイルを混ぜて書ける。 */
+export type FormFields = Record<string, FormValue | readonly FormValue[]>;
 
 // ============================================================================
 // Client
@@ -38,6 +59,8 @@ export interface RequestOptions {
   body?: unknown;
   /** JSON.stringify を経由せず payload に直接セットされる生文字列（CSV アップロード等） */
   rawBody?: string;
+  /** フォームとして送る。FilePart を含めば multipart。body / rawBody とは排他。 */
+  form?: FormFields;
   timeoutMs?: number;
 }
 

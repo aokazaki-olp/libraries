@@ -13,6 +13,8 @@ import type { Logger } from './LoggerFacade.js';
 import { HttpCore } from './HttpCore.js';
 import type {
   FetchOptions,
+  FilePart,
+  FormFields,
   RawResponse,
   RequestOptions,
   Transport,
@@ -68,6 +70,48 @@ const buildUrl = (baseUrl: string, endpoint?: string, query?: Record<string, unk
 };
 
 // ============================================================================
+// form フィールドの振り分け（urlencoded スカラー / multipart ファイル）
+// ============================================================================
+
+const isFilePart = (v: unknown): v is FilePart =>
+  typeof v === 'object' && v !== null && (v as { kind?: unknown }).kind === 'file';
+
+/**
+ * RequestOptions.form をスカラー（payload）とファイル（files）に振り分ける
+ *
+ * @param form - 呼び出し側が指定した form フィールド
+ * @returns payload（urlencoded 用スカラー）と files（multipart 用、無ければ undefined）
+ * @throws {TypeError} スカラーの配列（ファイルの配列以外の配列）が渡された場合（未対応）
+ */
+const splitFormFields = (
+  form: FormFields,
+): { payload: Record<string, string>; files?: Record<string, FilePart | readonly FilePart[]> } => {
+  const payload: Record<string, string> = {};
+  let files: Record<string, FilePart | readonly FilePart[]> | undefined;
+
+  for (const [key, value] of Object.entries(form)) {
+    if (Array.isArray(value)) {
+      if (value.every(isFilePart)) {
+        files ??= {};
+        files[key] = value as FilePart[];
+        continue;
+      }
+      throw new TypeError(`form.${key} には配列を指定できません（ファイルの配列のみ対応。スカラーの配列は未対応）`);
+    }
+
+    if (isFilePart(value)) {
+      files ??= {};
+      files[key] = value;
+      continue;
+    }
+
+    payload[key] = String(value);
+  }
+
+  return { payload, files };
+};
+
+// ============================================================================
 // Bearer認証デコレータ
 // ============================================================================
 
@@ -120,7 +164,7 @@ type HttpMethods<TResponse> = {
   post(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   put(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   patch(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body'>): Promise<TResponse>;
+  delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body' | 'rawBody' | 'form'>): Promise<TResponse>;
 };
 
 type BaseClient<TResponse = unknown, TMethods extends object = Record<string, never>> =
@@ -177,6 +221,7 @@ const createClient = <TResponse = unknown>(
     };
 
     const hasRawBody = typeof request.rawBody === 'string';
+    const hasForm = request.form != null;
     const hasBody = request.body != null;
     const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
@@ -185,6 +230,17 @@ const createClient = <TResponse = unknown>(
         options.payload = request.rawBody;
       } else {
         log?.warn(`[HTTP] ⚠ ${method}リクエストでrawBodyが検出されました。無視されます。 url=${url}`);
+      }
+    } else if (hasForm) {
+      if (canHaveBody) {
+        // request.form は非 null 確定（hasForm）
+        const { payload, files } = splitFormFields(request.form as FormFields);
+        options.payload = payload;
+        if (files) {
+          options.files = files;
+        }
+      } else {
+        log?.warn(`[HTTP] ⚠ ${method}リクエストでformが検出されました。無視されます。 url=${url}`);
       }
     } else if (hasBody) {
       if (canHaveBody) {
@@ -254,7 +310,7 @@ const createClient = <TResponse = unknown>(
       patch: (endpoint, body, options) =>
         call({ ...options, method: 'PATCH', endpoint, body }),
       delete: (endpoint, options) =>
-        // Omit<Partial<RequestOptions>, 'body'> はスプレッド時に Partial<RequestOptions> として推論されないためキャスト
+        // Omit<Partial<RequestOptions>, 'body' | 'rawBody' | 'form'> はスプレッド時に Partial<RequestOptions> として推論されないためキャスト
         call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
     };
 

@@ -326,3 +326,106 @@ describe('ApiClient.createClient — デフォルトヘッダー', () => {
     expect(transport.calls[0].options?.headers?.['X-Custom']).toBe('override');
   });
 });
+
+// ============================================================================
+// createClient — call — form（urlencoded / multipart 振り分け）
+// ============================================================================
+
+describe('ApiClient.createClient — call — form', () => {
+  it('form にスカラーのみを指定すると payload に Record<string,string> として渡る', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/token',
+      method: 'POST',
+      form: { grant_type: 'client_credentials', count: 3, active: true },
+    });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toEqual({
+      grant_type: 'client_credentials',
+      count: '3',
+      active: 'true',
+    });
+    expect(call.options?.files).toBeUndefined();
+  });
+
+  it('form に FilePart を含むと files に振り分けられ、スカラーは payload に残る', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/attachments',
+      method: 'POST',
+      form: {
+        description: 'hello',
+        file: { kind: 'file', filename: 'a.txt', data: new Uint8Array([1, 2]) },
+      },
+    });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toEqual({ description: 'hello' });
+    expect(call.options?.files?.['file']).toEqual({
+      kind: 'file',
+      filename: 'a.txt',
+      data: new Uint8Array([1, 2]),
+    });
+  });
+
+  it('FilePart の配列も files にそのまま渡る', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({
+      endpoint: '/attachments',
+      method: 'POST',
+      form: {
+        file: [
+          { kind: 'file', filename: 'a.txt', data: new Uint8Array([1]) },
+          { kind: 'file', filename: 'b.txt', data: new Uint8Array([2]) },
+        ],
+      },
+    });
+
+    const files = transport.calls[0].options?.files?.['file'];
+    expect(Array.isArray(files)).toBe(true);
+    expect((files as unknown[]).length).toBe(2);
+  });
+
+  it('GET + form は無視される（payload も files も付かない）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/x', method: 'GET', form: { a: '1' } });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toBeUndefined();
+    expect(call.options?.files).toBeUndefined();
+  });
+
+  it('form にスカラーの配列を渡すと TypeError（未対応の形として明示的に拒否する）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await expect(
+      client.call({ endpoint: '/x', method: 'POST', form: { tags: ['a', 'b'] } }),
+    ).rejects.toThrow(TypeError);
+  });
+});
+
+// ============================================================================
+// createClient — delete() の型制約（回帰防止）
+// ============================================================================
+
+describe('ApiClient.createClient — delete() の型制約', () => {
+  it('rawBody / form を渡すと型エラーになる', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    // @ts-expect-error: delete() は rawBody を受け付けない（Omit で除外済み）
+    await client.delete('/x', { rawBody: 'csv data' });
+    // @ts-expect-error: delete() は form を受け付けない（Omit で除外済み）
+    await client.delete('/x', { form: { a: '1' } });
+  });
+});

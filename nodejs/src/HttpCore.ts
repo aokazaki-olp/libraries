@@ -37,12 +37,30 @@ const hasHeader = (headers: Record<string, string>, key: string): boolean => {
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms));
 
+// Content-Type が既知のバイナリ系かどうかを判定する（除外リスト方式。既定はテキストとして扱う）
+const BINARY_CONTENT_TYPE_PATTERN = /^(image|audio|video)\//;
+const BINARY_CONTENT_TYPES = new Set([
+  'application/octet-stream',
+  'application/pdf',
+  'application/zip',
+]);
+
+const isBinaryContentType = (contentType: string | undefined): boolean => {
+  if (!contentType) {
+    return false;
+  }
+  const mediaType = contentType.split(';')[0].trim().toLowerCase();
+  return BINARY_CONTENT_TYPE_PATTERN.test(mediaType) || BINARY_CONTENT_TYPES.has(mediaType);
+};
+
 // ============================================================================
 // createTransport
 // ============================================================================
 
 interface TransportDeps {
   got?: Got;
+  /** multipart 送信で使う FormData の生成元（テスト用の差し替え口）。省略時は組み込みの FormData を使う。 */
+  formData?: () => FormData;
 }
 
 /**
@@ -67,7 +85,29 @@ const createTransport = (deps?: TransportDeps): Transport => {
         retry: { limit: 0 },
       };
 
-      if (options.payload != null) {
+      if (options.files) {
+        // multipart: files が1件でもあれば FormData を body に渡す（got は body 指定時 form/json を使えない）
+        const form = (deps?.formData ?? (() => new FormData()))();
+
+        if (options.payload != null && typeof options.payload !== 'string') {
+          for (const [key, value] of Object.entries(options.payload)) {
+            form.append(key, value);
+          }
+        }
+
+        for (const [key, part] of Object.entries(options.files)) {
+          const parts = Array.isArray(part) ? part : [part];
+          for (const p of parts) {
+            // Blob の第2引数 options は contentType 未指定時省略する（空文字にすると text/plain 扱いになる実装差を避ける）
+            const blob = p.contentType != null
+              ? new Blob([p.data], { type: p.contentType })
+              : new Blob([p.data]);
+            form.append(key, blob, p.filename);
+          }
+        }
+
+        fetchOptions.body = form;
+      } else if (options.payload != null) {
         if (typeof options.payload === 'string') {
           fetchOptions.body = options.payload;
         } else {
@@ -80,39 +120,37 @@ const createTransport = (deps?: TransportDeps): Transport => {
       }
 
       // got の型パラメータを指定しないと Response<unknown> になるためキャスト（string ボディが返ることは got の仕様上保証される）
-      const response = await http(url, fetchOptions) as Response<string>;
+      // rawBody は got の実装が常に保持する生バイト（型定義に出ないため個別に拡張）
+      const response = await http(url, fetchOptions) as Response<string> & { rawBody?: Buffer };
 
-      const text = response.body;
+      // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
+      const headers = response.headers as Record<string, string | string[]>;
+      const bytes = response.rawBody ? new Uint8Array(response.rawBody) : undefined;
+
+      const contentTypeHeader = headers['content-type'];
+      const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+
+      let text = '';
       let body: unknown = null;
 
-      if (text) {
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = text;
+      if (!isBinaryContentType(contentType)) {
+        text = response.body;
+        if (text) {
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = text;
+          }
         }
       }
 
       const status = response.statusCode;
 
       if (status < 200 || status >= 300) {
-        throw new HttpError(
-          `HTTPエラー ${status}`,
-          status,
-          body,
-          // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
-          response.headers as Record<string, string | string[]>,
-          text,
-        );
+        throw new HttpError(`HTTPエラー ${status}`, status, body, headers, text);
       }
 
-      return {
-        status,
-        // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
-        headers: response.headers as Record<string, string | string[]>,
-        body,
-        text,
-      };
+      return { status, headers, body, text, bytes };
     },
   };
 };

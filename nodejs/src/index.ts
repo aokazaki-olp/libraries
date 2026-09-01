@@ -11,7 +11,7 @@
 // ============================================================================
 
 export type { BaseClient, Plugin, ResponseHandler } from './ApiClient.js';
-export type { Transport, FetchOptions, RawResponse, RequestOptions } from './httpTypes.js';
+export type { Transport, FetchOptions, RawResponse, RequestOptions, FilePart, FormFields } from './httpTypes.js';
 export { HttpError, RetryExhaustedError } from './httpTypes.js';
 export type { Logger } from './LoggerFacade.js';
 
@@ -44,6 +44,9 @@ export type {
 
 export { SalesforceAuth } from './SalesforceAuth.js';
 export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.js';
+
+export { BacklogApiClient, BacklogApiError, BACKLOG_ERROR_CODE } from './BacklogApiClient.js';
+export type { BacklogClientOptions, BacklogAuth } from './BacklogApiClient.js';
 
 export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient.js';
 export type {
