@@ -232,6 +232,14 @@ describe('BacklogApiClient.create — エラー正規化', () => {
     await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
   });
 
+  it('errors[0].code が数値でない（文字列）場合は正規化せず HttpError のまま伝播する', async () => {
+    const transport = mockTransport({ status: 400, body: { errors: [{ message: 'x', code: '6' }] } });
+    const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });
+
+    await expect(client.get('/projects')).rejects.toThrow(HttpError);
+    await expect(client.get('/projects')).rejects.not.toBeInstanceOf(BacklogApiError);
+  });
+
   it('エラーボディが null の場合は正規化せず HttpError のまま伝播する', async () => {
     const transport = mockTransport({ status: 400, body: null });
     const client = BacklogApiClient.create(SPACE_URL, { apiKey: 'k' }, { transport });

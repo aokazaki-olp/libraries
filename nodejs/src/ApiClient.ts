@@ -96,9 +96,14 @@ const splitFormFields = (
     }
 
     if (Array.isArray(value)) {
+      // 空配列は「値なし」として省略する（every() は空配列に vacuously true を返すため、
+      // ここで先に弾かないとファイルの配列と誤判定され、files にも payload にも現れず沈黙して消える）
+      if (value.length === 0) {
+        continue;
+      }
       if (value.every(isFilePart)) {
         files ??= {};
-        files[key] = value as FilePart[];
+        files[key] = value;
         continue;
       }
       throw new TypeError(`form.${key} には配列を指定できません（ファイルの配列のみ対応。スカラーの配列は未対応）`);

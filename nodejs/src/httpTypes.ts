@@ -84,6 +84,8 @@ export class HttpError extends Error {
     public readonly headers: Record<string, string | string[]> = {},
     public readonly text: string = '',
     public readonly request?: RequestOptions,
+    /** 生バイト。RawResponse.bytes と同じ契約（組み込み transport は常に埋める）。 */
+    public readonly bytes?: Uint8Array,
   ) {
     super(message);
   }

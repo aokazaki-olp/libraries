@@ -147,7 +147,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
       const status = response.statusCode;
 
       if (status < 200 || status >= 300) {
-        throw new HttpError(`HTTPエラー ${status}`, status, body, headers, text);
+        throw new HttpError(`HTTPエラー ${status}`, status, body, headers, text, undefined, bytes);
       }
 
       return { status, headers, body, text, bytes };

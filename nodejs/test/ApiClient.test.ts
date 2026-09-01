@@ -502,6 +502,17 @@ describe('ApiClient.createClient — call — form のエッジケース', () =>
     expect(transport.calls[0].options?.payload).toEqual({ a: '1' });
   });
 
+  it('form の値が空配列の場合、値なしとして省略される（ファイル配列と誤判定して沈黙で消えない）', async () => {
+    const transport = mockTransport();
+    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
+
+    await client.call({ endpoint: '/x', method: 'POST', form: { a: '1', tags: [] } });
+
+    const call = transport.calls[0];
+    expect(call.options?.payload).toEqual({ a: '1' });
+    expect(call.options?.files).toBeUndefined();
+  });
+
   it('PUT / PATCH でも form が同様に処理される', async () => {
     const transport = mockTransport();
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });

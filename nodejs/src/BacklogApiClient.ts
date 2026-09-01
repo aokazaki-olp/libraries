@@ -75,7 +75,9 @@ const isBacklogErrorBody = (body: unknown): body is { errors: BacklogErrorItem[]
   // 直前で object かつ非 null を確認済み。errors フィールドを検査するためキャスト
   const errors = (body as Record<string, unknown>)['errors'];
   return Array.isArray(errors) && errors.length > 0 && errors.every(
-    (e) => typeof e === 'object' && e !== null && 'message' in e && 'code' in e,
+    (e) => typeof e === 'object' && e !== null
+      && typeof (e as Record<string, unknown>)['message'] === 'string'
+      && typeof (e as Record<string, unknown>)['code'] === 'number',
   );
 };
 

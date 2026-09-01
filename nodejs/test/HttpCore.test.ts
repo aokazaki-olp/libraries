@@ -572,6 +572,47 @@ describe('HttpCore.createTransport — bytes 抽出', () => {
     const transport = HttpCore.createTransport({ got: mockGot });
     await expect(transport.fetch('https://example.com/file')).rejects.toThrow(HttpError);
   });
+
+  it('非2xxレスポンスでも HttpError.bytes に生バイトが渡る（成功時と同じ契約）', async () => {
+    const binary = Buffer.from([0x00, 0x01, 0x02]);
+    const mockResponse = {
+      statusCode: 500,
+      headers: { 'content-type': 'application/octet-stream' },
+      body: binary.toString('latin1'),
+      rawBody: binary,
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    let err: HttpError | undefined;
+    try {
+      await transport.fetch('https://example.com/file');
+    } catch (e) {
+      err = e as HttpError;
+    }
+    expect(err?.bytes).toEqual(new Uint8Array(binary));
+  });
+
+  it('JSON エラーレスポンス（非バイナリ）でも HttpError.bytes に生バイトが渡る', async () => {
+    const mockResponse = {
+      statusCode: 404,
+      headers: { 'content-type': 'application/json' },
+      body: '{"error":"Not Found"}',
+      rawBody: Buffer.from('{"error":"Not Found"}'),
+    };
+    const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    let err: HttpError | undefined;
+    try {
+      await transport.fetch('https://example.com/api');
+    } catch (e) {
+      err = e as HttpError;
+    }
+    expect(err?.bytes).toEqual(new Uint8Array(Buffer.from('{"error":"Not Found"}')));
+  });
 });
 
 // ============================================================================
