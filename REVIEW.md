@@ -28,7 +28,7 @@
 | SlackApiClient | SlackClient.gs:139-187 | **A** | responseHandler パターンで簡潔 |
 | SlackWebhookClient | SlackClient.gs:213-302 | **A** | Slack Webhook 仕様に忠実 |
 | LoggerFacade | LoggerFacade.gs | **A** | SLF4J 互換の設計が簡潔で明確 |
-| LazyTemplate | LazyTemplate.gs | **A-** | 高機能テンプレートエンジン。M-5 は設計意図によりクローズ |
+| LazyTemplate | LazyTemplate.gs | **A-** | 高機能テンプレートエンジン |
 | SlackFilters | SlackFilters.gs | **A** | 純関数のみ。SF-1, SF-2 修正済み |
 | SlackResolvers | SlackResolvers.gs | **A** | SR-B1（H）修正済み。SR-1〜3 修正済み |
 | resolveSheet | resolveSheet.gs | **A** | 柔軟な入力対応。全修正済み |
@@ -76,16 +76,6 @@ resolveSheet ← loadFromRangeAsObjects ← loadFromSheetAsObjects
 
 差分: SlackCore のみ 429 時に `Retry-After` ヘッダーを尊重し固定 baseDelay = 1000ms。
 結論: `Retry-After` は RFC 7231 Section 7.1.3 の標準ヘッダーであり HttpCore に統合する方向が自然。ただし strategy パターン導入による複雑度とのトレードオフがある。**新たな API クライアント追加タイミングで統合を検討**。
-
----
-
-## 設計意図によりクローズした指摘
-
-| ID | モジュール | 概要 | クローズ理由 |
-|---|---|---|---|
-| M-5 | LazyTemplate | `applyFilters` が未知フィルター名を黙殺 | テンプレートエンジンとしてのフォールバック動作として合理的。LoggerFacade 依存の追加は設計方針に反する |
-| M-7 | GSC Client | `withGoogleAuth` のエクスポート | Google API 共通 OAuth デコレータとして再利用前提の暫定措置 |
-| N-2 | SlackWebhookClient | `WebhookClient.send` とのレスポンス形式不一致 | Slack Webhook のプレーンテキストレスポンスを正確に反映するベストプラクティス |
 
 ---
 
@@ -507,7 +497,7 @@ HTTP 通信の共通基盤。Transport パターンで抽象化した fetch イ�
 #### SlackWebhookClient（L213-302） — 品質: A
 
 - `SlackCore.withRetry` で Slack 固有のリトライポリシーを適用
-- `body` が生テキスト（`"ok"`）なのは Slack Webhook のレスポンス形式を正確に反映（N-2: クローズ）
+- `body` が生テキスト（`"ok"`）なのは Slack Webhook のレスポンス形式を正確に反映
 
 ---
 
@@ -527,7 +517,6 @@ HTTP 通信の共通基盤。Transport パターンで抽象化した fetch イ�
 - エクスポート処理が module.exports / window / global の3パターンに対応（H-3 の修正成果）
 
 **注意点**:
-- `applyFilters()` が未知のフィルター名を黙殺 → M-5（設計意図によりクローズ）
 - `parseStringLiteral()` で `BACKSLASH_SENTINEL`（`'\uE000__LT_BS__\uE000'`）を一時退避に使用。衝突には入力にその完全一致シーケンスが含まれる必要があり、実用上無視できるリスク
 
 ---
@@ -586,7 +575,7 @@ GAS の `Range` は `getA1Notation()` を持ち `getSheetId()` を持たない�
 - `ScriptApp.getOAuthToken()` を毎回動的に取得（トークンの有効期限切れに自動対応）
 - `normalizeSiteUrl()` で `sc-domain:` プレフィックスを適切に処理
 - GSC 向けの緩やかなリトライ設定（maxRetries: 5, baseDelayMs: 1000ms）
-- `withGoogleAuth` は Google API 共通の OAuth デコレータとしてエクスポート（M-7: 設計意図によりクローズ）
+- `withGoogleAuth` は Google API 共通の OAuth デコレータとしてエクスポート
 
 ---
 
@@ -603,10 +592,7 @@ GAS の `Range` は `getA1Notation()` を持ち `getSheetId()` を持たない�
 | M-2 | Medium | SlackCore | Retry-After parseInt NaN 安全性 | **修正済み** |
 | M-3 | Medium | HttpCore | hasHeader の hasOwnProperty ガード欠落 | **修正済み** |
 | M-4 | Medium | resolveSheet | 最終フォールバックが無効な型を返す | **修正済み** |
-| M-5 | Medium | LazyTemplate | applyFilters が未知フィルターを黙殺 | クローズ（設計意図） |
 | M-6 | Medium | WebhookClient 他 | パラメータ再代入 | **修正済み** |
-| M-7 | Medium | GSC Client | withGoogleAuth のエクスポート | クローズ（設計意図） |
-| M-8 | Medium | TestRunner | グローバル可変状態 | 対象外（テストコード） |
 | M-9 | Medium | SlackClient.test.gs | slackResponseHandler テスト複製 | **修正済み** |
 | L-1 | Low | ClientHelper | use() のプラグイン戻り値型検証なし | **修正済み** |
 | L-2 | Low | ApiClient | デフォルトメソッドが POST | **修正済み** |
@@ -620,7 +606,6 @@ GAS の `Range` は `getA1Notation()` を持ち `getSheetId()` を持たない�
 | ID | 重要度 | モジュール | 概要 | ステータス |
 |---|---|---|---|---|
 | N-1 | — | HttpCore, SlackCore | withRetry の構造的重複（~70% 共通） | 検討事項 T-1 に移行 |
-| N-2 | — | SlackWebhookClient | WebhookClient.send とのレスポンス形式不一致 | クローズ（ベストプラクティス） |
 | N-3 | Low | ApiClient | extend() で logger が二重ラップされる | **修正済み** |
 | N-4 | Low | ApiClient | DELETE リクエストの body 取り扱い | **修正済み** |
 | N-5 | Low | ApiClient | createClient 内部の純粋関数が毎回再定義 | **修正済み** |
