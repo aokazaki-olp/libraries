@@ -58,20 +58,41 @@ class LazyTemplate {
   /** バックスラッシュ一時退避センチネル (PUA U+E000 で囲みテンプレート本文との衝突を回避) */
   static readonly BACKSLASH_SENTINEL = '__LT_BS__';
 
-  /** プリミティブフィルター 18個 */
-  static readonly PRIMITIVE_FILTERS = {
+  /** プリミティブフィルター 18個（全インスタンスで共有されるため実行時も凍結する） */
+  static readonly PRIMITIVE_FILTERS = Object.freeze({
     trim: (v: unknown) => typeof v === 'string' ? v.trim() : v,
     trimStart: (v: unknown) => typeof v === 'string' ? v.trimStart() : v,
     trimEnd: (v: unknown) => typeof v === 'string' ? v.trimEnd() : v,
     upper: (v: unknown) => typeof v === 'string' ? v.toUpperCase() : v,
     lower: (v: unknown) => typeof v === 'string' ? v.toLowerCase() : v,
-    round: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : v; },
-    int: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : v; },
-    float: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : v; },
-    abs: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.abs(n) : v; },
-    ceil: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.ceil(n) : v; },
-    floor: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.floor(n) : v; },
-    negate: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? -n : v; },
+    round: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : v;
+    },
+    int: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.trunc(n) : v;
+    },
+    float: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : v;
+    },
+    abs: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.abs(n) : v;
+    },
+    ceil: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.ceil(n) : v;
+    },
+    floor: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.floor(n) : v;
+    },
+    negate: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? -n : v;
+    },
     length: (v: unknown) => (typeof v === 'string' || Array.isArray(v)) ? v.length : 0,
     string: (v: unknown) => v == null ? '' : String(v),
     boolean: (v: unknown) => Boolean(v),
@@ -90,7 +111,7 @@ class LazyTemplate {
         return '{}';
       }
     },
-  } as const satisfies FilterMap;
+  } as const satisfies FilterMap);
 
   private readonly cache: Map<string, CompiledEvaluator>;
   private readonly parts: TemplatePart[];
@@ -134,7 +155,7 @@ class LazyTemplate {
       // matchAll の結果は index が必ず定義される（RegExp.exec の仕様）
       const index = m.index as number;
       if (index > lastIndex) {
-        parts.push({ type: 'text', value: template.slice(lastIndex, m.index) });
+        parts.push({ type: 'text', value: template.slice(lastIndex, index) });
       }
       parts.push({
         type: 'placeholder',
@@ -300,12 +321,10 @@ class LazyTemplate {
     }
 
     const compiled: CompiledEvaluator[] = terms.map(rawTerm => {
-      const segments = this.parseFilters(rawTerm);
-      const term = segments.shift();
+      const [term, ...filterNames] = this.parseFilters(rawTerm);
       if (term === undefined) {
         return () => undefined;
       }
-      const filterNames = segments;
 
       if (LazyTemplate.NUMBER_LITERAL_PATTERN.test(term)) {
         const n = Number(term);
@@ -359,23 +378,23 @@ class LazyTemplate {
       }
 
       return (data: object) => {
-        let acc: unknown = data;
+        let accumulator: unknown = data;
         for (const key of path) {
-          if (acc == null) {
+          if (accumulator == null) {
             return undefined;
           }
-          const t = typeof acc;
-          if (t !== 'object' && t !== 'function') {
+          const type = typeof accumulator;
+          if (type !== 'object' && type !== 'function') {
             return undefined;
           }
-          // 直上のガードで acc は object|function 確定。unknown を index 可能型へ橋渡し
-          const value = (acc as Record<string | number, unknown>)[key];
+          // 直上のガードで accumulator は object|function 確定。unknown を index 可能型へ橋渡し
+          const value = (accumulator as Record<string | number, unknown>)[key];
           if (value === undefined) {
             return undefined;
           }
-          acc = value;
+          accumulator = value;
         }
-        return this.applyFilters(acc, filterNames);
+        return this.applyFilters(accumulator, filterNames);
       };
     });
 

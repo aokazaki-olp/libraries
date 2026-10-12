@@ -24,8 +24,9 @@
 
 | パターン | 使用基準 | 使用例 |
 |---|---|---|
-| **IIFE**<br>`const X = (() => { ... })();` | 内部関数やキャッシュをカプセル化し、公開APIのみを `return` する場合。 | `HttpClient`, `LazyTemplate`, `resolveSheet` 等 |
+| **IIFE**<br>`const X = (() => { ... })();` | 内部関数やキャッシュをカプセル化し、公開APIのみを `return` する場合。 | `HttpClient`, `resolveSheet` 等 |
 | **関数宣言**<br>`function name() {}` | 単一機能で完結しており、ホイスティング（定義位置の制約回避）が必要な場合。 | `deepFreeze` 等 |
+| **UMD風 IIFE**<br>`(function(global) { ... })(this);` | GAS 以外（Node.js/ブラウザ）からも `require` 等で読み込む必要がある場合。内部で `module.exports` / `window` / `global` へ振り分けてエクスポートする。 | `LazyTemplate` |
 
 ### 2.2 ファイルヘッダー (JSDoc)
 

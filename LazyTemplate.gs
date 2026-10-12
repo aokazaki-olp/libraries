@@ -1,8 +1,7 @@
 'use strict';
 
 /**
- * LazyTemplate
- * 
+ * LazyTemplate.gs
  * @description ランタイム非依存の遅延評価テンプレートエンジン
  * 
  * テンプレート構文:
@@ -271,8 +270,7 @@ class LazyTemplate {
    * 
    * @param {string} name フィルター名
    * @param {Function} fn フィルター関数
-   * @throws {TypeError} name が文字列以外、または fn が関数以外の場合
-   * @throws {Error} フィルター名が不正な形式の場合
+   * @throws {TypeError} name が空でない文字列以外、または fn が関数以外の場合
    */
   registerFilter(name, fn) {
     if (typeof name !== 'string' || !name) {
@@ -289,7 +287,7 @@ class LazyTemplate {
    * テンプレートのパース
    * 
    * @param {string} template テンプレート文字列
-   * @returns {Array} パース結果
+   * @returns {Array<{type: 'text', value: string}|{type: 'placeholder', backslashes: string, expression: string}>} パース結果
    */
   parseTemplate(template) {
     const parts = [];
@@ -507,25 +505,23 @@ class LazyTemplate {
     // 各項をコンパイル
     const compiled = terms.map(rawTerm => {
       // フィルターで分割
-      const segments = this.parseFilters(rawTerm);
-      const term = segments.shift();
-      const filters = segments;
+      const [term, ...filterNames] = this.parseFilters(rawTerm);
 
       // 数値リテラル
       if (LazyTemplate.NUMBER_LITERAL_PATTERN.test(term)) {
         const n = Number(term);
-        return () => this.applyFilters(n, filters);
+        return () => this.applyFilters(n, filterNames);
       }
 
       // 文字列リテラル
       if (term.startsWith('"') || term.startsWith("'")) {
         const value = LazyTemplate.parseStringLiteral(term);
-        return () => this.applyFilters(value, filters);
+        return () => this.applyFilters(value, filterNames);
       }
 
       // 特殊ケース: "." はデータ全体を参照
       if (term === '.') {
-        return data => this.applyFilters(data, filters);
+        return data => this.applyFilters(data, filterNames);
       }
 
       // キー参照
@@ -585,7 +581,7 @@ class LazyTemplate {
           }
           accumulator = value;
         }
-        return this.applyFilters(accumulator, filters);
+        return this.applyFilters(accumulator, filterNames);
       };
     });
 
@@ -607,7 +603,7 @@ class LazyTemplate {
    * 
    * @param {Object} data 展開するデータ
    * @returns {string} 展開後の文字列
-   * @throws {TypeError} data がオブジェクトでない場合
+   * @throws {TypeError} data が null または undefined の場合
    */
   evaluate(data) {
     if (data == null) {

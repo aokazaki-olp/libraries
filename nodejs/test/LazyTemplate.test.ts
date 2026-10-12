@@ -365,6 +365,18 @@ describe('LazyTemplate — インスタンスごとにフィルターキャッ�
     expect(t1.evaluate({ x: 'hi' })).toBe('hi!');
     expect(t2.evaluate({ x: 'hi' })).toBe('hi');
   });
+
+  it('PRIMITIVE_FILTERS は実行時に凍結されている', () => {
+    expect(Object.isFrozen(LazyTemplate.PRIMITIVE_FILTERS)).toBe(true);
+  });
+
+  it('registerFilter でプリミティブを上書きしても他インスタンスに波及しない', () => {
+    const t1 = new LazyTemplate('{{{x | upper}}}');
+    const t2 = new LazyTemplate('{{{x | upper}}}');
+    t1.registerFilter('upper', () => 'overridden');
+    expect(t1.evaluate({ x: 'hi' })).toBe('overridden');
+    expect(t2.evaluate({ x: 'hi' })).toBe('HI');
+  });
 });
 
 // ============================================================================
