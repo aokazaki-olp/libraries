@@ -11,12 +11,19 @@
  * 対象テストスイート:
  *   - HttpClient (HttpCore / ApiClient / WebhookClient)
  *   - SlackClient (SlackCore / SlackApiClient / SlackWebhookClient)
+ *   - SlackResolvers
  *   - LoggerFacade
  *   - LazyTemplate
  *   - SlackFilters
  *   - resolveSheet
  *   - loadFromSheetAsObjects
  *   - GoogleSearchConsoleApiClient
+ *   - GBizInfoApiClient
+ *   - InvoiceApiClient
+ *   - SalesforceApiClient
+ *   - SalesforceAuth
+ *   - SalesforceApiClientPlugins
+ *   - deepFreeze
  */
 
 const vm = require('vm');
@@ -135,6 +142,8 @@ loadAndRun('GBizInfoApiClient.gs');
 loadAndRun('InvoiceApiClient.gs');
 loadAndRun('SalesforceApiClient.gs');
 loadAndRun('SalesforceAuth.gs');
+loadAndRun('SalesforceApiClientPlugins.gs');
+loadAndRun('deepFreeze.gs');
 
 // テストファイル（依存順に読み込み）
 // HttpClient.test.gs 内でグローバルな TestRunner, MockTransport などが定義される
@@ -151,6 +160,8 @@ loadAndRun('GBizInfoApiClient.test.gs');
 loadAndRun('InvoiceApiClient.test.gs');
 loadAndRun('SalesforceApiClient.test.gs');
 loadAndRun('SalesforceAuth.test.gs');
+loadAndRun('SalesforceApiClientPlugins.test.gs');
+loadAndRun('deepFreeze.test.gs');
 
 // ============================================================================
 // テスト実行
@@ -169,7 +180,9 @@ const suites = [
   { name: 'GBizInfoApiClient', fn: 'runAllGBizInfoTests()' },
   { name: 'InvoiceApiClient', fn: 'runAllInvoiceTests()' },
   { name: 'SalesforceApiClient', fn: 'runAllSalesforceApiClientTests()' },
-  { name: 'SalesforceAuth', fn: 'runAllSalesforceAuthTests()' }
+  { name: 'SalesforceAuth', fn: 'runAllSalesforceAuthTests()' },
+  { name: 'SalesforceApiClientPlugins', fn: 'runAllSalesforceApiClientPluginsTests()' },
+  { name: 'deepFreeze', fn: 'runAllDeepFreezeTests()' }
 ];
 
 const allResults = [];

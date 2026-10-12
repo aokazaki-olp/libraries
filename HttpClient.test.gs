@@ -1506,7 +1506,6 @@ const runEdgeCaseTests = () => {
     const call = mockTransport.getCalls()[0];
     assertEqual(call.options.headers.Authorization, 'Bearer my-token');
   });
-};
 
   // ─── plugin と HTTP メソッド名衝突テスト ────────────────────────
 
@@ -1546,6 +1545,7 @@ const runEdgeCaseTests = () => {
     const call = mockTransport.getCalls()[0];
     assertTrue(call.url.includes('/items/xyz-999'));
   });
+};
 
 // ============================================================================
 // インテグレーションテスト（実際のHTTP通信が必要）
