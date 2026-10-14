@@ -1,5 +1,6 @@
 /**
  * ApiClient.ts
+ *
  * @description REST API用クライアント（baseUrl + endpoint 方式）
  *
  * 設計思想:
@@ -23,7 +24,7 @@ const trimRightSlash = (s: string): string => s.replace(/\/+$/, '');
 const trimLeftSlash = (s: string): string => s.replace(/^\/+/, '');
 
 const encodeKeyValue = (key: string, value: unknown): string =>
-  `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`;
+  `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`;
 
 const buildQueryString = (query?: Record<string, unknown>): string => {
   if (!query) {
@@ -140,23 +141,43 @@ type BaseClient<
 // ApiClient
 // ============================================================================
 
-interface ClientConfig<TResponse = unknown> {
+interface ClientConfig<TResponse = RawResponse> {
   baseUrl: string;
   transport?: Transport;
   logger?: Logger;
   headers?: Record<string, string>;
+  /** 省略時は RawResponse をそのまま返す */
   responseHandler?: ResponseHandler<TResponse>;
 }
 
 /**
  * HTTPクライアントを作成する
  *
+ * responseHandler を省略すると、レスポンス型は RawResponse になる。
+ * 別の型で受けたい場合は、その型へ変換・検証する responseHandler を渡す。
+ *
  * @param config - クライアント設定
  * @returns クライアント（call/get/post/put/patch/delete/extend/use）。use() は TypeError をスローする場合がある
  * @remarks use() で追加した plugin メソッドは HTTP メソッド名（get/post/put/patch/delete）と同名でも plugin が優先される
  */
-const createClient = <TResponse = unknown>(
+function createClient(
+  config: ClientConfig & { responseHandler?: undefined },
+): BaseClient<RawResponse>;
+function createClient<TResponse>(
+  config: ClientConfig<TResponse> & { responseHandler: ResponseHandler<TResponse> },
+): BaseClient<TResponse>;
+function createClient<TResponse>(
   config: ClientConfig<TResponse>,
+): BaseClient<TResponse> | BaseClient<RawResponse> {
+  const { responseHandler } = config;
+  if (responseHandler) {
+    return buildClient({ ...config, responseHandler });
+  }
+  return buildClient({ ...config, responseHandler: (response: RawResponse) => response });
+}
+
+const buildClient = <TResponse>(
+  config: ClientConfig<TResponse> & { responseHandler: ResponseHandler<TResponse> },
 ): BaseClient<TResponse> => {
   const baseUrl = trimRightSlash(config.baseUrl);
   const transport = config.transport ?? HttpCore.createTransport();
@@ -203,13 +224,11 @@ const createClient = <TResponse = unknown>(
 
     const rawResponse: RawResponse = await transport.fetch(url, options);
 
-    return responseHandler
-      ? responseHandler(rawResponse, request)
-      : (rawResponse as unknown as TResponse); // responseHandler 省略時は RawResponse === TResponse を呼び出し側が保証する
+    return responseHandler(rawResponse, request);
   };
 
   const extend = (decorator: (transport: Transport) => Transport): BaseClient<TResponse> =>
-    createClient<TResponse>({
+    buildClient<TResponse>({
       baseUrl,
       logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
@@ -223,11 +242,13 @@ const createClient = <TResponse = unknown>(
     // eslint-disable-next-line prefer-const
     let client: BaseClient<TResponse, TMethods>;
 
-    const use = (<TNew extends object>(
-      pluginOrName: ((c: BaseClient<TResponse, TMethods>) => TNew) | string,
+    // use はオーバーロード（plugin 形式 / name + fn 形式）を持ち、戻り値の型が引数の形で変わる。
+    // 単一の実装シグネチャからオーバーロード型を導く手段が無いため、型の付与はキャストで行う
+    const use = ((
+      pluginOrName: ((c: BaseClient<TResponse, TMethods>) => unknown) | string,
       fn?: (c: BaseClient<TResponse, TMethods>) => unknown,
     ) => {
-      let newMethods: object;
+      let newMethods: unknown;
 
       if (typeof pluginOrName === 'string') {
         if (!fn) {
@@ -236,22 +257,21 @@ const createClient = <TResponse = unknown>(
         newMethods = { [pluginOrName]: fn(client) };
       } else {
         newMethods = pluginOrName(client);
-        if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
-          throw new TypeError('plugin の戻り値には Object を指定してください');
-        }
+      }
+      // plugin は利用者が書く境界。型が通っていても JS からは何でも返りうる
+      if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
+        throw new TypeError('plugin の戻り値には Object を指定してください');
       }
 
       return createExtended({ ...additionalMethods, ...newMethods });
-    }) as BaseClient<TResponse, TMethods>['use']; // use のオーバーロードシグネチャは条件型で表現されており、実装シグネチャと型が一致しない
+    }) as BaseClient<TResponse, TMethods>['use'];
 
     const httpMethods: HttpMethods<TResponse> = {
       get: (endpoint, query, options) => call({ ...options, method: 'GET', endpoint, query }),
       post: (endpoint, body, options) => call({ ...options, method: 'POST', endpoint, body }),
       put: (endpoint, body, options) => call({ ...options, method: 'PUT', endpoint, body }),
       patch: (endpoint, body, options) => call({ ...options, method: 'PATCH', endpoint, body }),
-      delete: (endpoint, options) =>
-        // Omit<Partial<RequestOptions>, 'body'> はスプレッド時に Partial<RequestOptions> として推論されないためキャスト
-        call({ ...(options as Partial<RequestOptions>), method: 'DELETE', endpoint }),
+      delete: (endpoint, options) => call({ ...options, method: 'DELETE', endpoint }),
     };
 
     // plugin が HTTP メソッド名（delete 等）と同名メソッドを定義した場合に plugin を優先するため
@@ -262,13 +282,13 @@ const createClient = <TResponse = unknown>(
       call,
       extend,
       use,
-    } as unknown as BaseClient<TResponse, TMethods>; // スプレッド合成は型システムで証明不能: additionalMethods ∪ HttpMethods
+    };
 
     return client;
   };
 
   // 追加メソッド無しの初期クライアント。空オブジェクトを空メソッド集合の起点にする
-  return createExtended({} as Record<string, never>);
+  return createExtended<Record<string, never>>({});
 };
 
 export const ApiClient = {
