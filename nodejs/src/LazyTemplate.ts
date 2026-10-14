@@ -1,5 +1,6 @@
 /**
  * LazyTemplate.ts
+ *
  * @description ランタイム非依存の遅延評価テンプレートエンジン
  *
  * テンプレート構文:
@@ -41,6 +42,16 @@ interface TextPart {
 type TemplatePart = TextPart | PlaceholderPart;
 
 type CompiledEvaluator = (data: object) => unknown;
+
+/** JSON 文字列リテラルをパースする。文字列にならなければ undefined */
+const parseJsonString = (literal: string): string | undefined => {
+  try {
+    const parsed: unknown = JSON.parse(literal);
+    return typeof parsed === 'string' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 class LazyTemplate {
   /** プレースホルダーパターン: {{{expression}}} */
@@ -95,6 +106,7 @@ class LazyTemplate {
       return Number.isFinite(n) ? -n : v;
     },
     length: (v: unknown) => (typeof v === 'string' || Array.isArray(v) ? v.length : 0),
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- 任意の値を String() の既定規則で文字列にするのがこのフィルターの仕様
     string: (v: unknown) => (v == null ? '' : String(v)),
     boolean: (v: unknown) => Boolean(v),
     default: (v: unknown) => (v == null ? '' : v),
@@ -153,17 +165,17 @@ class LazyTemplate {
     let lastIndex = 0;
 
     for (const m of template.matchAll(new RegExp(LazyTemplate.PLACEHOLDER_PATTERN.source, 'g'))) {
-      // matchAll の結果は index が必ず定義される（RegExp.exec の仕様）
-      const index = m.index as number;
-      if (index > lastIndex) {
+      // 2つのグループはどちらも必ずマッチに参加する（空文字にもマッチする）。既定値は型を埋めるためだけのもの
+      const [whole, backslashes = '', expression = ''] = m;
+      if (m.index > lastIndex) {
         parts.push({ type: 'text', value: template.slice(lastIndex, m.index) });
       }
       parts.push({
         type: 'placeholder',
-        backslashes: m[1],
-        expression: m[2].trim(),
+        backslashes,
+        expression: expression.trim(),
       });
-      lastIndex = index + m[0].length;
+      lastIndex = m.index + whole.length;
     }
 
     if (lastIndex < template.length) {
@@ -181,10 +193,11 @@ class LazyTemplate {
     const trimmed = expression.trim();
 
     for (let i = 0; i < trimmed.length; i++) {
-      const c = trimmed[i];
+      const c = trimmed.charAt(i);
 
       if (c === '\\' && i + 1 < trimmed.length) {
-        stripped += c + trimmed[++i];
+        i++;
+        stripped += c + trimmed.charAt(i);
         wasSpace = false;
         continue;
       }
@@ -242,11 +255,7 @@ class LazyTemplate {
     token = token.trim();
 
     if (token.startsWith('"')) {
-      try {
-        return JSON.parse(token);
-      } catch {
-        return undefined;
-      }
+      return parseJsonString(token);
     }
 
     if (token.startsWith("'")) {
@@ -257,11 +266,7 @@ class LazyTemplate {
         .replace(/\\'/g, "'")
         .replaceAll(sentinel, '\\\\')
         .replace(/"/g, '\\"')}"`;
-      try {
-        return JSON.parse(quoted);
-      } catch {
-        return undefined;
-      }
+      return parseJsonString(quoted);
     }
 
     return undefined;
@@ -350,11 +355,15 @@ class LazyTemplate {
       let valid = true;
 
       for (const m of term.matchAll(new RegExp(LazyTemplate.KEY_SEGMENT_PATTERN.source, 'g'))) {
+        // 識別子（グループ1）とブラケット（グループ2）は選択肢なので、どちらか一方だけが値を持つ
         const identifier = m[1];
         const bracket = m[2];
 
         if (identifier) {
           path.push(identifier);
+        } else if (bracket === undefined) {
+          valid = false;
+          break;
         } else {
           let key: string | number | undefined;
           if (bracket.startsWith('"') || bracket.startsWith("'")) {
@@ -422,7 +431,9 @@ class LazyTemplate {
    * @throws {TypeError} data が null/undefined の場合
    */
   evaluate(data: object): string {
-    if (data == null) {
+    // 公開 API の境界。型が object でも JS からは何でも渡りうる
+    const value: unknown = data;
+    if (value == null) {
       throw new TypeError('data にはオブジェクトを指定してください');
     }
 
