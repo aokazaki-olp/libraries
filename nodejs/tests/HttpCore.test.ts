@@ -176,6 +176,14 @@ describe('HttpCore.withRetry — リトライ対象外', () => {
     await expect(retrying.fetch('https://example.com')).rejects.toThrow('already exhausted');
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('TypeError（呼び出し側の誤り）はリトライしない', async () => {
+    const transport = makeErrorTransport(new TypeError('bad method'));
+    const retrying = HttpCore.withRetry(transport, { maxRetries: 3 });
+
+    await expect(retrying.fetch('https://example.com')).rejects.toThrow(TypeError);
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ============================================================================
@@ -307,6 +315,30 @@ describe('HttpCore — デコレータ積み重ね', () => {
 // ============================================================================
 
 describe('HttpCore.createTransport — got 統合', () => {
+  it('HTTP メソッドでない method は got を呼ばずに TypeError をスローする', async () => {
+    const mockGotFn = vi.fn();
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await expect(transport.fetch('https://example.com', { method: 'FETCH' })).rejects.toThrow(
+      TypeError,
+    );
+    expect(mockGotFn).not.toHaveBeenCalled();
+  });
+
+  it('値が undefined のヘッダは RawResponse.headers から除く', async () => {
+    const mockGotFn = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      headers: { 'content-type': 'text/plain', 'x-empty': undefined },
+      body: 'ok',
+    });
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    const response = await transport.fetch('https://example.com');
+    expect(response.headers).toEqual({ 'content-type': 'text/plain' });
+  });
+
   it('非2xxレスポンスで HttpError をスローする', async () => {
     const mockResponse = {
       statusCode: 404,

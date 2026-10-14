@@ -1,5 +1,6 @@
 /**
  * HttpCore.ts
+ *
  * @description HTTP通信の共通基盤（Transport・デコレータ）
  *
  * 構成:
@@ -8,7 +9,8 @@
  *   withLogger       - リクエスト/レスポンスロギングデコレータ
  */
 
-import got, { type Got, type Method, type OptionsInit, type Response } from 'got';
+import got, { type Got, type Method, type OptionsOfTextResponseBodyWrapped } from 'got';
+import type { IncomingHttpHeaders } from 'node:http';
 import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { HttpError, RetryExhaustedError } from './httpTypes.ts';
@@ -33,6 +35,30 @@ const hasHeader = (headers: Record<string, string>, key: string): boolean => {
   return Object.keys(headers).some((k) => k.toLowerCase() === needle);
 };
 
+const METHODS: ReadonlySet<string> = new Set<Method>([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'HEAD',
+  'DELETE',
+  'OPTIONS',
+  'TRACE',
+]);
+
+const isMethod = (method: string): method is Method => METHODS.has(method);
+
+/** got のヘッダ（値に undefined を含みうる）から値のあるものだけを残す */
+const normalizeHeaders = (headers: IncomingHttpHeaders): Record<string, string | string[]> => {
+  const normalized: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (v !== undefined) {
+      normalized[k] = v;
+    }
+  }
+  return normalized;
+};
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
@@ -48,6 +74,7 @@ interface TransportDeps {
  *
  * @param deps - 依存注入（テスト用）
  * @returns Transport
+ * @throws {TypeError} options.method が HTTP メソッドでない場合
  * @throws {HttpError} HTTPステータスが2xx以外の場合
  */
 const createTransport = (deps?: TransportDeps): Transport => {
@@ -55,11 +82,15 @@ const createTransport = (deps?: TransportDeps): Transport => {
 
   return {
     fetch: async (url: string, options: FetchOptions = {}): Promise<RawResponse> => {
-      // options.method は呼び出し側指定の HTTP 動詞前提で Method union として扱う（未知動詞は got 実行時に顕在化）
-      const method = (options.method ?? 'GET').toUpperCase() as Method;
+      const method = (options.method ?? 'GET').toUpperCase();
+      if (!isMethod(method)) {
+        throw new TypeError(`method には HTTP メソッドを指定してください (received: ${method})`);
+      }
 
-      const fetchOptions: OptionsInit = {
+      const fetchOptions: OptionsOfTextResponseBodyWrapped = {
         method,
+        responseType: 'text',
+        resolveBodyOnly: false,
         headers: options.headers,
         throwHttpErrors: false,
         retry: { limit: 0 },
@@ -77,8 +108,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
         fetchOptions.timeout = { request: options.timeoutMs };
       }
 
-      // got の型パラメータを指定しないと Response<unknown> になるためキャスト（string ボディが返ることは got の仕様上保証される）
-      const response = (await http(url, fetchOptions)) as Response<string>;
+      const response = await http(url, fetchOptions);
 
       const text = response.body;
       let body: unknown = null;
@@ -92,22 +122,15 @@ const createTransport = (deps?: TransportDeps): Transport => {
       }
 
       const status = response.statusCode;
+      const headers = normalizeHeaders(response.headers);
 
       if (status < 200 || status >= 300) {
-        throw new HttpError(
-          `HTTPエラー ${status}`,
-          status,
-          body,
-          // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
-          response.headers as Record<string, string | string[]>,
-          text,
-        );
+        throw new HttpError(`HTTPエラー ${String(status)}`, status, body, headers, text);
       }
 
       return {
         status,
-        // got の headers 型を RawResponse.headers（Record<string, string|string[]>）として扱う
-        headers: response.headers as Record<string, string | string[]>,
+        headers,
         body,
         text,
       };
@@ -129,9 +152,12 @@ const shouldRetry = (e: unknown): boolean => {
   if (e instanceof HttpError) {
     return e.status === 429 || (e.status >= 500 && e.status < 600);
   }
-  // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする。
-  // 正しく実装された Transport ではプログラミングエラーはここに到達しない前提。
-  return !(e instanceof RetryExhaustedError);
+  // TypeError は呼び出し側の誤り（不正な method 等）。再送しても結果は変わらない
+  if (e instanceof TypeError || e instanceof RetryExhaustedError) {
+    return false;
+  }
+  // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする
+  return true;
 };
 
 /**
@@ -150,42 +176,34 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
   return {
     fetch: async (url: string, fetchOptions?: FetchOptions): Promise<RawResponse> => {
       const method = fetchOptions?.method ?? 'GET';
-      let lastError: unknown = null;
 
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 成功で return、リトライ不能・上限到達で throw するまで回る（ループ後に到達しない）
+      for (let attempt = 0; ; attempt++) {
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          if (e instanceof RetryExhaustedError) {
-            throw e;
-          }
-
           if (!shouldRetry(e)) {
             throw e;
           }
 
-          lastError = e;
-
           const status = e instanceof HttpError ? e.status : undefined;
-          const statusLabel = status != null ? ` status=${status}` : '';
+          const statusLabel = status != null ? ` status=${String(status)}` : '';
 
-          if (attempt === maxRetries) {
+          if (attempt >= maxRetries) {
             log?.error(`[HTTP] ✖ RETRY exhausted${statusLabel} ${method} ${url}`);
             throw new RetryExhaustedError(
-              `リトライ回数上限に達しました${status != null ? ` (HTTP ${status})` : ''}`,
-              { cause: lastError },
+              `リトライ回数上限に達しました${status != null ? ` (HTTP ${String(status)})` : ''}`,
+              { cause: e },
             );
           }
 
-          const delay = Math.pow(2, attempt) * baseDelayMs;
+          const delay = 2 ** attempt * baseDelayMs;
           log?.warn(
-            `[HTTP] ⚠ RETRY attempt=${attempt + 1}/${maxRetries}${statusLabel} delay=${delay}ms ${method} ${url}`,
+            `[HTTP] ⚠ RETRY attempt=${String(attempt + 1)}/${String(maxRetries)}${statusLabel} delay=${String(delay)}ms ${method} ${url}`,
           );
           await sleep(delay);
         }
       }
-
-      throw lastError ?? new RetryExhaustedError('リトライ回数上限に達しました');
     },
   };
 };
@@ -217,11 +235,11 @@ const withLogger = (transport: Transport, logger?: Logger): Transport => {
       try {
         const response = await transport.fetch(url, options);
         const elapsedMs = Date.now() - startMs;
-        log.info(`[HTTP] ← ${response.status} ${method} ${url} ${elapsedMs}ms`);
+        log.info(`[HTTP] ← ${String(response.status)} ${method} ${url} ${String(elapsedMs)}ms`);
         return response;
       } catch (e) {
         const elapsedMs = Date.now() - startMs;
-        log.error(`[HTTP] ✖ ${method} ${url} ${elapsedMs}ms`, e);
+        log.error(`[HTTP] ✖ ${method} ${url} ${String(elapsedMs)}ms`, e);
         throw e;
       }
     },
