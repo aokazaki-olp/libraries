@@ -21,7 +21,9 @@ const makeSuccessTransport = (body: unknown = { ok: true }) =>
   makeTransport(() => Promise.resolve(makeRawResponse({ body, text: JSON.stringify(body) })));
 
 const makeHttpErrorTransport = (status: number, headers: Record<string, string> = {}) =>
-  makeTransport(() => Promise.reject(new HttpError(`HTTP ${status}`, status, null, headers)));
+  makeTransport(() =>
+    Promise.reject(new HttpError(`HTTP ${String(status)}`, status, null, headers)),
+  );
 
 // ============================================================================
 // SlackCore.withRetry — 成功ケース
@@ -50,7 +52,9 @@ describe('SlackCore.withRetry — 429 Retry-After', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls === 1) throw new HttpError('429', 429, null, { 'Retry-After': '2' });
+      if (calls === 1) {
+        throw new HttpError('429', 429, null, { 'Retry-After': '2' });
+      }
       return makeRawResponse();
     });
 
@@ -67,7 +71,9 @@ describe('SlackCore.withRetry — 429 Retry-After', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls === 1) throw new HttpError('429', 429, null, { 'retry-after': '1' });
+      if (calls === 1) {
+        throw new HttpError('429', 429, null, { 'retry-after': '1' });
+      }
       return makeRawResponse();
     });
 
@@ -84,7 +90,9 @@ describe('SlackCore.withRetry — 429 Retry-After', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls === 1) throw new HttpError('429', 429, null, {});
+      if (calls === 1) {
+        throw new HttpError('429', 429, null, {});
+      }
       return makeRawResponse();
     });
 
@@ -104,8 +112,9 @@ describe('SlackCore.withRetry — 429 Retry-After', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls === 1)
+      if (calls === 1) {
         throw new HttpError('429', 429, null, { 'Retry-After': 'Thu, 01 Dec 2026 16:00:00 GMT' });
+      }
       return makeRawResponse();
     });
 
@@ -141,7 +150,9 @@ describe('SlackCore.withRetry — 5xx リトライ', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls < 3) throw new HttpError(`${status}`, status, null);
+      if (calls < 3) {
+        throw new HttpError(String(status), status, null);
+      }
       return makeRawResponse();
     });
 
@@ -211,7 +222,9 @@ describe('SlackCore.withRetry — ロギング', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls < 2) throw new HttpError('429', 429, null, { 'Retry-After': '1' });
+      if (calls < 2) {
+        throw new HttpError('429', 429, null, { 'Retry-After': '1' });
+      }
       return makeRawResponse();
     });
 
@@ -225,10 +238,10 @@ describe('SlackCore.withRetry — ロギング', () => {
     await assertion;
 
     expect(logger.warn).toHaveBeenCalledOnce();
-    expect(logger.warn.mock.calls[0][0]).toContain('[Slack]');
-    expect(logger.warn.mock.calls[0][0]).toContain('RETRY');
-    expect(logger.warn.mock.calls[0][0]).toContain('429');
-    expect(logger.warn.mock.calls[0][0]).toContain('Retry-After=1s');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('[Slack]');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('RETRY');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('429');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('Retry-After=1s');
   });
 
   it('5xx リトライ時に warn を出力する', async () => {
@@ -236,7 +249,9 @@ describe('SlackCore.withRetry — ロギング', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls < 2) throw new HttpError('503', 503, null);
+      if (calls < 2) {
+        throw new HttpError('503', 503, null);
+      }
       return makeRawResponse();
     });
 
@@ -251,7 +266,7 @@ describe('SlackCore.withRetry — ロギング', () => {
     await assertion;
 
     expect(logger.warn).toHaveBeenCalledOnce();
-    expect(logger.warn.mock.calls[0][0]).toContain('status=503');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('status=503');
   });
 
   it('リトライ上限時に error を出力する', async () => {
@@ -268,7 +283,7 @@ describe('SlackCore.withRetry — ロギング', () => {
     await assertion;
 
     expect(logger.error).toHaveBeenCalledOnce();
-    expect(logger.error.mock.calls[0][0]).toContain('exhausted');
+    expect(logger.error.mock.calls[0]?.[0]).toContain('exhausted');
   });
 
   it('method 未指定の場合 GET がログに出る', async () => {
@@ -276,7 +291,9 @@ describe('SlackCore.withRetry — ロギング', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls < 2) throw new HttpError('503', 503, null);
+      if (calls < 2) {
+        throw new HttpError('503', 503, null);
+      }
       return makeRawResponse();
     });
 
@@ -290,7 +307,7 @@ describe('SlackCore.withRetry — ロギング', () => {
     await vi.runAllTimersAsync();
     await assertion;
 
-    expect(logger.warn.mock.calls[0][0]).toContain('GET');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('GET');
   });
 });
 
@@ -355,7 +372,7 @@ describe('SlackApiClient.create — 正常系', () => {
     await client.post('/chat.postMessage', {});
 
     const call = (innerTransport.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(call[1]?.headers?.['Authorization']).toBe('Bearer xoxb-my-token');
+    expect(call?.[1]?.headers?.['Authorization']).toBe('Bearer xoxb-my-token');
   });
 
   it('baseUrl が https://slack.com/api になる', async () => {
@@ -363,8 +380,8 @@ describe('SlackApiClient.create — 正常系', () => {
     const client = SlackApiClient.create('token', { transport });
     await client.post('/chat.postMessage', {});
 
-    expect(transport.calls[0].url).toContain('https://slack.com/api');
-    expect(transport.calls[0].url).toContain('chat.postMessage');
+    expect(transport.calls[0]?.url).toContain('https://slack.com/api');
+    expect(transport.calls[0]?.url).toContain('chat.postMessage');
   });
 });
 
@@ -435,7 +452,7 @@ describe('SlackApiClient — use()', () => {
 
     const result = await client.postMessage('#general', 'Hello!');
     expect((result as { ok: boolean }).ok).toBe(true);
-    expect(transport.calls[0].url).toContain('chat.postMessage');
+    expect(transport.calls[0]?.url).toContain('chat.postMessage');
   });
 });
 
@@ -466,10 +483,10 @@ describe('SlackWebhookClient.send — 正常系', () => {
 
     await client.send({ text: 'Hello Webhook!' });
 
-    expect(transport.calls[0].url).toBe('https://hooks.slack.com/T/B/xxx');
-    expect(transport.calls[0].options?.method).toBe('POST');
-    expect(transport.calls[0].options?.headers?.['Content-Type']).toContain('application/json');
-    expect(transport.calls[0].options?.payload).toBe(JSON.stringify({ text: 'Hello Webhook!' }));
+    expect(transport.calls[0]?.url).toBe('https://hooks.slack.com/T/B/xxx');
+    expect(transport.calls[0]?.options?.method).toBe('POST');
+    expect(transport.calls[0]?.options?.headers?.['Content-Type']).toContain('application/json');
+    expect(transport.calls[0]?.options?.payload).toBe(JSON.stringify({ text: 'Hello Webhook!' }));
   });
 
   it('blocks フィールドを含む Block Kit ペイロードを送信できる', async () => {
@@ -479,7 +496,7 @@ describe('SlackWebhookClient.send — 正常系', () => {
 
     await client.send({ blocks });
 
-    const sentPayload = JSON.parse(transport.calls[0].options?.payload as string);
+    const sentPayload = JSON.parse(transport.calls[0]?.options?.payload as string);
     expect(sentPayload.blocks).toEqual(blocks);
   });
 });
@@ -497,6 +514,6 @@ describe('SlackWebhookClient.send — 静的メソッド', () => {
       { transport },
     );
 
-    expect(transport.calls[0].options?.payload).toBe(JSON.stringify({ text: 'static send' }));
+    expect(transport.calls[0]?.options?.payload).toBe(JSON.stringify({ text: 'static send' }));
   });
 });

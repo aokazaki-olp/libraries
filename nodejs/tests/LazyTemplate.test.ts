@@ -324,34 +324,36 @@ describe('LazyTemplate プリミティブフィルター — 型変換', () => {
 describe('LazyTemplate.registerFilter', () => {
   it('フィルターを登録して使える', () => {
     const t = new LazyTemplate('{{{price | jpy}}}');
-    t.registerFilter('jpy', (v) => `¥${v}`);
+    t.registerFilter('jpy', (v) => `¥${String(v)}`);
     expect(t.evaluate({ price: 1000 })).toBe('¥1000');
   });
 
   it('名前が空文字 → TypeError', () => {
     const t = new LazyTemplate('');
-    expect(() => t.registerFilter('', (v) => v)).toThrow(TypeError);
+    expect(() => {
+      t.registerFilter('', (v) => v);
+    }).toThrow(TypeError);
   });
 
   it('fn が関数以外 → TypeError', () => {
     const t = new LazyTemplate('');
-    expect(() => t.registerFilter('fn', 'not a function' as unknown as () => void)).toThrow(
-      TypeError,
-    );
+    expect(() => {
+      t.registerFilter('fn', 'not a function' as unknown as () => void);
+    }).toThrow(TypeError);
   });
 
   it('カスタムフィルターはプリミティブフィルターを上書きできる', () => {
     const t = new LazyTemplate('{{{v | upper}}}');
-    t.registerFilter('upper', (v) => `custom:${v}`);
+    t.registerFilter('upper', (v) => `custom:${String(v)}`);
     expect(t.evaluate({ v: 'hello' })).toBe('custom:hello');
   });
 
   it('evaluate 後に registerFilter で上書きしても新フィルターが適用される', () => {
     const t = new LazyTemplate('{{{value | myFilter}}}');
-    t.registerFilter('myFilter', (v) => `v1:${v}`);
+    t.registerFilter('myFilter', (v) => `v1:${String(v)}`);
     expect(t.evaluate({ value: 'x' })).toBe('v1:x');
     // キャッシュ済みでも新フィルターが適用される
-    t.registerFilter('myFilter', (v) => `v2:${v}`);
+    t.registerFilter('myFilter', (v) => `v2:${String(v)}`);
     expect(t.evaluate({ value: 'x' })).toBe('v2:x');
   });
 });
@@ -364,7 +366,7 @@ describe('LazyTemplate — インスタンスごとにフィルターキャッ�
   it('インスタンスごとにフィルターキャッシュが独立している', () => {
     const t1 = new LazyTemplate('{{{x | shout}}}');
     const t2 = new LazyTemplate('{{{x | shout}}}');
-    t1.registerFilter('shout', (v) => `${v}!`);
+    t1.registerFilter('shout', (v) => `${String(v)}!`);
     // t2 には shout が未登録のため未知フィルターとしてパススルー
     expect(t1.evaluate({ x: 'hi' })).toBe('hi!');
     expect(t2.evaluate({ x: 'hi' })).toBe('hi');

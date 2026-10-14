@@ -21,7 +21,7 @@ const mockTransport = (
       i++;
       const raw = makeRawResponse(r);
       if (raw.status < 200 || raw.status >= 300) {
-        throw new HttpError(`HTTPエラー ${raw.status}`, raw.status, raw.body);
+        throw new HttpError(`HTTPエラー ${String(raw.status)}`, raw.status, raw.body);
       }
       return raw;
     }),
@@ -80,14 +80,14 @@ describe('InvoiceApiClient.create — URL 構築', () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num', { number: 'T1234567890123' });
-    expect(transport.calls[0].url.startsWith(`${BASE_URL}/num`)).toBe(true);
+    expect(transport.calls[0]?.url.startsWith(`${BASE_URL}/num`)).toBe(true);
   });
 
   it('認証クエリ id / 既定 type=21 / 既定 version=1 が自動付与される', async () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num', { number: 'T1234567890123' });
-    const url = transport.calls[0].url;
+    const url = transport.calls[0]?.url;
     expect(url).toContain(`id=${VALID_APP_ID}`);
     expect(url).toContain('type=21');
     expect(url).toContain('version=1');
@@ -98,14 +98,14 @@ describe('InvoiceApiClient.create — URL 構築', () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport, type: '01' });
     await client.get('/num', { number: 'T1234567890123' });
-    expect(transport.calls[0].url).toContain('type=01');
+    expect(transport.calls[0]?.url).toContain('type=01');
   });
 
   it('ユーザ指定のクエリと認証クエリが両立する (& で連結)', async () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/diff', { from: '2026-05-01', to: '2026-05-19' });
-    const url = transport.calls[0].url;
+    const url = transport.calls[0]?.url;
     expect(url).toContain('from=2026-05-01');
     expect(url).toContain('to=2026-05-19');
     expect(url).toContain(`id=${VALID_APP_ID}`);
@@ -115,8 +115,8 @@ describe('InvoiceApiClient.create — URL 構築', () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num');
-    expect(transport.calls[0].url).toContain('?');
-    expect(transport.calls[0].url).toContain(`id=${VALID_APP_ID}`);
+    expect(transport.calls[0]?.url).toContain('?');
+    expect(transport.calls[0]?.url).toContain(`id=${VALID_APP_ID}`);
   });
 });
 
@@ -129,14 +129,14 @@ describe('InvoiceApiClient.create — ヘッダ', () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num');
-    expect(transport.calls[0].options?.headers?.['Accept']).toBe('application/json');
+    expect(transport.calls[0]?.options?.headers?.['Accept']).toBe('application/json');
   });
 
   it('Authorization ヘッダは付与されない', async () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num');
-    expect(transport.calls[0].options?.headers?.['Authorization']).toBeUndefined();
+    expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 });
 
@@ -150,7 +150,7 @@ describe('InvoiceApiClient.create — レスポンス', () => {
     const transport = mockTransport({ body });
     const client = InvoiceApiClient.create<typeof body>(VALID_APP_ID, { transport });
     const result = await client.get('/num', { number: 'T1234567890123' });
-    expect(result.announcement[0].registratedNumber).toBe('T1234567890123');
+    expect(result.announcement[0]?.registratedNumber).toBe('T1234567890123');
   });
 
   it('HTTP 404 では HttpError がスローされる', async () => {
@@ -192,8 +192,10 @@ describe('InvoiceApiClient.create — use()', () => {
       (c) => (number: string) => c.get('/num', { number, history: 0 }),
     );
     const result = await client.byNumber('T1234567890123');
-    expect((result as { announcement: { name: string }[] }).announcement[0].name).toBe('株式会社A');
-    const url = transport.calls[0].url;
+    expect((result as { announcement: { name: string }[] }).announcement[0]?.name).toBe(
+      '株式会社A',
+    );
+    const url = transport.calls[0]?.url;
     expect(url).toContain('number=T1234567890123');
     expect(url).toContain('history=0');
     expect(url).toContain(`id=${VALID_APP_ID}`);

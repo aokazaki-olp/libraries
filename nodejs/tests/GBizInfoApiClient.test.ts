@@ -22,7 +22,7 @@ const mockTransport = (
       const raw = makeRawResponse(r);
       // createTransport の契約に合わせ、2xx 以外は HttpError を throw する
       if (raw.status < 200 || raw.status >= 300) {
-        throw new HttpError(`HTTPエラー ${raw.status}`, raw.status, raw.body);
+        throw new HttpError(`HTTPエラー ${String(raw.status)}`, raw.status, raw.body);
       }
       return raw;
     }),
@@ -49,7 +49,7 @@ describe('GBizInfoApiClient.create — バリデーション', () => {
       GBizInfoApiClient.create(token),
     ).toThrow(TypeError);
     try {
-      // @ts-expect-error: 同上
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       GBizInfoApiClient.create(token);
     } catch (e) {
       expect((e as TypeError).message).toContain('gBizINFO API token');
@@ -84,14 +84,14 @@ describe('GBizInfoApiClient.create — API バージョン', () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create(VALID_TOKEN, { transport });
     await client.get('/hojin/1234567890123');
-    expect(transport.calls[0].url.startsWith('https://api.info.gbiz.go.jp/hojin/v2/')).toBe(true);
+    expect(transport.calls[0]?.url.startsWith('https://api.info.gbiz.go.jp/hojin/v2/')).toBe(true);
   });
 
   it("version: 'v1' 指定で v1 エンドポイントになる", async () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create(VALID_TOKEN, { transport, version: 'v1' });
     await client.get('/hojin/1234567890123');
-    expect(transport.calls[0].url.startsWith('https://api.info.gbiz.go.jp/hojin/v1/')).toBe(true);
+    expect(transport.calls[0]?.url.startsWith('https://api.info.gbiz.go.jp/hojin/v1/')).toBe(true);
   });
 
   it('未対応バージョン指定で TypeError', () => {
@@ -100,7 +100,7 @@ describe('GBizInfoApiClient.create — API バージョン', () => {
       GBizInfoApiClient.create(VALID_TOKEN, { version: 'v3' }),
     ).toThrow(TypeError);
     try {
-      // @ts-expect-error: 同上
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       GBizInfoApiClient.create(VALID_TOKEN, { version: 'v3' });
     } catch (e) {
       expect((e as TypeError).message).toContain('version');
@@ -117,21 +117,21 @@ describe('GBizInfoApiClient.create — 認証ヘッダ', () => {
     const transport = mockTransport({ body: { 'hojin-infos': [] } });
     const client = GBizInfoApiClient.create(VALID_TOKEN, { transport });
     await client.get('/hojin/1234567890123');
-    expect(transport.calls[0].options?.headers?.['X-hojinInfo-api-token']).toBe(VALID_TOKEN);
+    expect(transport.calls[0]?.options?.headers?.['X-hojinInfo-api-token']).toBe(VALID_TOKEN);
   });
 
   it('Authorization ヘッダは付与されない (Bearer ではない)', async () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin/1');
-    expect(transport.calls[0].options?.headers?.['Authorization']).toBeUndefined();
+    expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 
   it('Accept: application/json が付与される', async () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin/1');
-    expect(transport.calls[0].options?.headers?.['Accept']).toBe('application/json');
+    expect(transport.calls[0]?.options?.headers?.['Accept']).toBe('application/json');
   });
 });
 
@@ -144,14 +144,14 @@ describe('GBizInfoApiClient.create — URL 構築', () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin/1234567890123');
-    expect(transport.calls[0].url.startsWith(`${BASE_URL}/hojin/1234567890123`)).toBe(true);
+    expect(transport.calls[0]?.url.startsWith(`${BASE_URL}/hojin/1234567890123`)).toBe(true);
   });
 
   it('クエリパラメータが付与される', async () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin', { name: 'テスト株式会社', limit: 10 });
-    const url = transport.calls[0].url;
+    const url = transport.calls[0]?.url;
     expect(url).toContain(`name=${encodeURIComponent('テスト株式会社')}`);
     expect(url).toContain('limit=10');
   });
@@ -160,7 +160,7 @@ describe('GBizInfoApiClient.create — URL 構築', () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin/1');
-    expect(transport.calls[0].url).not.toContain('?');
+    expect(transport.calls[0]?.url).not.toContain('?');
   });
 });
 
@@ -174,7 +174,7 @@ describe('GBizInfoApiClient.create — レスポンスハンドラ', () => {
     const transport = mockTransport({ body });
     const client = GBizInfoApiClient.create<typeof body>('t', { transport });
     const result = await client.get('/hojin/1234567890123');
-    expect(result['hojin-infos'][0].corporate_number).toBe('1234567890123');
+    expect(result['hojin-infos'][0]?.corporate_number).toBe('1234567890123');
   });
 
   it('HTTP 404 では HttpError がスローされる', async () => {
@@ -253,7 +253,7 @@ describe('GBizInfoApiClient.create — use()', () => {
     );
     const result = await client.byCorporateNumber('1234567890123');
     expect((result as { name: string }).name).toBe('A 社');
-    expect(transport.calls[0].url.endsWith('/hojin/1234567890123')).toBe(true);
+    expect(transport.calls[0]?.url.endsWith('/hojin/1234567890123')).toBe(true);
   });
 
   it('複数の use() を連鎖できる', async () => {

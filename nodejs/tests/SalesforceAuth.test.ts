@@ -150,11 +150,11 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
     const call = transport.calls[0] as { url: string; options: FetchOptions };
-    expect(call.options?.method).toBe('POST');
-    expect(typeof call.options?.payload).toBe('object');
-    const payload = call.options?.payload as Record<string, string>;
-    expect(payload?.grant_type).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
-    expect(typeof payload?.assertion).toBe('string');
+    expect(call.options.method).toBe('POST');
+    expect(typeof call.options.payload).toBe('object');
+    const payload = call.options.payload as Record<string, string>;
+    expect(payload['grant_type']).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
+    expect(typeof payload['assertion']).toBe('string');
   });
 
   it('JWT に iss/sub/aud/exp クレームが含まれる', async () => {
@@ -166,7 +166,7 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
     const blobCalls = (signer.newBlob as ReturnType<typeof vi.fn>).mock.calls;
-    const claimsJson = blobCalls[1][0] as string; // 2回目の呼び出しがclaimsのJSON
+    const claimsJson = blobCalls[1]?.[0] as string; // 2回目の呼び出しがclaimsのJSON
     const claims = JSON.parse(claimsJson) as Record<string, unknown>;
 
     expect(claims['iss']).toBe(VALID_OPTIONS.consumerKey);
@@ -205,11 +205,11 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
     const signCalls = (signer.computeRsaSha256Signature as ReturnType<typeof vi.fn>).mock.calls;
-    const signingInput = signCalls[0][0] as string;
+    const signingInput = signCalls[0]?.[0] as string;
     const parts = signingInput.split('.');
     expect(parts).toHaveLength(2);
 
-    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<
+    const header = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString()) as Record<
       string,
       unknown
     >;

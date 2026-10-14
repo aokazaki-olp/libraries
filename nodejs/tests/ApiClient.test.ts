@@ -16,7 +16,7 @@ describe('ApiClient.withBearerAuth', () => {
     await authed.fetch('https://example.com', { method: 'GET' });
 
     const call = transport.calls[0];
-    expect(call.options?.headers?.['Authorization']).toBe('Bearer my-token');
+    expect(call?.options?.headers?.['Authorization']).toBe('Bearer my-token');
   });
 
   it('既存ヘッダーを上書きしない（Authorization 以外）', async () => {
@@ -27,8 +27,8 @@ describe('ApiClient.withBearerAuth', () => {
     });
 
     const call = transport.calls[0];
-    expect(call.options?.headers?.['Accept']).toBe('application/json');
-    expect(call.options?.headers?.['Authorization']).toBe('Bearer token');
+    expect(call?.options?.headers?.['Accept']).toBe('application/json');
+    expect(call?.options?.headers?.['Authorization']).toBe('Bearer token');
   });
 
   it('元の transport を変更しない（イミュータブル）', async () => {
@@ -36,7 +36,7 @@ describe('ApiClient.withBearerAuth', () => {
     ApiClient.withBearerAuth(transport, 'token');
     // authed を呼ばずに元の transport を直接呼ぶ
     await transport.fetch('https://example.com');
-    expect(transport.calls[0].options?.headers?.['Authorization']).toBeUndefined();
+    expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 });
 
@@ -50,8 +50,8 @@ describe('ApiClient.createClient — call', () => {
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
     const result = await client.call({ endpoint: '/users/1', method: 'GET' });
-    expect(transport.calls[0].url).toBe('https://api.example.com/users/1');
-    expect(transport.calls[0].options?.method).toBe('GET');
+    expect(transport.calls[0]?.url).toBe('https://api.example.com/users/1');
+    expect(transport.calls[0]?.options?.method).toBe('GET');
     // responseHandler なしは RawResponse をそのまま返す
     expect((result as RawResponse).body).toEqual({ id: 1 });
   });
@@ -63,9 +63,9 @@ describe('ApiClient.createClient — call', () => {
     await client.call({ endpoint: '/users', method: 'POST', body: { name: 'Alice' } });
 
     const call = transport.calls[0];
-    expect(call.options?.method).toBe('POST');
-    expect(call.options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
-    expect(call.options?.headers?.['Content-Type']).toContain('application/json');
+    expect(call?.options?.method).toBe('POST');
+    expect(call?.options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
+    expect(call?.options?.headers?.['Content-Type']).toContain('application/json');
   });
 
   it('GET + body は body を無視する（Content-Type も付けない）', async () => {
@@ -75,8 +75,8 @@ describe('ApiClient.createClient — call', () => {
     await client.call({ endpoint: '/users', method: 'GET', body: { should: 'be ignored' } });
 
     const call = transport.calls[0];
-    expect(call.options?.payload).toBeUndefined();
-    expect(call.options?.headers?.['Content-Type']).toBeUndefined();
+    expect(call?.options?.payload).toBeUndefined();
+    expect(call?.options?.headers?.['Content-Type']).toBeUndefined();
   });
 
   it('responseHandler を経由して値を返す', async () => {
@@ -96,7 +96,7 @@ describe('ApiClient.createClient — call', () => {
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
     await client.call({ endpoint: '/search', query: { q: 'hello', page: 1 } });
-    expect(transport.calls[0].url).toBe('https://api.example.com/search?q=hello&page=1');
+    expect(transport.calls[0]?.url).toBe('https://api.example.com/search?q=hello&page=1');
   });
 
   it('timeoutMs を FetchOptions に渡す', async () => {
@@ -104,7 +104,7 @@ describe('ApiClient.createClient — call', () => {
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
     await client.call({ endpoint: '/slow', timeoutMs: 5000 });
-    expect(transport.calls[0].options?.timeoutMs).toBe(5000);
+    expect(transport.calls[0]?.options?.timeoutMs).toBe(5000);
   });
 });
 
@@ -123,29 +123,29 @@ describe('ApiClient.createClient — HTTPメソッドショートカット', () 
 
   it('get() は GET リクエストを送る', async () => {
     await client.get('/users', { page: 1 });
-    expect(transport.calls[0].options?.method).toBe('GET');
-    expect(transport.calls[0].url).toContain('page=1');
+    expect(transport.calls[0]?.options?.method).toBe('GET');
+    expect(transport.calls[0]?.url).toContain('page=1');
   });
 
   it('post() は POST リクエストを送る', async () => {
     await client.post('/users', { name: 'Alice' });
-    expect(transport.calls[0].options?.method).toBe('POST');
-    expect(transport.calls[0].options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
+    expect(transport.calls[0]?.options?.method).toBe('POST');
+    expect(transport.calls[0]?.options?.payload).toBe(JSON.stringify({ name: 'Alice' }));
   });
 
   it('put() は PUT リクエストを送る', async () => {
     await client.put('/users/1', { name: 'Bob' });
-    expect(transport.calls[0].options?.method).toBe('PUT');
+    expect(transport.calls[0]?.options?.method).toBe('PUT');
   });
 
   it('patch() は PATCH リクエストを送る', async () => {
     await client.patch('/users/1', { name: 'Charlie' });
-    expect(transport.calls[0].options?.method).toBe('PATCH');
+    expect(transport.calls[0]?.options?.method).toBe('PATCH');
   });
 
   it('delete() は DELETE リクエストを送る', async () => {
     await client.delete('/users/1');
-    expect(transport.calls[0].options?.method).toBe('DELETE');
+    expect(transport.calls[0]?.options?.method).toBe('DELETE');
   });
 });
 
@@ -210,7 +210,7 @@ describe('ApiClient.createClient — use', () => {
 
     const result = await extended.getItems();
     expect(result).toEqual({ items: [1, 2, 3] });
-    expect(transport.calls[0].url).toBe('https://api.example.com/items');
+    expect(transport.calls[0]?.url).toBe('https://api.example.com/items');
   });
 
   it('use(name, fn) でシングルメソッドを追加できる', async () => {
@@ -265,7 +265,7 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
     await client.delete('abc-123');
 
     // plugin が優先されれば /items/abc-123 になる（修正前は /abc-123 になりバグる）
-    expect(transport.calls[0].url).toContain('/items/abc-123');
+    expect(transport.calls[0]?.url).toContain('/items/abc-123');
   });
 
   it('plugin の get が HTTP get に上書きされない', async () => {
@@ -280,7 +280,7 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
 
     await client.get('xyz-999');
 
-    expect(transport.calls[0].url).toContain('/items/xyz-999');
+    expect(transport.calls[0]?.url).toContain('/items/xyz-999');
   });
 
   it('sobject plugin の delete が正しいエンドポイントを叩く', async () => {
@@ -291,8 +291,8 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
 
     await sf.delete('001xxx');
 
-    expect(transport.calls[0].options?.method).toBe('DELETE');
-    expect(transport.calls[0].url).toContain('/sobjects/Account/001xxx');
+    expect(transport.calls[0]?.options?.method).toBe('DELETE');
+    expect(transport.calls[0]?.url).toContain('/sobjects/Account/001xxx');
   });
 });
 
@@ -311,8 +311,8 @@ describe('ApiClient.createClient — デフォルトヘッダー', () => {
 
     await client.get('/data');
     const call = transport.calls[0];
-    expect(call.options?.headers?.['Accept']).toBe('application/json');
-    expect(call.options?.headers?.['X-Api-Key']).toBe('key123');
+    expect(call?.options?.headers?.['Accept']).toBe('application/json');
+    expect(call?.options?.headers?.['X-Api-Key']).toBe('key123');
   });
 
   it('リクエスト固有のヘッダーはデフォルトヘッダーを上書きする', async () => {
@@ -324,6 +324,6 @@ describe('ApiClient.createClient — デフォルトヘッダー', () => {
     });
 
     await client.call({ method: 'GET', headers: { 'X-Custom': 'override' } });
-    expect(transport.calls[0].options?.headers?.['X-Custom']).toBe('override');
+    expect(transport.calls[0]?.options?.headers?.['X-Custom']).toBe('override');
   });
 });

@@ -85,7 +85,7 @@ describe('SalesforceApiClient.create — baseUrl', () => {
     // transport を直接差し替えるため extend で wrap
     const extended = client.extend(() => transport);
     await extended.get('/query');
-    expect(calls[0].url).toContain('/services/data/v60.0/query');
+    expect(calls[0]?.url).toContain('/services/data/v60.0/query');
   });
 
   it('apiVersion を指定すると URL に反映される', async () => {
@@ -95,7 +95,7 @@ describe('SalesforceApiClient.create — baseUrl', () => {
     });
     const extended = client.extend(() => transport);
     await extended.get('/query');
-    expect(calls[0].url).toContain('/services/data/v61.0/query');
+    expect(calls[0]?.url).toContain('/services/data/v61.0/query');
   });
 
   it('instanceUrl 末尾スラッシュを正規化する', async () => {
@@ -107,8 +107,8 @@ describe('SalesforceApiClient.create — baseUrl', () => {
     const extended = client.extend(() => transport);
     await extended.get('/query');
     // ダブルスラッシュにならないこと
-    expect(calls[0].url).not.toContain('//services');
-    expect(calls[0].url).toContain('https://yourorg.my.salesforce.com/services/data/v60.0/query');
+    expect(calls[0]?.url).not.toContain('//services');
+    expect(calls[0]?.url).toContain('https://yourorg.my.salesforce.com/services/data/v60.0/query');
   });
 });
 
@@ -129,7 +129,7 @@ describe('SalesforceApiClient.create — Authorization ヘッダー', () => {
     await client.get('/sobjects');
 
     const innerCall = (innerTransport.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(innerCall[1]?.headers?.['Authorization']).toBe('Bearer my-sf-token');
+    expect(innerCall?.[1]?.headers?.['Authorization']).toBe('Bearer my-sf-token');
   });
 });
 
@@ -149,21 +149,21 @@ describe('SalesforceApiClient.create — HTTPメソッド', () => {
   it('get() で GET リクエストを送る', async () => {
     const { client, transport } = makeClient({ records: [] });
     await client.get('/query', { q: 'SELECT Id FROM Account' });
-    expect(transport.calls[0].options?.method).toBe('GET');
-    expect(transport.calls[0].url).toContain('q=SELECT');
+    expect(transport.calls[0]?.options?.method).toBe('GET');
+    expect(transport.calls[0]?.url).toContain('q=SELECT');
   });
 
   it('post() で POST リクエストを送る', async () => {
     const { client, transport } = makeClient({ id: 'new-id' });
     await client.post('/sobjects/Account', { Name: 'Test Corp' });
-    expect(transport.calls[0].options?.method).toBe('POST');
-    expect(transport.calls[0].options?.payload).toBe(JSON.stringify({ Name: 'Test Corp' }));
+    expect(transport.calls[0]?.options?.method).toBe('POST');
+    expect(transport.calls[0]?.options?.payload).toBe(JSON.stringify({ Name: 'Test Corp' }));
   });
 
   it('delete() で DELETE リクエストを送る', async () => {
     const { client, transport } = makeClient();
     await client.delete('/sobjects/Account/001xx000003GYn1');
-    expect(transport.calls[0].options?.method).toBe('DELETE');
+    expect(transport.calls[0]?.options?.method).toBe('DELETE');
   });
 });
 
@@ -179,8 +179,8 @@ describe('SalesforceApiClient.create — use()', () => {
       .use('queryAll', (c) => (soql: string) => c.get('/query', { q: soql }));
 
     const result = await client.queryAll('SELECT Id, Name FROM Account');
-    expect(transport.calls[0].url).toContain('/query');
-    expect(transport.calls[0].url).toContain('SELECT');
+    expect(transport.calls[0]?.url).toContain('/query');
+    expect(transport.calls[0]?.url).toContain('SELECT');
     expect(result).toEqual({ records: [{ Id: '001', Name: 'Acme' }] });
   });
 });

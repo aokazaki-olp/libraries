@@ -11,7 +11,7 @@ import { createMockLogger, makeRawResponse, makeTransport } from './helpers.ts';
 const makeSuccessTransport = (response?: Partial<RawResponse>) =>
   makeTransport(() => Promise.resolve(makeRawResponse(response)));
 
-const makeErrorTransport = (error: unknown) => makeTransport(() => Promise.reject(error));
+const makeErrorTransport = (error: Error) => makeTransport(() => Promise.reject(error));
 
 // ============================================================================
 // cloneHeaders / mergeHeaders / hasHeader
@@ -95,7 +95,7 @@ describe('HttpCore.withRetry — リトライ対象', () => {
   });
 
   it.each([429, 500, 502, 503, 504])('status=%i はリトライする', async (status) => {
-    const error = new HttpError(`HTTPエラー ${status}`, status, null);
+    const error = new HttpError(`HTTPエラー ${String(status)}`, status, null);
     let callCount = 0;
     const transport = makeTransport(async () => {
       callCount++;
@@ -160,7 +160,7 @@ describe('HttpCore.withRetry — リトライ対象', () => {
 
 describe('HttpCore.withRetry — リトライ対象外', () => {
   it.each([400, 401, 403, 404, 422])('status=%i はリトライしない', async (status) => {
-    const error = new HttpError(`HTTPエラー ${status}`, status, null);
+    const error = new HttpError(`HTTPエラー ${String(status)}`, status, null);
     const transport = makeErrorTransport(error);
     const retrying = HttpCore.withRetry(transport, { maxRetries: 3 });
 
@@ -200,7 +200,9 @@ describe('HttpCore.withRetry — ロギング', () => {
     let calls = 0;
     const transport = makeTransport(async () => {
       calls++;
-      if (calls < 2) throw error;
+      if (calls < 2) {
+        throw error;
+      }
       return makeRawResponse();
     });
 
@@ -210,8 +212,8 @@ describe('HttpCore.withRetry — ロギング', () => {
     await promise;
 
     expect(logger.warn).toHaveBeenCalledOnce();
-    expect(logger.warn.mock.calls[0][0]).toContain('RETRY');
-    expect(logger.warn.mock.calls[0][0]).toContain('503');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('RETRY');
+    expect(logger.warn.mock.calls[0]?.[0]).toContain('503');
   });
 
   it('リトライ上限時に error ログを出力する', async () => {
@@ -226,7 +228,7 @@ describe('HttpCore.withRetry — ロギング', () => {
     await assertion;
 
     expect(logger.error).toHaveBeenCalledOnce();
-    expect(logger.error.mock.calls[0][0]).toContain('exhausted');
+    expect(logger.error.mock.calls[0]?.[0]).toContain('exhausted');
   });
 });
 
@@ -249,10 +251,10 @@ describe('HttpCore.withLogger', () => {
     await logged.fetch('https://example.com/api', { method: 'GET' });
 
     expect(logger.debug).toHaveBeenCalledOnce();
-    expect(logger.debug.mock.calls[0][0]).toContain('→ GET https://example.com/api');
+    expect(logger.debug.mock.calls[0]?.[0]).toContain('→ GET https://example.com/api');
 
     expect(logger.info).toHaveBeenCalledOnce();
-    expect(logger.info.mock.calls[0][0]).toContain('← 200 GET https://example.com/api');
+    expect(logger.info.mock.calls[0]?.[0]).toContain('← 200 GET https://example.com/api');
   });
 
   it('エラー時に error ログを出力してエラーを再スローする', async () => {
@@ -264,7 +266,7 @@ describe('HttpCore.withLogger', () => {
     await expect(logged.fetch('https://example.com')).rejects.toThrow(HttpError);
 
     expect(logger.error).toHaveBeenCalledOnce();
-    expect(logger.error.mock.calls[0][0]).toContain('✖');
+    expect(logger.error.mock.calls[0]?.[0]).toContain('✖');
   });
 
   it('method が未指定の場合 GET とみなしてログに出力する', async () => {
@@ -273,7 +275,7 @@ describe('HttpCore.withLogger', () => {
     const logged = HttpCore.withLogger(transport, logger);
 
     await logged.fetch('https://example.com');
-    expect(logger.debug.mock.calls[0][0]).toContain('GET');
+    expect(logger.debug.mock.calls[0]?.[0]).toContain('GET');
   });
 });
 
@@ -291,7 +293,9 @@ describe('HttpCore — デコレータ積み重ね', () => {
     let calls = 0;
     const baseTransport = makeTransport(async () => {
       calls++;
-      if (calls === 1) throw new HttpError('HTTPエラー 503', 503, null);
+      if (calls === 1) {
+        throw new HttpError('HTTPエラー 503', 503, null);
+      }
       return makeRawResponse({ status: 200, body: { data: 'ok' } });
     });
 
@@ -400,7 +404,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       payload: { grant_type: 'client_credentials', client_id: 'xxx' },
     });
 
-    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(calledOptions.form).toEqual({ grant_type: 'client_credentials', client_id: 'xxx' });
     expect(calledOptions.body).toBeUndefined();
   });
@@ -420,7 +424,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       payload: '{"key":"value"}',
     });
 
-    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(calledOptions.body).toBe('{"key":"value"}');
     expect(calledOptions.form).toBeUndefined();
   });
@@ -437,7 +441,7 @@ describe('HttpCore.createTransport — got 統合', () => {
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com/', { timeoutMs: 3000 });
 
-    const calledOptions = mockGotFn.mock.calls[0][1] as Record<string, unknown>;
+    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
     expect((calledOptions.timeout as Record<string, unknown>).request).toBe(3000);
   });
 });

@@ -61,8 +61,8 @@ describe('SalesforceApiClientPlugins.bulkIngest — createJob', () => {
 
     const result = await bulk.createJob({ operation: 'insert', object: 'Account' });
 
-    expect(transport.calls[0].url).toContain('/jobs/ingest');
-    expect(transport.calls[0].options?.method).toBe('POST');
+    expect(transport.calls[0]?.url).toContain('/jobs/ingest');
+    expect(transport.calls[0]?.options?.method).toBe('POST');
     expect(result.id).toBe('job001');
     expect(result.operation).toBe('insert');
   });
@@ -79,10 +79,10 @@ describe('SalesforceApiClientPlugins.bulkIngest — upload', () => {
     await bulk.upload('job001', SAMPLE_CSV);
 
     const call = transport.calls[0];
-    expect(call.url).toContain('/jobs/ingest/job001/batches');
-    expect(call.options?.method).toBe('PUT');
-    expect(call.options?.payload).toBe(SAMPLE_CSV);
-    expect(call.options?.headers?.['Content-Type']).toBe('text/csv');
+    expect(call?.url).toContain('/jobs/ingest/job001/batches');
+    expect(call?.options?.method).toBe('PUT');
+    expect(call?.options?.payload).toBe(SAMPLE_CSV);
+    expect(call?.options?.headers?.['Content-Type']).toBe('text/csv');
   });
 
   it('CSV を JSON.stringify せずに送る（生文字列）', async () => {
@@ -95,8 +95,8 @@ describe('SalesforceApiClientPlugins.bulkIngest — upload', () => {
     await bulk.upload('job001', SAMPLE_CSV);
 
     // JSON.stringify されていれば先頭が " になる
-    expect(transport.calls[0].options?.payload).not.toMatch(/^"/);
-    expect(transport.calls[0].options?.payload).toContain('Id,Name');
+    expect(transport.calls[0]?.options?.payload).not.toMatch(/^"/);
+    expect(transport.calls[0]?.options?.payload).toContain('Id,Name');
   });
 });
 
@@ -110,9 +110,9 @@ describe('SalesforceApiClientPlugins.bulkIngest — close / abort', () => {
     const result = await bulk.close('job001');
 
     const call = transport.calls[0];
-    expect(call.options?.method).toBe('PATCH');
-    expect(call.url).toContain('/jobs/ingest/job001');
-    expect(JSON.parse(call.options?.payload as string)).toEqual({ state: 'UploadComplete' });
+    expect(call?.options?.method).toBe('PATCH');
+    expect(call?.url).toContain('/jobs/ingest/job001');
+    expect(JSON.parse(call?.options?.payload as string)).toEqual({ state: 'UploadComplete' });
     expect(result.state).toBe('UploadComplete');
   });
 
@@ -124,7 +124,9 @@ describe('SalesforceApiClientPlugins.bulkIngest — close / abort', () => {
 
     await bulk.abort('job001');
 
-    expect(JSON.parse(transport.calls[0].options?.payload as string)).toEqual({ state: 'Aborted' });
+    expect(JSON.parse(transport.calls[0]?.options?.payload as string)).toEqual({
+      state: 'Aborted',
+    });
   });
 });
 
@@ -138,8 +140,8 @@ describe('SalesforceApiClientPlugins.bulkIngest — deleteJob / getJob / listJob
 
     await bulk.deleteJob('job001');
 
-    expect(transport.calls[0].options?.method).toBe('DELETE');
-    expect(transport.calls[0].url).toContain('/jobs/ingest/job001');
+    expect(transport.calls[0]?.options?.method).toBe('DELETE');
+    expect(transport.calls[0]?.url).toContain('/jobs/ingest/job001');
   });
 
   it('getJob() は GET リクエストを送る', async () => {
@@ -150,7 +152,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — deleteJob / getJob / listJob
 
     const result = await bulk.getJob('job001');
 
-    expect(transport.calls[0].options?.method).toBe('GET');
+    expect(transport.calls[0]?.options?.method).toBe('GET');
     expect(result.state).toBe('JobComplete');
   });
 
@@ -163,7 +165,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — deleteJob / getJob / listJob
 
     const result = await bulk.listJobs();
 
-    expect(transport.calls[0].url).toContain('/jobs/ingest');
+    expect(transport.calls[0]?.url).toContain('/jobs/ingest');
     expect(result.done).toBe(true);
   });
 });
@@ -178,7 +180,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
 
     const result = await bulk.getSuccessfulResults('job001');
 
-    expect(transport.calls[0].url).toContain('/successfulResults');
+    expect(transport.calls[0]?.url).toContain('/successfulResults');
     expect(result).toBe(SAMPLE_CSV);
   });
 
@@ -191,7 +193,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
 
     await bulk.getFailedResults('job001');
 
-    expect(transport.calls[0].url).toContain('/failedResults');
+    expect(transport.calls[0]?.url).toContain('/failedResults');
   });
 
   it('getUnprocessedRecords() は /unprocessedrecords を呼ぶ', async () => {
@@ -201,7 +203,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
 
     await bulk.getUnprocessedRecords('job001');
 
-    expect(transport.calls[0].url).toContain('/unprocessedrecords');
+    expect(transport.calls[0]?.url).toContain('/unprocessedrecords');
   });
 
   it('空のボディ（Transport が null にする）は空文字として返す', async () => {
@@ -290,8 +292,8 @@ describe('SalesforceApiClientPlugins.bulkQuery — createJob', () => {
 
     const result = await query.createJob({ operation: 'query', query: 'SELECT Id FROM Account' });
 
-    expect(transport.calls[0].url).toContain('/jobs/query');
-    expect(transport.calls[0].options?.method).toBe('POST');
+    expect(transport.calls[0]?.url).toContain('/jobs/query');
+    expect(transport.calls[0]?.options?.method).toBe('POST');
     expect(result.operation).toBe('query');
   });
 });
@@ -306,8 +308,8 @@ describe('SalesforceApiClientPlugins.bulkQuery — abort / deleteJob / getJob / 
 
     await query.abort('qjob001');
 
-    expect(transport.calls[0].options?.method).toBe('DELETE');
-    expect(transport.calls[0].url).toContain('/jobs/query/qjob001');
+    expect(transport.calls[0]?.options?.method).toBe('DELETE');
+    expect(transport.calls[0]?.url).toContain('/jobs/query/qjob001');
   });
 
   it('getJob() は GET リクエストを送る', async () => {
@@ -330,7 +332,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — abort / deleteJob / getJob / 
 
     await query.listJobs();
 
-    expect(transport.calls[0].url).toContain('/jobs/query');
+    expect(transport.calls[0]?.url).toContain('/jobs/query');
   });
 });
 
@@ -346,7 +348,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
 
     expect(result.csv).toBe(SAMPLE_CSV);
     expect(result.nextLocator).toBeNull();
-    expect(transport.calls[0].url).toContain('/jobs/query/qjob001/results');
+    expect(transport.calls[0]?.url).toContain('/jobs/query/qjob001/results');
   });
 
   it('Sforce-Locator ヘッダーがある場合 nextLocator を返す', async () => {
@@ -372,8 +374,8 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
 
     await query.getResults('qjob001', { maxRecords: 1000, locator: 'LOC123' });
 
-    expect(transport.calls[0].url).toContain('maxRecords=1000');
-    expect(transport.calls[0].url).toContain('locator=LOC123');
+    expect(transport.calls[0]?.url).toContain('maxRecords=1000');
+    expect(transport.calls[0]?.url).toContain('locator=LOC123');
   });
 });
 
@@ -457,7 +459,7 @@ describe('SalesforceApiClientPlugins.Utils.csvToRecords', () => {
   it('クォートされたフィールドを正しくパースする', () => {
     const csv = 'Id,Name\n001,"Acme, Corp"';
     const result = SalesforceApiClientPlugins.Utils.csvToRecords(csv);
-    expect(result[0].Name).toBe('Acme, Corp');
+    expect(result[0]?.Name).toBe('Acme, Corp');
   });
 });
 
@@ -519,7 +521,7 @@ describe('SalesforceApiClientPlugins.Utils.validateCsv', () => {
   it('空文字は valid: false を返す', () => {
     const result = SalesforceApiClientPlugins.Utils.validateCsv('');
     expect(result.valid).toBe(false);
-    expect(result.errors[0].message).toContain('空');
+    expect(result.errors[0]?.message).toContain('空');
   });
 
   it('Id 列がない場合は warnings に含まれる', () => {

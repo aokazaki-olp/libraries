@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
 import type { Logger } from '../src/LoggerFacade.ts';
 
@@ -32,9 +32,15 @@ export const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawRespon
   ...overrides,
 });
 
-export const makeTransport = (
-  impl: (url: string, options?: FetchOptions) => Promise<RawResponse>,
-): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
+type FetchFn = (url: string, options?: FetchOptions) => Promise<RawResponse>;
+
+/** fetch をメソッドではなく Mock のプロパティとして持つ（expect(transport.fetch) で this を失わない） */
+type MockTransport = Omit<Transport, 'fetch'> & {
+  fetch: Mock<FetchFn>;
+  calls: { url: string; options?: FetchOptions }[];
+};
+
+export const makeTransport = (impl: FetchFn): MockTransport => {
   const fetchFn = vi.fn(async (url: string, options?: FetchOptions) => impl(url, options));
   return {
     get calls() {
@@ -44,7 +50,5 @@ export const makeTransport = (
   };
 };
 
-export const mockTransport = (
-  response?: Partial<RawResponse>,
-): Transport & { calls: { url: string; options?: FetchOptions }[] } =>
+export const mockTransport = (response?: Partial<RawResponse>): MockTransport =>
   makeTransport(() => Promise.resolve(makeRawResponse(response)));
