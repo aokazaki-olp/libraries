@@ -254,10 +254,9 @@ interface SlackWebhookInstance {
  *
  * @param webhookUrl - Webhook URL
  * @param options - オプション設定
- * @returns { send } クライアント
- * @throws {TypeError} webhookUrl が空文字または文字列でない場合
- * @throws {RetryExhaustedError} リトライ上限に達した場合
- * @throws {HttpError} Slack Webhook が非2xxを返した場合
+ * @returns { send } クライアント。send は、リトライ上限に達すると RetryExhaustedError、
+ *   Slack Webhook が非2xxを返すと HttpError、signal が中断されるとその理由を投げる
+ * @throws {TypeError} webhookUrl が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合
  */
 const createWebhookClient = (
   webhookUrl: string,
@@ -302,6 +301,9 @@ const createWebhookClient = (
  * @param payload - 送信するペイロード
  * @param options - オプション設定（signal で送信を中断できる）
  * @returns 送信完了 Promise
+ * @throws {TypeError} webhookUrl / オプションが不正な場合
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
+ * @throws {HttpError} Slack Webhook が非2xxを返した場合
  */
 const sendWebhook = (
   webhookUrl: string,
