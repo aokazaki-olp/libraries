@@ -218,7 +218,8 @@ describe('中断されたらリトライしない', () => {
 
     await expect(promise).rejects.toThrow('stop polling');
     expect(transport.fetch).toHaveBeenCalledTimes(1);
-    expect(transport.calls[0]?.options?.signal).toBe(controller.signal);
+    // getJob には timeoutMs と合成した signal が渡り、呼び出し側の中断で中断状態になる
+    expect(transport.calls[0]?.options?.signal?.aborted).toBe(true);
   });
 });
 

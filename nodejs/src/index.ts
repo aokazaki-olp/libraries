@@ -68,6 +68,9 @@ export type {
 export { SalesforceApiClientPlugins } from './plugins/salesforce.ts';
 export type {
   SoqlResult,
+  SoqlMethods,
+  SobjectMethods,
+  SobjectCreateResult,
   IngestOperation,
   IngestState,
   QueryOperation,
@@ -94,4 +97,9 @@ export type {
 } from './plugins/salesforce.ts';
 
 export { SlackPlugins } from './plugins/slack.ts';
-export type { ChatOptions, SlackBlock } from './plugins/slack.ts';
+export type {
+  ChatOptions,
+  SlackBlock,
+  SlackChatMethods,
+  SlackReactionMethods,
+} from './plugins/slack.ts';
