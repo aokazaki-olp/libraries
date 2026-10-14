@@ -1,5 +1,6 @@
 /**
  * SalesforceAuth.ts
+ *
  * @description Salesforce OAuth トークン取得ヘルパ。JWT Bearer Flow 実装。
  *              node:crypto を使用。SalesforceApiClient とは独立。
  *
@@ -160,7 +161,7 @@ interface TokenResult {
  * @param options.maxRetries - リトライ最大回数（デフォルト: 3）
  * @param options.baseDelayMs - 指数バックオフ基準ディレイ ms（デフォルト: 500）
  * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
- * @returns {{ accessToken: string, instanceUrl: string }}
+ * @returns access_token と instance_url
  * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
  * @throws {HttpError} token endpoint が非 2xx を返した場合
  * @throws {Error} レスポンスに access_token / instance_url が欠落していた場合
@@ -219,7 +220,8 @@ const getAccessTokenByJwt = async (
     });
   } catch (e) {
     if (e instanceof HttpError) {
-      // assertion が request.body 経由でログに乗らないよう redacted 版に差し替え
+      // assertion が request.body 経由でログに乗らないよう redacted 版に差し替え。
+      // 元の例外を cause に残すと redact が無意味になるため、意図的に cause を付けない
       throw new HttpError(e.message, e.status, e.body, e.headers, e.text, {
         ...e.request,
         body: {
@@ -237,8 +239,8 @@ const getAccessTokenByJwt = async (
       `Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`,
     );
   }
-  // object 型はプロパティアクセス不可のためキャスト（上のガードで object・非 null を確認済み）
-  const { access_token: accessToken, instance_url: instanceUrl } = body as Record<string, unknown>;
+  const accessToken: unknown = Reflect.get(body, 'access_token');
+  const instanceUrl: unknown = Reflect.get(body, 'instance_url');
 
   if (typeof accessToken !== 'string' || accessToken === '') {
     throw new Error('Salesforce token response に access_token が含まれません');
