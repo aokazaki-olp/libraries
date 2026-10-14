@@ -590,7 +590,7 @@ const buildSobject =
  * @example
  *   const sf = SalesforceApiClient.create(url, token)
  *     .use(SalesforceApiClientPlugins.sobject('Account', decodeAccount));
- *   const acc = await sf.findById('001...');
+ *   const account = await sf.findById('001...');
  *   await sf.update('001...', { Name: 'New Name' });
  */
 function sobject(type: string): Plugin<unknown, SobjectMethods<Record<string, unknown>>>;

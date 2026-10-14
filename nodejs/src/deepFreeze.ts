@@ -11,27 +11,27 @@
  * - 既に凍結済みのオブジェクトはスキップする（循環参照対策）
  * - Map/Set 等の内部スロットは Object.freeze の仕様上保護されない
  *
- * @param o - 凍結するオブジェクト
+ * @param target - 凍結するオブジェクト
  * @returns 凍結されたオブジェクト（引数と同一参照）
- * @throws {TypeError} o がオブジェクトでない場合（null・プリミティブを含む）
+ * @throws {TypeError} target がオブジェクトでない場合（null・プリミティブを含む）
  */
-const deepFreeze = <T extends object>(o: T): Readonly<T> => {
+const deepFreeze = <T extends object>(target: T): Readonly<T> => {
   // 公開 API の境界。型が object でも JS からは何でも渡りうる
-  const value: unknown = o;
+  const value: unknown = target;
   if (typeof value !== 'object' || value === null) {
-    throw new TypeError('o にはオブジェクトを指定してください');
+    throw new TypeError('target にはオブジェクトを指定してください');
   }
 
-  Object.freeze(o);
+  Object.freeze(target);
 
-  for (const k of Reflect.ownKeys(o)) {
-    const v: unknown = Reflect.get(o, k);
+  for (const key of Reflect.ownKeys(target)) {
+    const v: unknown = Reflect.get(target, key);
     if (typeof v === 'object' && v !== null && !Object.isFrozen(v)) {
       deepFreeze(v);
     }
   }
 
-  return o;
+  return target;
 };
 
 export { deepFreeze };

@@ -140,8 +140,8 @@ const escapeJson = (v: unknown): string => {
   // JSON 文字列でエスケープが必要な制御文字（U+0000〜U+001F）を対象にする
   // eslint-disable-next-line no-control-regex -- 制御文字を検出するのがこの正規表現の目的
   return s.replace(/[\u0000-\u001f"\\]/g, (match) => {
-    const c = match.charCodeAt(0);
-    switch (c) {
+    const code = match.charCodeAt(0);
+    switch (code) {
       case 0x08:
         return '\\b';
       case 0x09:
@@ -157,7 +157,7 @@ const escapeJson = (v: unknown): string => {
       case 0x5c:
         return '\\\\';
       default:
-        return '\\u' + ('0000' + c.toString(16)).slice(-4);
+        return '\\u' + ('0000' + code.toString(16)).slice(-4);
     }
   });
 };

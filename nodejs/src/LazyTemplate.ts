@@ -165,18 +165,20 @@ class LazyTemplate {
     const parts: TemplatePart[] = [];
     let lastIndex = 0;
 
-    for (const m of template.matchAll(new RegExp(LazyTemplate.PLACEHOLDER_PATTERN.source, 'g'))) {
+    for (const match of template.matchAll(
+      new RegExp(LazyTemplate.PLACEHOLDER_PATTERN.source, 'g'),
+    )) {
       // 2つのグループはどちらも必ずマッチに参加する（空文字にもマッチする）。既定値は型を埋めるためだけのもの
-      const [whole, backslashes = '', expression = ''] = m;
-      if (m.index > lastIndex) {
-        parts.push({ type: 'text', value: template.slice(lastIndex, m.index) });
+      const [whole, backslashes = '', expression = ''] = match;
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', value: template.slice(lastIndex, match.index) });
       }
       parts.push({
         type: 'placeholder',
         backslashes,
         expression: expression.trim(),
       });
-      lastIndex = m.index + whole.length;
+      lastIndex = match.index + whole.length;
     }
 
     if (lastIndex < template.length) {
@@ -194,29 +196,29 @@ class LazyTemplate {
     const trimmed = expression.trim();
 
     for (let i = 0; i < trimmed.length; i++) {
-      const c = trimmed.charAt(i);
+      const char = trimmed.charAt(i);
 
-      if (c === '\\' && i + 1 < trimmed.length) {
+      if (char === '\\' && i + 1 < trimmed.length) {
         i++;
-        stripped += c + trimmed.charAt(i);
+        stripped += char + trimmed.charAt(i);
         wasSpace = false;
         continue;
       }
 
-      if ((c === '"' || c === "'") && (!quoted || c === quote)) {
+      if ((char === '"' || char === "'") && (!quoted || char === quote)) {
         quoted = !quoted;
-        quote = quoted ? c : '';
-        stripped += c;
+        quote = quoted ? char : '';
+        stripped += char;
         wasSpace = false;
         continue;
       }
 
       if (quoted) {
-        stripped += c;
+        stripped += char;
         continue;
       }
 
-      if (/\s/.test(c)) {
+      if (/\s/.test(char)) {
         if (!wasSpace) {
           stripped += ' ';
           wasSpace = true;
@@ -224,7 +226,7 @@ class LazyTemplate {
         continue;
       }
 
-      stripped += c;
+      stripped += char;
       wasSpace = false;
     }
 
@@ -291,10 +293,10 @@ class LazyTemplate {
     const segments: string[] = [];
     let current = '';
 
-    for (const m of rawTerm.matchAll(
+    for (const match of rawTerm.matchAll(
       new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'),
     )) {
-      const token = m[0];
+      const token = match[0];
       if (token === '|') {
         segments.push(current.trim());
         current = '';
@@ -313,10 +315,10 @@ class LazyTemplate {
     const terms: string[] = [];
     let current = '';
 
-    for (const m of expression.matchAll(
+    for (const match of expression.matchAll(
       new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'),
     )) {
-      const token = m[0];
+      const token = match[0];
       if (token === '||') {
         const trimmed = current.trim();
         if (trimmed) {
@@ -358,10 +360,10 @@ class LazyTemplate {
       const path: (string | number)[] = [];
       let valid = true;
 
-      for (const m of term.matchAll(new RegExp(LazyTemplate.KEY_SEGMENT_PATTERN.source, 'g'))) {
+      for (const match of term.matchAll(new RegExp(LazyTemplate.KEY_SEGMENT_PATTERN.source, 'g'))) {
         // 識別子（グループ1）とブラケット（グループ2）は選択肢なので、どちらか一方だけが値を持つ
-        const identifier = m[1];
-        const bracket = m[2];
+        const identifier = match[1];
+        const bracket = match[2];
 
         if (identifier) {
           path.push(identifier);
@@ -397,18 +399,18 @@ class LazyTemplate {
       }
 
       return (data: object) => {
-        let acc: unknown = data;
+        let node: unknown = data;
         for (const key of path) {
-          if (acc == null || (typeof acc !== 'object' && typeof acc !== 'function')) {
+          if (node == null || (typeof node !== 'object' && typeof node !== 'function')) {
             return undefined;
           }
-          const value: unknown = Reflect.get(acc, key);
+          const value: unknown = Reflect.get(node, key);
           if (value === undefined) {
             return undefined;
           }
-          acc = value;
+          node = value;
         }
-        return this.applyFilters(acc, filterNames);
+        return this.applyFilters(node, filterNames);
       };
     });
 

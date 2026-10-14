@@ -65,8 +65,8 @@ interface RetryPlan {
 const retryAfterMs = (headers: Record<string, string | string[]>): number => {
   const raw = headers['Retry-After'] ?? headers['retry-after'];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  const secs = parseInt(value ?? '', 10);
-  return (Number.isFinite(secs) && secs > 0 ? secs : 1) * 1000;
+  const seconds = parseInt(value ?? '', 10);
+  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 1) * 1000;
 };
 
 /**
