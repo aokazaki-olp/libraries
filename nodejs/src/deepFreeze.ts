@@ -1,5 +1,6 @@
 /**
  * deepFreeze.ts
+ *
  * @description オブジェクトの再帰的凍結ユーティリティ。
  */
 
@@ -15,22 +16,22 @@
  * @throws {TypeError} o がオブジェクトでない場合（null・プリミティブを含む）
  */
 const deepFreeze = <T extends object>(o: T): Readonly<T> => {
-  if (!o || typeof o !== 'object') {
+  // 公開 API の境界。型が object でも JS からは何でも渡りうる
+  const value: unknown = o;
+  if (typeof value !== 'object' || value === null) {
     throw new TypeError('o にはオブジェクトを指定してください');
   }
 
   Object.freeze(o);
 
   for (const k of Reflect.ownKeys(o)) {
-    // Reflect.ownKeys の string|symbol キーでジェネリック T に添字アクセスできないためキャスト
-    const v = (o as Record<string | symbol, unknown>)[k];
-    if (v && typeof v === 'object' && !Object.isFrozen(v)) {
+    const v: unknown = Reflect.get(o, k);
+    if (typeof v === 'object' && v !== null && !Object.isFrozen(v)) {
       deepFreeze(v);
     }
   }
 
-  // Object.freeze 済みの同一参照を Readonly<T> として返す
-  return o as Readonly<T>;
+  return o;
 };
 
 export { deepFreeze };
