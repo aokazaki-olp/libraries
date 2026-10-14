@@ -186,43 +186,15 @@ describe('SalesforceApiClient.create — use()', () => {
 });
 
 // ============================================================================
-// create — decode（§2.7）
+// create — レスポンスは unknown（§2.7）
 // ============================================================================
 
-describe('SalesforceApiClient.create — decode', () => {
-  const decodeTotalSize = (body: unknown): { totalSize: number } => {
-    const totalSize: unknown =
-      typeof body === 'object' && body !== null ? Reflect.get(body, 'totalSize') : undefined;
-    if (typeof totalSize !== 'number') {
-      throw new TypeError('totalSize が number ではありません');
-    }
-    return { totalSize };
-  };
-
-  it('decode を省略するとレスポンスボディをそのまま返す', async () => {
+describe('SalesforceApiClient.create — レスポンス', () => {
+  it('レスポンスボディを検証せずそのまま返す（型を付けるのは呼び出し側の decode）', async () => {
     const transport = mockTransport({ totalSize: 1, records: [] });
     const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN, {
       transport,
     });
     await expect(client.get('/query')).resolves.toEqual({ totalSize: 1, records: [] });
-  });
-
-  it('decode を渡すと、その戻り値がレスポンスになる', async () => {
-    const transport = mockTransport({ totalSize: 3, records: [] });
-    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN, {
-      transport,
-      decode: decodeTotalSize,
-    });
-    const result = await client.get('/query');
-    expect(result.totalSize).toBe(3);
-  });
-
-  it('decode が throw すると呼び出しが reject される（INVALID_SESSION 等の想定外の応答）', async () => {
-    const transport = mockTransport({ error: 'INVALID_SESSION' });
-    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN, {
-      transport,
-      decode: decodeTotalSize,
-    });
-    await expect(client.get('/query')).rejects.toThrow(TypeError);
   });
 });

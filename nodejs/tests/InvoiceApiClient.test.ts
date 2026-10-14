@@ -163,13 +163,6 @@ describe('InvoiceApiClient.create — レスポンス', () => {
     expect(result).toEqual(body);
   });
 
-  it('decode を渡すと、その戻り値がレスポンスになる', async () => {
-    const transport = mockTransport({ body: { ok: false, extra: 1 } });
-    const client = InvoiceApiClient.create(VALID_APP_ID, { transport, decode: decodeOk });
-    const result = await client.get('/num');
-    expect(result).toEqual({ ok: false });
-  });
-
   it('HTTP 404 では HttpError がスローされる', async () => {
     const transport = mockTransport({ status: 404, body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
@@ -190,10 +183,10 @@ describe('InvoiceApiClient.create — リトライ', () => {
     const client = InvoiceApiClient.create(VALID_APP_ID, {
       transport,
       baseDelayMs: 1,
-      decode: decodeOk,
     });
     const result = await client.get('/num');
-    expect(result.ok).toBe(true);
+    // レスポンスは unknown。型を付けるときは呼び出し側で decode する（§2.7）
+    expect(decodeOk(result).ok).toBe(true);
     expect(transport.calls.length).toBe(2);
   });
 });

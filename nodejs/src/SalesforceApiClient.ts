@@ -18,7 +18,7 @@ import { ApiClient } from './ApiClient.ts';
 import { HttpCore } from './HttpCore.ts';
 import type { BaseClient } from './ApiClient.ts';
 import type { Logger } from './LoggerFacade.ts';
-import type { Decoder, Transport } from './httpTypes.ts';
+import type { Transport } from './httpTypes.ts';
 
 const DEFAULT_API_VERSION = 'v60.0';
 const DEFAULT_MAX_RETRIES = 3;
@@ -39,25 +39,15 @@ interface SalesforceClientOptions {
  * @param instanceUrl - 組織固有の My Domain URL (例: https://yourorg.my.salesforce.com)
  * @param accessToken - OAuth access_token
  * @param options - オプション設定
- * @param options.decode - レスポンスボディの検証・変換。指定するとレスポンス型がその戻り値の型になる。省略時は unknown
- * @returns クライアント (call/get/post/put/patch/delete/use/extend)
+ * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
+ *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
  * @throws {TypeError} instanceUrl / accessToken が空文字の場合、apiVersion の形式が不正な場合
  */
-function create(
+const create = (
   instanceUrl: string,
   accessToken: string,
-  options?: SalesforceClientOptions,
-): BaseClient;
-function create<TResponse>(
-  instanceUrl: string,
-  accessToken: string,
-  options: SalesforceClientOptions & { decode: Decoder<TResponse> },
-): BaseClient<TResponse>;
-function create<TResponse>(
-  instanceUrl: string,
-  accessToken: string,
-  options: SalesforceClientOptions & { decode?: Decoder<TResponse> } = {},
-): BaseClient<TResponse> | BaseClient {
+  options: SalesforceClientOptions = {},
+): BaseClient => {
   if (typeof instanceUrl !== 'string' || instanceUrl === '') {
     throw new TypeError('instanceUrl には Salesforce instance URL (string) を指定してください');
   }
@@ -73,7 +63,6 @@ function create<TResponse>(
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     logger,
     transport: injectedTransport,
-    decode,
   } = options;
 
   if (!API_VERSION_PATTERN.test(apiVersion)) {
@@ -88,20 +77,17 @@ function create<TResponse>(
   // - Logger は最外で Retry が最終的に返した1回分を観測する
   // - Logger 通過時点では Authorization ヘッダがまだ付いていない（意図的）
   // - Retry は認証付きリクエストを再送できる
-  const build = <T>(decodeBody: Decoder<T>): BaseClient<T> =>
-    ApiClient.createClient({
-      baseUrl,
-      transport: injectedTransport ?? HttpCore.createTransport(),
-      headers: { Accept: 'application/json' },
-      logger,
-      responseHandler: (response) => decodeBody(response.body),
-    })
-      .extend((t) => ApiClient.withBearerAuth(t, accessToken))
-      .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-      .extend((t) => HttpCore.withLogger(t, logger));
-
-  return decode ? build(decode) : build((body) => body);
-}
+  return ApiClient.createClient({
+    baseUrl,
+    transport: injectedTransport ?? HttpCore.createTransport(),
+    headers: { Accept: 'application/json' },
+    logger,
+    responseHandler: (response) => response.body,
+  })
+    .extend((t) => ApiClient.withBearerAuth(t, accessToken))
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withLogger(t, logger));
+};
 
 export const SalesforceApiClient = { create };
 export type { SalesforceClientOptions };

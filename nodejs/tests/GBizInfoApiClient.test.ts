@@ -187,19 +187,6 @@ describe('GBizInfoApiClient.create — レスポンスハンドラ', () => {
     expect(result).toEqual(body);
   });
 
-  it('decode を渡すと、その戻り値がレスポンスになる', async () => {
-    const transport = mockTransport({ body: { ok: true, extra: 1 } });
-    const client = GBizInfoApiClient.create('t', { transport, decode: decodeOk });
-    const result = await client.get('/hojin/1');
-    expect(result).toEqual({ ok: true });
-  });
-
-  it('decode が throw すると呼び出しが reject される', async () => {
-    const transport = mockTransport({ body: { error: 'unexpected' } });
-    const client = GBizInfoApiClient.create('t', { transport, decode: decodeOk });
-    await expect(client.get('/hojin/1')).rejects.toThrow('ok が boolean ではありません');
-  });
-
   it('HTTP 404 では HttpError がスローされる', async () => {
     const transport = mockTransport({ status: 404, body: { errors: [{ message: 'Not Found' }] } });
     const client = GBizInfoApiClient.create('t', { transport });
@@ -230,10 +217,10 @@ describe('GBizInfoApiClient.create — リトライ', () => {
     const client = GBizInfoApiClient.create('t', {
       transport,
       baseDelayMs: 1,
-      decode: decodeOk,
     });
     const result = await client.get('/hojin/1');
-    expect(result.ok).toBe(true);
+    // レスポンスは unknown。型を付けるときは呼び出し側で decode する（§2.7）
+    expect(decodeOk(result).ok).toBe(true);
     expect(transport.calls.length).toBe(2);
   });
 
@@ -245,10 +232,10 @@ describe('GBizInfoApiClient.create — リトライ', () => {
     const client = GBizInfoApiClient.create('t', {
       transport,
       baseDelayMs: 1,
-      decode: decodeOk,
     });
     const result = await client.get('/hojin/1');
-    expect(result.ok).toBe(true);
+    // レスポンスは unknown。型を付けるときは呼び出し側で decode する（§2.7）
+    expect(decodeOk(result).ok).toBe(true);
     expect(transport.calls.length).toBe(2);
   });
 

@@ -20,7 +20,7 @@ import { ApiClient } from './ApiClient.ts';
 import { HttpCore } from './HttpCore.ts';
 import type { BaseClient } from './ApiClient.ts';
 import type { Logger } from './LoggerFacade.ts';
-import type { Decoder, Transport } from './httpTypes.ts';
+import type { Transport } from './httpTypes.ts';
 
 type InvoiceApiVersion = '1';
 type InvoiceResponseType = '01' | '21' | '31'; // 01=CSV, 21=JSON, 31=XML
@@ -49,19 +49,11 @@ interface InvoiceClientOptions {
  *
  * @param applicationId - 国税庁から発行されたアプリケーション ID
  * @param options - オプション設定
- * @param options.decode - レスポンスボディの検証・変換。指定するとレスポンス型がその戻り値の型になる。省略時は unknown
- * @returns クライアント (call/get/post/put/patch/delete/use/extend)
+ * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
+ *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
  * @throws {TypeError} applicationId が空文字または string 以外の場合、version が未対応の場合
  */
-function create(applicationId: string, options?: InvoiceClientOptions): BaseClient;
-function create<TResponse>(
-  applicationId: string,
-  options: InvoiceClientOptions & { decode: Decoder<TResponse> },
-): BaseClient<TResponse>;
-function create<TResponse>(
-  applicationId: string,
-  options: InvoiceClientOptions & { decode?: Decoder<TResponse> } = {},
-): BaseClient<TResponse> | BaseClient {
+const create = (applicationId: string, options: InvoiceClientOptions = {}): BaseClient => {
   if (typeof applicationId !== 'string' || applicationId === '') {
     throw new TypeError(
       'applicationId にはインボイス Web-API のアプリケーション ID (string) を指定してください',
@@ -75,7 +67,6 @@ function create<TResponse>(
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     logger,
     transport: injectedTransport,
-    decode,
   } = options;
 
   if (!SUPPORTED_VERSIONS.includes(version)) {
@@ -89,28 +80,25 @@ function create<TResponse>(
   // 現状の HttpCore.withLogger は `${method} ${url}` 形式で URL をログ出力するため、
   // 認証 id はログに残る前提。マスクが必要になったら withLogger 側か
   // createClient の auth スロット化で構造的に解決する。
-  const build = <T>(decodeBody: Decoder<T>): BaseClient<T> =>
-    ApiClient.createClient({
-      baseUrl: `${BASE_URL}/${API_PATH_VERSION}`,
-      transport: injectedTransport ?? HttpCore.createTransport(),
-      headers: {
-        Accept: 'application/json',
-      },
-      logger,
-      responseHandler: (response) => decodeBody(response.body),
-    })
-      .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-      .extend((t) => HttpCore.withLogger(t, logger))
-      .extend((t) =>
-        ApiClient.withQueryAuth(t, {
-          id: applicationId,
-          type,
-          version,
-        }),
-      );
-
-  return decode ? build(decode) : build((body) => body);
-}
+  return ApiClient.createClient({
+    baseUrl: `${BASE_URL}/${API_PATH_VERSION}`,
+    transport: injectedTransport ?? HttpCore.createTransport(),
+    headers: {
+      Accept: 'application/json',
+    },
+    logger,
+    responseHandler: (response) => response.body,
+  })
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withLogger(t, logger))
+    .extend((t) =>
+      ApiClient.withQueryAuth(t, {
+        id: applicationId,
+        type,
+        version,
+      }),
+    );
+};
 
 export const InvoiceApiClient = { create };
 export type { InvoiceClientOptions, InvoiceApiVersion, InvoiceResponseType };
