@@ -395,15 +395,10 @@ class LazyTemplate {
       return (data: object) => {
         let acc: unknown = data;
         for (const key of path) {
-          if (acc == null) {
+          if (acc == null || (typeof acc !== 'object' && typeof acc !== 'function')) {
             return undefined;
           }
-          const t = typeof acc;
-          if (t !== 'object' && t !== 'function') {
-            return undefined;
-          }
-          // 直上のガードで acc は object|function 確定。unknown を index 可能型へ橋渡し
-          const value = (acc as Record<string | number, unknown>)[key];
+          const value: unknown = Reflect.get(acc, key);
           if (value === undefined) {
             return undefined;
           }
