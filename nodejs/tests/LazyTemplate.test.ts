@@ -173,8 +173,34 @@ describe('LazyTemplate.evaluate — フィルター', () => {
     );
   });
 
-  it('存在しないフィルターは無視される', () => {
-    expect(new LazyTemplate('{{{name | nonexistent}}}').evaluate({ name: 'hello' })).toBe('hello');
+  it('存在しないフィルターは Error（綴り間違いを黙って素通ししない）', () => {
+    expect(() => new LazyTemplate('{{{name | nonexistent}}}').evaluate({ name: 'hello' })).toThrow(
+      '未知のフィルターです: nonexistent',
+    );
+  });
+
+  it.each([
+    ['空の項', '{{{ | upper }}}'],
+    ['キーとして解釈できない', '{{{ a b }}}'],
+    ['閉じていないブラケット', '{{{ a[ }}}'],
+  ])('不正な式（%s）は Error', (_label, template) => {
+    expect(() => new LazyTemplate(template).evaluate({ a: 1 })).toThrow('テンプレート式が不正です');
+  });
+
+  it('json フィルターは JSON にできない値で Error（元の例外を cause に持つ）', () => {
+    const circular: Record<string, unknown> = {};
+    circular['self'] = circular;
+    const t = new LazyTemplate('{{{x | json}}}');
+
+    let error: unknown;
+    try {
+      t.evaluate({ x: circular });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ message: 'json フィルターで JSON にできない値です' });
+    expect(error).toHaveProperty('cause', expect.any(TypeError));
   });
 
   it('フォールバックとフィルターを組み合わせる', () => {
@@ -367,9 +393,9 @@ describe('LazyTemplate — インスタンスごとにフィルターキャッ�
     const t1 = new LazyTemplate('{{{x | shout}}}');
     const t2 = new LazyTemplate('{{{x | shout}}}');
     t1.registerFilter('shout', (v) => `${String(v)}!`);
-    // t2 には shout が未登録のため未知フィルターとしてパススルー
+    // t2 には shout が未登録のため未知フィルターとして Error
     expect(t1.evaluate({ x: 'hi' })).toBe('hi!');
-    expect(t2.evaluate({ x: 'hi' })).toBe('hi');
+    expect(() => t2.evaluate({ x: 'hi' })).toThrow('未知のフィルターです: shout');
   });
 });
 

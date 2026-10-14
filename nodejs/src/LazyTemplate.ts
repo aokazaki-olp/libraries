@@ -43,6 +43,19 @@ type TemplatePart = TextPart | PlaceholderPart;
 
 type CompiledEvaluator = (data: object) => unknown;
 
+/**
+ * JSON 文字列にする（json / jsonPretty フィルター）
+ *
+ * @throws {Error} 循環参照・BigInt など JSON にできない値の場合（元の例外を cause に持つ）
+ */
+const stringifyJson = (value: unknown, indent?: number): string | undefined => {
+  try {
+    return JSON.stringify(value, null, indent);
+  } catch (e) {
+    throw new Error('json フィルターで JSON にできない値です', { cause: e });
+  }
+};
+
 /** JSON 文字列リテラルをパースする。文字列にならなければ undefined */
 const parseJsonString = (literal: string): string | undefined => {
   try {
@@ -110,20 +123,8 @@ class LazyTemplate {
     string: (v: unknown) => (v == null ? '' : String(v)),
     boolean: (v: unknown) => Boolean(v),
     default: (v: unknown) => (v == null ? '' : v),
-    json: (v: unknown) => {
-      try {
-        return JSON.stringify(v);
-      } catch {
-        return '{}';
-      }
-    },
-    jsonPretty: (v: unknown) => {
-      try {
-        return JSON.stringify(v, null, 2);
-      } catch {
-        return '{}';
-      }
-    },
+    json: (v: unknown) => stringifyJson(v),
+    jsonPretty: (v: unknown) => stringifyJson(v, 2),
   } as const satisfies FilterMap;
 
   private readonly cache: Map<string, CompiledEvaluator>;
@@ -233,7 +234,8 @@ class LazyTemplate {
   /**
    * 式文字列をコンパイルしてキャッシュに登録する
    * @param expression - テンプレート式（`{{{...}}}` の内側）
-   * @returns コンパイル済み評価関数
+   * @returns コンパイル済み評価関数（未知のフィルターは評価時に Error）
+   * @throws {Error} 式が構文として不正な場合
    */
   compile(expression: string): CompiledEvaluator {
     const key = LazyTemplate.stripWhitespaceWithoutStringLiteral(expression);
@@ -273,14 +275,16 @@ class LazyTemplate {
   }
 
   private applyFilters(value: unknown, filterNames: string[]): unknown {
-    let v = value;
+    let current = value;
     for (const name of filterNames) {
-      const fn = this.filters[name];
-      if (typeof fn === 'function') {
-        v = fn(v);
+      const filter = this.filters[name];
+      if (typeof filter !== 'function') {
+        // 綴り間違いを黙って素通しすると、装飾が抜けたまま出力される
+        throw new Error(`未知のフィルターです: ${name}`);
       }
+      current = filter(current);
     }
-    return v;
+    return current;
   }
 
   private parseFilters(rawTerm: string): string[] {
@@ -332,8 +336,8 @@ class LazyTemplate {
     const compiled: CompiledEvaluator[] = terms.map((rawTerm) => {
       const segments = this.parseFilters(rawTerm);
       const term = segments.shift();
-      if (term === undefined) {
-        return () => undefined;
+      if (term === undefined || term === '') {
+        throw new Error(`テンプレート式が不正です: {{{${expression}}}}`);
       }
       const filterNames = segments;
 
@@ -389,7 +393,7 @@ class LazyTemplate {
       }
 
       if (!valid || path.length === 0) {
-        return () => undefined;
+        throw new Error(`テンプレート式が不正です: {{{${expression}}}}`);
       }
 
       return (data: object) => {
@@ -424,6 +428,7 @@ class LazyTemplate {
    * @param data - プレースホルダーに展開するデータオブジェクト
    * @returns 評価済み文字列
    * @throws {TypeError} data が null/undefined の場合
+   * @throws {Error} 式が不正な場合・未知のフィルターを使った場合・json フィルターで JSON にできない場合
    */
   evaluate(data: object): string {
     // 公開 API の境界。型が object でも JS からは何でも渡りうる
@@ -458,6 +463,7 @@ class LazyTemplate {
    * @param filters - カスタムフィルターマップ
    * @returns 評価済み文字列
    * @throws {TypeError} template が文字列でない場合、または data が null/undefined の場合
+   * @throws {Error} 式が不正な場合・未知のフィルターを使った場合・json フィルターで JSON にできない場合
    */
   static evaluate(template: string, data: object, filters: FilterMap = {}): string {
     return new LazyTemplate(template, filters).evaluate(data);
