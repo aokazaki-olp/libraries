@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
-import { makeTransport, makeRawResponse } from './helpers.ts';
+import { makeTransport, makeRawResponse, payloadText } from './helpers.ts';
 import type { IngestJobInfo, QueryJobInfo } from '../src/plugins/salesforce.ts';
 
 // ============================================================================
@@ -112,7 +112,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — close / abort', () => {
     const call = transport.calls[0];
     expect(call?.options?.method).toBe('PATCH');
     expect(call?.url).toContain('/jobs/ingest/job001');
-    expect(JSON.parse(call?.options?.payload as string)).toEqual({ state: 'UploadComplete' });
+    expect(JSON.parse(payloadText(call?.options))).toEqual({ state: 'UploadComplete' });
     expect(result.state).toBe('UploadComplete');
   });
 
@@ -124,7 +124,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — close / abort', () => {
 
     await bulk.abort('job001');
 
-    expect(JSON.parse(transport.calls[0]?.options?.payload as string)).toEqual({
+    expect(JSON.parse(payloadText(transport.calls[0]?.options))).toEqual({
       state: 'Aborted',
     });
   });
@@ -583,8 +583,8 @@ describe('SalesforceApiClientPlugins.soql — queryAll', () => {
     const records = await sf.queryAll('SELECT Id FROM Account');
 
     expect(records).toHaveLength(2);
-    expect((records[0] as { Id: string }).Id).toBe('001xxx');
-    expect((records[1] as { Id: string }).Id).toBe('002xxx');
+    expect(records[0]).toHaveProperty('Id', '001xxx');
+    expect(records[1]).toHaveProperty('Id', '002xxx');
     expect(transport.calls.length).toBe(2);
   });
 });

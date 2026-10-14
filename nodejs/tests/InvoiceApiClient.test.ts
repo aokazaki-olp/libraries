@@ -43,7 +43,7 @@ const decodeOk = (body: unknown): { ok: boolean } => {
 // ============================================================================
 
 describe('InvoiceApiClient.create — バリデーション', () => {
-  it.each([
+  it.each<[string, unknown]>([
     ['undefined', undefined],
     ['null', null],
     ['空文字', ''],
@@ -51,7 +51,7 @@ describe('InvoiceApiClient.create — バリデーション', () => {
     ['真偽値 true', true],
     ['オブジェクト', {}],
     ['配列', []],
-  ] as [string, unknown][])('applicationId が %s だと TypeError', (_label, appId) => {
+  ])('applicationId が %s だと TypeError', (_label, appId) => {
     expect(() =>
       // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       InvoiceApiClient.create(appId),
@@ -146,6 +146,7 @@ describe('InvoiceApiClient.create — ヘッダ', () => {
     const transport = mockTransport({ body: {} });
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     await client.get('/num');
+    expect(transport.calls).toHaveLength(1);
     expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 });
@@ -203,9 +204,7 @@ describe('InvoiceApiClient.create — use()', () => {
       (c) => (number: string) => c.get('/num', { number, history: 0 }),
     );
     const result = await client.byNumber('T1234567890123');
-    expect((result as { announcement: { name: string }[] }).announcement[0]?.name).toBe(
-      '株式会社A',
-    );
+    expect(result).toEqual({ announcement: [{ name: '株式会社A' }] });
     const url = transport.calls[0]?.url;
     expect(url).toContain('number=T1234567890123');
     expect(url).toContain('history=0');

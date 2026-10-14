@@ -7,17 +7,14 @@ import { LazyTemplate } from '../src/LazyTemplate.ts';
 // ============================================================================
 
 describe('SlackFilters — Mrkdwn装飾', () => {
-  it.each([
+  it.each<[string, (v: unknown) => string, string, string]>([
     ['bold', SlackFilters.bold, 'text', '*text*'],
     ['italic', SlackFilters.italic, 'text', '_text_'],
     ['strike', SlackFilters.strike, 'text', '~text~'],
     ['code', SlackFilters.code, 'text', '`text`'],
-  ] as [string, (v: unknown) => string, string, string][])(
-    '%s("text") => "%s"',
-    (_name, fn, input, expected) => {
-      expect(fn(input)).toBe(expected);
-    },
-  );
+  ])('%s("text") => "%s"', (_name, fn, input, expected) => {
+    expect(fn(input)).toBe(expected);
+  });
 
   it('bold — 数値も文字列化して装飾', () => {
     expect(SlackFilters.bold(123)).toBe('*123*');

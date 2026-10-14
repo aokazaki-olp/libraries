@@ -14,17 +14,20 @@ describe('LazyTemplate コンストラクタ', () => {
     expect(new LazyTemplate('')).toBeInstanceOf(LazyTemplate);
   });
 
-  it.each([
+  it.each<[string, unknown]>([
     ['null', null],
     ['undefined', undefined],
     ['数値', 42],
     ['配列', []],
-  ] as [string, unknown][])('%s → TypeError', (_label, value) => {
-    expect(() => new LazyTemplate(value as string)).toThrow(TypeError);
+  ])('%s → TypeError', (_label, value) => {
+    expect(
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
+      () => new LazyTemplate(value),
+    ).toThrow(TypeError);
   });
 
   it('カスタムフィルターを渡せる', () => {
-    const t = new LazyTemplate('{{{x | double}}}', { double: (v) => (v as number) * 2 });
+    const t = new LazyTemplate('{{{x | double}}}', { double: (v) => Number(v) * 2 });
     expect(t.evaluate({ x: 5 })).toBe('10');
   });
 });
@@ -52,11 +55,14 @@ describe('LazyTemplate.evaluate — 基本', () => {
     expect(new LazyTemplate('Hello {{{name}}}!').evaluate({})).toBe('Hello !');
   });
 
-  it.each([
+  it.each<[string, unknown]>([
     ['null', null],
     ['undefined', undefined],
-  ] as [string, unknown][])('%s を渡すと TypeError', (_label, value) => {
-    expect(() => new LazyTemplate('{{{x}}}').evaluate(value as object)).toThrow(TypeError);
+  ])('%s を渡すと TypeError', (_label, value) => {
+    expect(
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
+      () => new LazyTemplate('{{{x}}}').evaluate(value),
+    ).toThrow(TypeError);
   });
 });
 
@@ -237,13 +243,13 @@ describe('LazyTemplate.evaluate — バックスラッシュエスケープ', ()
 describe('LazyTemplate プリミティブフィルター — 文字列', () => {
   const t = (tpl: string, data: object) => new LazyTemplate(tpl).evaluate(data);
 
-  it.each([
+  it.each<[string, string, string]>([
     ['{{{v | trim}}}', '  hello  ', 'hello'],
     ['{{{v | trimStart}}}', '  hello  ', 'hello  '],
     ['{{{v | trimEnd}}}', '  hello  ', '  hello'],
     ['{{{v | upper}}}', 'hello', 'HELLO'],
     ['{{{v | lower}}}', 'HELLO', 'hello'],
-  ] as [string, string, string][])('テンプレート "%s" → "%s"', (tpl, input, expected) => {
+  ])('テンプレート "%s" → "%s"', (tpl, input, expected) => {
     expect(t(tpl, { v: input })).toBe(expected);
   });
 
@@ -271,7 +277,7 @@ describe('LazyTemplate プリミティブフィルター — 文字列', () => {
 describe('LazyTemplate プリミティブフィルター — 数値', () => {
   const t = (tpl: string, data: object) => new LazyTemplate(tpl).evaluate(data);
 
-  it.each([
+  it.each<[string, number, string]>([
     ['round', 3.7, '4'],
     ['round', 3.2, '3'],
     ['int', 3.9, '3'],
@@ -280,7 +286,7 @@ describe('LazyTemplate プリミティブフィルター — 数値', () => {
     ['ceil', 3.1, '4'],
     ['floor', 3.9, '3'],
     ['negate', 42, '-42'],
-  ] as [string, number, string][])('%s(%s) → "%s"', (filter, input, expected) => {
+  ])('%s(%s) → "%s"', (filter, input, expected) => {
     expect(t(`{{{v | ${filter}}}}`, { v: input })).toBe(expected);
   });
 
@@ -429,9 +435,9 @@ describe('LazyTemplate.evaluate — 静的メソッド', () => {
   });
 
   it('カスタムフィルターを渡せる', () => {
-    expect(
-      LazyTemplate.evaluate('{{{v | dbl}}}', { v: 5 }, { dbl: (v) => (v as number) * 2 }),
-    ).toBe('10');
+    expect(LazyTemplate.evaluate('{{{v | dbl}}}', { v: 5 }, { dbl: (v) => Number(v) * 2 })).toBe(
+      '10',
+    );
   });
 });
 
@@ -440,12 +446,12 @@ describe('LazyTemplate.evaluate — 静的メソッド', () => {
 // ============================================================================
 
 describe('LazyTemplate.parseStringLiteral', () => {
-  it.each([
+  it.each<[string, string]>([
     ['"hello"', 'hello'],
     ['"with \\"quotes\\""', 'with "quotes"'],
     ["'hello'", 'hello'],
     ["'with \\' apostrophe'", "with ' apostrophe"],
-  ] as [string, string][])('%s → "%s"', (input, expected) => {
+  ])('%s → "%s"', (input, expected) => {
     expect(LazyTemplate.parseStringLiteral(input)).toBe(expected);
   });
 

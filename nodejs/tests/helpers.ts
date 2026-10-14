@@ -1,8 +1,22 @@
+/**
+ * helpers.ts
+ *
+ * @description テスト用のモック（ロガー・Transport・レスポンス）
+ */
+
 import { vi, type Mock } from 'vitest';
 import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
 import type { Logger } from '../src/LoggerFacade.ts';
 
-export const createMockLogger = () => {
+type MockLogger = { [K in keyof Logger]: Mock<(...args: unknown[]) => void> } & {
+  calls: Record<keyof Logger, unknown[][]>;
+};
+
+/** 文字列の payload を取り出す（JSON 化して送った body を検査するため） */
+export const payloadText = (options?: FetchOptions): string =>
+  typeof options?.payload === 'string' ? options.payload : '';
+
+export const createMockLogger = (): MockLogger => {
   const calls: Record<keyof Logger, unknown[][]> = {
     trace: [],
     debug: [],

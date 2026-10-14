@@ -31,7 +31,8 @@ describe('deepFreeze — 基本動作', () => {
   it('凍結後に strict mode でプロパティ変更しようとすると TypeError', () => {
     const obj = deepFreeze({ x: 1 });
     expect(() => {
-      (obj as { x: number }).x = 99;
+      // @ts-expect-error: 凍結したオブジェクトへの代入が実行時に TypeError になることを確かめる
+      obj.x = 99;
     }).toThrow(TypeError);
   });
 });

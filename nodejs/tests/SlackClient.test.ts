@@ -3,7 +3,7 @@ import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClien
 import { SlackApiError } from '../src/SlackClient.ts';
 import { HttpError, RequestValidationError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
-import { createMockLogger, makeTransport } from './helpers.ts';
+import { createMockLogger, makeTransport, payloadText } from './helpers.ts';
 
 // ============================================================================
 // テストユーティリティ
@@ -35,7 +35,7 @@ describe('SlackCore.withRetry — 成功ケース', () => {
     const retrying = SlackCore.withRetry(transport, { maxRetries: 3 });
     const result = await retrying.fetch('https://slack.com/api/test');
 
-    expect((result.body as { ok: boolean }).ok).toBe(true);
+    expect(result.body).toHaveProperty('ok', true);
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 });
@@ -377,8 +377,8 @@ describe('SlackApiClient.create — 正常系', () => {
     const client = SlackApiClient.create('xoxb-token', { transport });
 
     const result = await client.post('/chat.postMessage', { channel: 'C123', text: 'hi' });
-    expect((result as typeof responseBody).ok).toBe(true);
-    expect((result as typeof responseBody).ts).toBe('123.456');
+    expect(result).toHaveProperty('ok', true);
+    expect(result).toHaveProperty('ts', '123.456');
   });
 
   it('Authorization: Bearer ヘッダーが付いている', async () => {
@@ -386,7 +386,7 @@ describe('SlackApiClient.create — 正常系', () => {
     const client = SlackApiClient.create('xoxb-my-token', { transport: innerTransport });
     await client.post('/chat.postMessage', {});
 
-    const call = (innerTransport.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const call = vi.mocked(innerTransport.fetch).mock.calls[0];
     expect(call?.[1]?.headers?.['Authorization']).toBe('Bearer xoxb-my-token');
   });
 
@@ -427,7 +427,7 @@ describe('SlackApiClient.create — ok:false', () => {
     try {
       await client.post('/chat.postMessage', {});
     } catch (e) {
-      err = e as SlackApiError;
+      err = e instanceof SlackApiError ? e : undefined;
     }
 
     expect(err).toBeInstanceOf(SlackApiError);
@@ -446,7 +446,7 @@ describe('SlackApiClient.create — ok:false', () => {
     try {
       await client.post('/chat.postMessage', {});
     } catch (e) {
-      err = e as SlackApiError;
+      err = e instanceof SlackApiError ? e : undefined;
     }
 
     expect(err?.metadata).toEqual({ messages: ['[ERROR] invalid channel'] });
@@ -466,7 +466,7 @@ describe('SlackApiClient — use()', () => {
     );
 
     const result = await client.postMessage('#general', 'Hello!');
-    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(result).toHaveProperty('ok', true);
     expect(transport.calls[0]?.url).toContain('chat.postMessage');
   });
 });
@@ -511,7 +511,7 @@ describe('SlackWebhookClient.send — 正常系', () => {
 
     await client.send({ blocks });
 
-    const sentPayload = JSON.parse(transport.calls[0]?.options?.payload as string);
+    const sentPayload = JSON.parse(payloadText(transport.calls[0]?.options));
     expect(sentPayload.blocks).toEqual(blocks);
   });
 });

@@ -3,7 +3,6 @@ import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
 import { ApiClient } from '../src/ApiClient.ts';
 import { RequestValidationError } from '../src/httpTypes.ts';
-import type { RawResponse } from '../src/httpTypes.ts';
 import { mockTransport } from './helpers.ts';
 
 // ============================================================================
@@ -37,6 +36,7 @@ describe('ApiClient.withBearerAuth', () => {
     ApiClient.withBearerAuth(transport, 'token');
     // authed を呼ばずに元の transport を直接呼ぶ
     await transport.fetch('https://example.com');
+    expect(transport.calls).toHaveLength(1);
     expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 });
@@ -54,7 +54,7 @@ describe('ApiClient.createClient — call', () => {
     expect(transport.calls[0]?.url).toBe('https://api.example.com/users/1');
     expect(transport.calls[0]?.options?.method).toBe('GET');
     // responseHandler なしは RawResponse をそのまま返す
-    expect((result as RawResponse).body).toEqual({ id: 1 });
+    expect(result.body).toEqual({ id: 1 });
   });
 
   it('POST リクエストで body を JSON.stringify して送信する', async () => {
@@ -88,7 +88,7 @@ describe('ApiClient.createClient — call', () => {
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport,
-      responseHandler: (res) => (res.body as { data: number[] }).data,
+      responseHandler: (response) => Reflect.get(Object(response.body), 'data'),
     });
 
     const result = await client.call({ endpoint: '/items' });
@@ -187,7 +187,7 @@ describe('ApiClient.createClient — extend', () => {
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport: mockTransport(),
-      responseHandler: (res) => (res.body as { result: number }).result,
+      responseHandler: (response) => Reflect.get(Object(response.body), 'result'),
     });
     const extended = client.extend(() => transport);
     const result = await extended.get('/data');
@@ -205,7 +205,7 @@ describe('ApiClient.createClient — use', () => {
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport,
-      responseHandler: (res) => res.body,
+      responseHandler: (response) => response.body,
     });
 
     const extended = client.use((c) => ({
@@ -222,7 +222,7 @@ describe('ApiClient.createClient — use', () => {
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport,
-      responseHandler: (res) => res.body,
+      responseHandler: (response) => response.body,
     });
 
     const extended = client.use('getTotal', (c) => () => c.get('/total'));
@@ -261,7 +261,7 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
     const client = ApiClient.createClient({
       baseUrl: 'https://example.com',
       transport,
-      responseHandler: (res) => res.body,
+      responseHandler: (response) => response.body,
     }).use((c) => ({
       delete: (id: string) => c.delete(`/items/${id}`),
     }));
@@ -277,7 +277,7 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
     const client = ApiClient.createClient({
       baseUrl: 'https://example.com',
       transport,
-      responseHandler: (res) => res.body,
+      responseHandler: (response) => response.body,
     }).use((c) => ({
       get: (id: string) => c.get(`/items/${id}`),
     }));

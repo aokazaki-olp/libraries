@@ -44,7 +44,7 @@ const decodeOk = (body: unknown): { ok: boolean } => {
 // ============================================================================
 
 describe('GBizInfoApiClient.create — バリデーション', () => {
-  it.each([
+  it.each<[string, unknown]>([
     ['undefined', undefined],
     ['null', null],
     ['空文字', ''],
@@ -53,7 +53,7 @@ describe('GBizInfoApiClient.create — バリデーション', () => {
     ['真偽値 false', false],
     ['オブジェクト', {}],
     ['配列', []],
-  ] as [string, unknown][])('token が %s だと TypeError', (_label, token) => {
+  ])('token が %s だと TypeError', (_label, token) => {
     expect(() =>
       // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       GBizInfoApiClient.create(token),
@@ -62,7 +62,7 @@ describe('GBizInfoApiClient.create — バリデーション', () => {
       // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       GBizInfoApiClient.create(token);
     } catch (e) {
-      expect((e as TypeError).message).toContain('gBizINFO API token');
+      expect(e).toHaveProperty('message', expect.stringContaining('gBizINFO API token'));
     }
   });
 });
@@ -113,7 +113,7 @@ describe('GBizInfoApiClient.create — API バージョン', () => {
       // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
       GBizInfoApiClient.create(VALID_TOKEN, { version: 'v3' });
     } catch (e) {
-      expect((e as TypeError).message).toContain('version');
+      expect(e).toHaveProperty('message', expect.stringContaining('version'));
     }
   });
 });
@@ -134,6 +134,7 @@ describe('GBizInfoApiClient.create — 認証ヘッダ', () => {
     const transport = mockTransport({ body: {} });
     const client = GBizInfoApiClient.create('t', { transport });
     await client.get('/hojin/1');
+    expect(transport.calls).toHaveLength(1);
     expect(transport.calls[0]?.options?.headers?.['Authorization']).toBeUndefined();
   });
 
@@ -264,7 +265,7 @@ describe('GBizInfoApiClient.create — use()', () => {
       (c) => (corporateNumber: string) => c.get(`/hojin/${corporateNumber}`),
     );
     const result = await client.byCorporateNumber('1234567890123');
-    expect((result as { name: string }).name).toBe('A 社');
+    expect(result).toHaveProperty('name', 'A 社');
     expect(transport.calls[0]?.url.endsWith('/hojin/1234567890123')).toBe(true);
   });
 

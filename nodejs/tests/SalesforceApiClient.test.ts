@@ -28,7 +28,7 @@ const VALID_ACCESS_TOKEN = 'valid-access-token';
 // ============================================================================
 
 describe('SalesforceApiClient.create — バリデーション', () => {
-  it.each([
+  it.each<[string, unknown[], string]>([
     ['引数なし', [], 'instanceUrl'],
     ['instanceUrl が空文字', ['', 'token'], 'instanceUrl'],
     ['instanceUrl が null', [null, 'token'], 'instanceUrl'],
@@ -36,19 +36,16 @@ describe('SalesforceApiClient.create — バリデーション', () => {
     ['accessToken が空文字', [VALID_INSTANCE_URL, ''], 'accessToken'],
     ['accessToken が null', [VALID_INSTANCE_URL, null], 'accessToken'],
     ['accessToken が数値', [VALID_INSTANCE_URL, 123], 'accessToken'],
-  ] as [string, unknown[], string][])(
-    '%s → TypeError（メッセージに "%s" を含む）',
-    (_label, args, expectedInMessage) => {
+  ])('%s → TypeError（メッセージに "%s" を含む）', (_label, args, expectedInMessage) => {
+    // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
+    expect(() => SalesforceApiClient.create(...args)).toThrow(TypeError);
+    try {
       // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
-      expect(() => SalesforceApiClient.create(...args)).toThrow(TypeError);
-      try {
-        // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
-        SalesforceApiClient.create(...args);
-      } catch (e) {
-        expect((e as TypeError).message).toContain(expectedInMessage);
-      }
-    },
-  );
+      SalesforceApiClient.create(...args);
+    } catch (e) {
+      expect(e).toHaveProperty('message', expect.stringContaining(expectedInMessage));
+    }
+  });
 
   it('apiVersion の形式が不正な場合 TypeError', () => {
     expect(() =>
@@ -119,16 +116,15 @@ describe('SalesforceApiClient.create — baseUrl', () => {
 describe('SalesforceApiClient.create — Authorization ヘッダー', () => {
   it('Bearer トークンが Authorization ヘッダーに設定される', async () => {
     // transport を DI で最内側に差し込むことで Bearer デコレータがヘッダーを付けた後の状態を観測する
-    const innerTransport: Transport = {
-      fetch: vi.fn(async () => makeRawResponse()),
-    };
+    const innerFetch = vi.fn(async (_url: string, _options?: FetchOptions) => makeRawResponse());
+    const innerTransport: Transport = { fetch: innerFetch };
 
     const client = SalesforceApiClient.create(VALID_INSTANCE_URL, 'my-sf-token', {
       transport: innerTransport,
     });
     await client.get('/sobjects');
 
-    const innerCall = (innerTransport.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const innerCall = innerFetch.mock.calls[0];
     expect(innerCall?.[1]?.headers?.['Authorization']).toBe('Bearer my-sf-token');
   });
 });

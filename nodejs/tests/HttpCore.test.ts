@@ -446,7 +446,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       payload: { grant_type: 'client_credentials', client_id: 'xxx' },
     });
 
-    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
+    const calledOptions = mockGotFn.mock.calls[0]?.[1];
     expect(calledOptions.form).toEqual({ grant_type: 'client_credentials', client_id: 'xxx' });
     expect(calledOptions.body).toBeUndefined();
   });
@@ -466,7 +466,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       payload: '{"key":"value"}',
     });
 
-    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
+    const calledOptions = mockGotFn.mock.calls[0]?.[1];
     expect(calledOptions.body).toBe('{"key":"value"}');
     expect(calledOptions.form).toBeUndefined();
   });
@@ -483,7 +483,7 @@ describe('HttpCore.createTransport — got 統合', () => {
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com/', { timeoutMs: 3000 });
 
-    const calledOptions = mockGotFn.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect((calledOptions.timeout as Record<string, unknown>).request).toBe(3000);
+    const calledOptions = mockGotFn.mock.calls[0]?.[1];
+    expect(calledOptions.timeout).toHaveProperty('request', 3000);
   });
 });

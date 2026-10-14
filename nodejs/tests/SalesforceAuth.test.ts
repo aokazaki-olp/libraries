@@ -10,14 +10,19 @@ import { makeRawResponse } from './helpers.ts';
 // テストユーティリティ
 // ============================================================================
 
-const makeMockSigner = (): Signer => ({
-  computeRsaSha256Signature: vi.fn(() => Buffer.from('mock-signature')),
-  base64EncodeWebSafe: vi.fn((bytes: Buffer) => bytes.toString('base64url')),
-  newBlob: vi.fn((str: string) => Buffer.from(str, 'utf-8')),
-});
+const makeMockSigner = () => {
+  const computeRsaSha256Signature = vi.fn((_input: string, _privateKey: string) =>
+    Buffer.from('mock-signature'),
+  );
+  const base64EncodeWebSafe = vi.fn((bytes: Buffer) => bytes.toString('base64url'));
+  const newBlob = vi.fn((str: string) => Buffer.from(str, 'utf-8'));
+  return { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } satisfies Signer;
+};
 
-const makeMockTransport = (response?: Partial<RawResponse>): Transport & { calls: unknown[] } => {
-  const calls: unknown[] = [];
+const makeMockTransport = (
+  response?: Partial<RawResponse>,
+): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
+  const calls: { url: string; options?: FetchOptions }[] = [];
   return {
     calls,
     fetch: vi.fn(async (url: string, options?: FetchOptions) => {
@@ -39,29 +44,26 @@ const VALID_OPTIONS = {
 // ============================================================================
 
 describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
-  it.each([
+  it.each<[string, unknown, string]>([
     ['null', null, 'string'],
     ['number', 123, 'string'],
     ['undefined', undefined, 'string'],
-  ] as [string, unknown, string][])('%s → TypeError（"%s" を含む）', (_label, value, hint) => {
+  ])('%s → TypeError（"%s" を含む）', (_label, value, hint) => {
     expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
     expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
   });
 
-  it.each([
+  it.each<[string, string, string]>([
     ['空文字', '', 'My Domain URL'],
     ['trailing slash あり', 'https://yourorg.my.salesforce.com/', 'trailing slash'],
     ['大文字混入', 'https://YourOrg.my.salesforce.com', '小文字'],
     ['Lightning URL', 'https://yourorg.lightning.force.com', 'Lightning'],
     ['http://', 'http://yourorg.my.salesforce.com', 'https'],
     ['パスあり', 'https://yourorg.my.salesforce.com/services/oauth2/token', 'パス'],
-  ] as [string, string, string][])(
-    '%s → TypeError（メッセージに関連文字列を含む）',
-    (_label, value, hint) => {
-      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
-      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
-    },
-  );
+  ])('%s → TypeError（メッセージに関連文字列を含む）', (_label, value, hint) => {
+    expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
+    expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
+  });
 
   it.each(['https://yourorg.my.salesforce.com', 'https://yourorg--sbx.sandbox.my.salesforce.com'])(
     '正常な tokenHost "%s" はそのまま返す',
@@ -78,7 +80,7 @@ describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
 describe('SalesforceAuth.getAccessTokenByJwt — バリデーション', () => {
   const signer = makeMockSigner();
 
-  it.each([
+  it.each<[string, typeof VALID_OPTIONS, string]>([
     ['consumerKey が空文字', { ...VALID_OPTIONS, consumerKey: '' }, 'consumerKey'],
     [
       'consumerKey が非string',
@@ -87,17 +89,14 @@ describe('SalesforceAuth.getAccessTokenByJwt — バリデーション', () => {
     ],
     ['username が空文字', { ...VALID_OPTIONS, username: '' }, 'username'],
     ['privateKey が空文字', { ...VALID_OPTIONS, privateKey: '' }, 'privateKey'],
-  ] as [string, typeof VALID_OPTIONS, string][])(
-    '%s → TypeError（"%s" を含む）',
-    async (_label, options, expectedKey) => {
-      await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
-        TypeError,
-      );
-      await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
-        expectedKey,
-      );
-    },
-  );
+  ])('%s → TypeError（"%s" を含む）', async (_label, options, expectedKey) => {
+    await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
+      TypeError,
+    );
+    await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
+      expectedKey,
+    );
+  });
 
   it('tokenHost が不正な形式 → TypeError', async () => {
     await expect(
@@ -137,8 +136,8 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const call = transport.calls[0] as { url: string; options: FetchOptions };
-    expect(call.url).toBe('https://yourorg.my.salesforce.com/services/oauth2/token');
+    expect(transport.calls).toHaveLength(1);
+    expect(transport.calls[0]?.url).toBe('https://yourorg.my.salesforce.com/services/oauth2/token');
   });
 
   it('token endpoint へのリクエストが POST + form-urlencoded になる', async () => {
@@ -149,12 +148,13 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const call = transport.calls[0] as { url: string; options: FetchOptions };
-    expect(call.options.method).toBe('POST');
-    expect(typeof call.options.payload).toBe('object');
-    const payload = call.options.payload as Record<string, string>;
-    expect(payload['grant_type']).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
-    expect(typeof payload['assertion']).toBe('string');
+    expect(transport.calls).toHaveLength(1);
+    const options = transport.calls[0]?.options;
+    expect(options?.method).toBe('POST');
+    expect(options?.payload).toMatchObject({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: expect.any(String),
+    });
   });
 
   it('JWT に iss/sub/aud/exp クレームが含まれる', async () => {
@@ -165,14 +165,16 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const blobCalls = (signer.newBlob as ReturnType<typeof vi.fn>).mock.calls;
-    const claimsJson = blobCalls[1]?.[0] as string; // 2回目の呼び出しがclaimsのJSON
-    const claims = JSON.parse(claimsJson) as Record<string, unknown>;
+    const blobCalls = signer.newBlob.mock.calls;
+    const claimsJson = String(blobCalls[1]?.[0]); // 2回目の呼び出しがclaimsのJSON
+    const claims: unknown = JSON.parse(claimsJson);
 
-    expect(claims['iss']).toBe(VALID_OPTIONS.consumerKey);
-    expect(claims['sub']).toBe(VALID_OPTIONS.username);
-    expect(claims['aud']).toBe(VALID_OPTIONS.tokenHost);
-    expect(typeof claims['exp']).toBe('number');
+    expect(claims).toMatchObject({
+      iss: VALID_OPTIONS.consumerKey,
+      sub: VALID_OPTIONS.username,
+      aud: VALID_OPTIONS.tokenHost,
+      exp: expect.any(Number),
+    });
   });
 
   it('request を持たない HttpError はそのまま投げる（作り直さない）', async () => {
@@ -206,11 +208,11 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
       caughtError = e;
     }
 
-    expect(caughtError).toBeInstanceOf(HttpError);
-    const httpError = caughtError as HttpError;
-    const requestBody = httpError.request?.body as Record<string, unknown> | undefined;
-    expect(requestBody?.['assertion']).toBe('[REDACTED]');
-    expect(httpError.cause).toBeUndefined();
+    if (!(caughtError instanceof HttpError)) {
+      throw new Error('HttpError が投げられていません');
+    }
+    expect(caughtError.request?.body).toMatchObject({ assertion: '[REDACTED]' });
+    expect(caughtError.cause).toBeUndefined();
   });
 
   it('JWT の signingInput が header.claims の Base64URL 連結形式になる', async () => {
@@ -221,17 +223,13 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const signCalls = (signer.computeRsaSha256Signature as ReturnType<typeof vi.fn>).mock.calls;
-    const signingInput = signCalls[0]?.[0] as string;
+    const signCalls = signer.computeRsaSha256Signature.mock.calls;
+    const signingInput = String(signCalls[0]?.[0]);
     const parts = signingInput.split('.');
     expect(parts).toHaveLength(2);
 
-    const header = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString()) as Record<
-      string,
-      unknown
-    >;
-    expect(header['alg']).toBe('RS256');
-    expect(header['typ']).toBe('JWT');
+    const header: unknown = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString());
+    expect(header).toMatchObject({ alg: 'RS256', typ: 'JWT' });
   });
 });
 
@@ -243,7 +241,7 @@ describe('SalesforceAuth.getAccessTokenByJwt — defaultSigner (node:crypto)', (
   it('signer を省略しても PEM 鍵で JWT を生成して token endpoint に POST できる', async () => {
     // node:crypto で実際に署名できることを確認するため、実際の RSA 鍵ペアを生成して使う
     const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    const pem = String(privateKey.export({ type: 'pkcs8', format: 'pem' }));
 
     const transport = makeMockTransport({
       body: { access_token: 'sf-token', instance_url: 'https://yourorg.my.salesforce.com' },

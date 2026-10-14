@@ -1,5 +1,4 @@
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiClient } from '../src/ApiClient.ts';
 import { HttpCore } from '../src/HttpCore.ts';
@@ -63,7 +62,7 @@ describe('signal の伝播', () => {
 
     await transport.fetch('https://example.com', { signal: controller.signal });
 
-    const calledOptions = mockGotFn.mock.calls[0]?.[1] as { signal?: AbortSignal };
+    const calledOptions = mockGotFn.mock.calls[0]?.[1];
     expect(calledOptions.signal).toBe(controller.signal);
   });
 
@@ -233,10 +232,10 @@ describe('got との結合: 中断で即座に止まる', () => {
   let requests = 0;
 
   beforeAll(async () => {
-    server = http.createServer((_req, res) => {
+    server = http.createServer((_request, response) => {
       requests++;
       setTimeout(() => {
-        res.end('late');
+        response.end('late');
       }, 5_000);
     });
     await new Promise<undefined>((resolve) => {
@@ -244,8 +243,11 @@ describe('got との結合: 中断で即座に止まる', () => {
         resolve(undefined);
       });
     });
-    const { port } = server.address() as AddressInfo;
-    url = `http://127.0.0.1:${String(port)}/`;
+    const address = server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('サーバーが TCP で待ち受けていません');
+    }
+    url = `http://127.0.0.1:${String(address.port)}/`;
   });
 
   afterAll(async () => {
