@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
 import { ApiClient } from '../src/ApiClient.ts';
+import { RequestValidationError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
 import { mockTransport } from './helpers.ts';
 
@@ -68,15 +69,18 @@ describe('ApiClient.createClient — call', () => {
     expect(call?.options?.headers?.['Content-Type']).toContain('application/json');
   });
 
-  it('GET + body は body を無視する（Content-Type も付けない）', async () => {
+  it.each([
+    ['GET + body', { method: 'GET', body: { should: 'not be sent' } }],
+    ['DELETE + body', { method: 'DELETE', body: { should: 'not be sent' } }],
+    ['HEAD + rawBody', { method: 'HEAD', rawBody: 'raw' }],
+  ])('%s は送らずに RequestValidationError（黙って捨てない）', async (_label, request) => {
     const transport = mockTransport();
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
-    await client.call({ endpoint: '/users', method: 'GET', body: { should: 'be ignored' } });
-
-    const call = transport.calls[0];
-    expect(call?.options?.payload).toBeUndefined();
-    expect(call?.options?.headers?.['Content-Type']).toBeUndefined();
+    await expect(client.call({ endpoint: '/users', ...request })).rejects.toThrow(
+      RequestValidationError,
+    );
+    expect(transport.calls).toHaveLength(0);
   });
 
   it('responseHandler を経由して値を返す', async () => {

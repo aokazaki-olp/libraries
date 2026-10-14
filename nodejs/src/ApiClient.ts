@@ -9,9 +9,9 @@
  *   - call() が async になった以外、GAS版と同じAPI
  */
 
-import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { HttpCore } from './HttpCore.ts';
+import { RequestValidationError } from './httpTypes.ts';
 import type { FetchOptions, RawResponse, RequestOptions, Transport } from './httpTypes.ts';
 
 export type ResponseHandler<T = unknown> = (response: RawResponse, request: RequestOptions) => T;
@@ -157,7 +157,9 @@ interface ClientConfig<TResponse = RawResponse> {
  * 別の型で受けたい場合は、その型へ変換・検証する responseHandler を渡す。
  *
  * @param config - クライアント設定
- * @returns クライアント（call/get/post/put/patch/delete/extend/use）。use() は TypeError をスローする場合がある
+ * @returns クライアント（call/get/post/put/patch/delete/extend/use）。
+ *   use() は plugin の戻り値が Object でないとき TypeError、call() は GET / HEAD / DELETE に body を付けると
+ *   RequestValidationError を投げる
  * @remarks use() で追加した plugin メソッドは HTTP メソッド名（get/post/put/patch/delete）と同名でも plugin が優先される
  */
 function createClient(
@@ -181,7 +183,6 @@ const buildClient = <TResponse>(
 ): BaseClient<TResponse> => {
   const baseUrl = trimRightSlash(config.baseUrl);
   const transport = config.transport ?? HttpCore.createTransport();
-  const log = LoggerFacade.createLogger(config.logger);
   const headers = config.headers ?? {};
   const responseHandler = config.responseHandler;
 
@@ -199,22 +200,18 @@ const buildClient = <TResponse>(
     const hasBody = request.body != null;
     const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
+    if ((hasRawBody || hasBody) && !canHaveBody) {
+      // 黙って捨てると、送ったつもりのデータが届かないことに気づけない
+      throw new RequestValidationError(
+        `${method} リクエストには body / rawBody を付けられません (url: ${url})`,
+      );
+    }
     if (hasRawBody) {
-      if (canHaveBody) {
-        options.payload = request.rawBody;
-      } else {
-        log?.warn(
-          `[HTTP] ⚠ ${method}リクエストでrawBodyが検出されました。無視されます。 url=${url}`,
-        );
-      }
+      options.payload = request.rawBody;
     } else if (hasBody) {
-      if (canHaveBody) {
-        options.payload = JSON.stringify(request.body);
-        if (!HttpCore.hasHeader(mergedHeaders, 'Content-Type')) {
-          mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
-        }
-      } else {
-        log?.warn(`[HTTP] ⚠ ${method}リクエストでbodyが検出されました。無視されます。 url=${url}`);
+      options.payload = JSON.stringify(request.body);
+      if (!HttpCore.hasHeader(mergedHeaders, 'Content-Type')) {
+        mergedHeaders['Content-Type'] = 'application/json; charset=utf-8';
       }
     }
 
@@ -242,15 +239,19 @@ const buildClient = <TResponse>(
   const createExtended = <TMethods extends object>(
     additionalMethods: TMethods,
   ): BaseClient<TResponse, TMethods> => {
-    // eslint-disable-next-line prefer-const -- use が client を参照するため、use を定義した後で代入する
-    let client: BaseClient<TResponse, TMethods>;
+    type Client = BaseClient<TResponse, TMethods>;
 
-    // use はオーバーロード（plugin 形式 / name + fn 形式）を持ち、戻り値の型が引数の形で変わる。
-    // 単一の実装シグネチャからオーバーロード型を導く手段が無いため、型の付与はキャストで行う
-    const use = ((
-      pluginOrName: ((c: BaseClient<TResponse, TMethods>) => unknown) | string,
-      fn?: (c: BaseClient<TResponse, TMethods>) => unknown,
-    ) => {
+    function use<TNew extends object>(
+      plugin: (c: Client) => TNew,
+    ): BaseClient<TResponse, TMethods & TNew>;
+    function use<TName extends string, TFn>(
+      name: TName,
+      fn: (c: Client) => TFn,
+    ): BaseClient<TResponse, TMethods & Record<TName, TFn>>;
+    function use(
+      pluginOrName: ((c: Client) => unknown) | string,
+      fn?: (c: Client) => unknown,
+    ): BaseClient<TResponse, object> {
       let newMethods: unknown;
 
       if (typeof pluginOrName === 'string') {
@@ -267,7 +268,7 @@ const buildClient = <TResponse>(
       }
 
       return createExtended({ ...additionalMethods, ...newMethods });
-    }) as BaseClient<TResponse, TMethods>['use'];
+    }
 
     const httpMethods: HttpMethods<TResponse> = {
       get: (endpoint, query, options) => call({ ...options, method: 'GET', endpoint, query }),
@@ -279,7 +280,7 @@ const buildClient = <TResponse>(
 
     // plugin が HTTP メソッド名（delete 等）と同名メソッドを定義した場合に plugin を優先するため
     // httpMethods を先に展開し additionalMethods で後勝ちにする。call/extend/use は常に保持。
-    client = {
+    const client: Client = {
       ...httpMethods,
       ...additionalMethods,
       call,
