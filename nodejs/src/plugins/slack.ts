@@ -1,5 +1,6 @@
 /**
  * plugins/slack.ts
+ *
  * @description Slack Web API 用プラグインセット
  *
  * 使用例:
@@ -76,21 +77,21 @@ const chat =
     }
   > =>
   (client) => ({
-    postMessage: (channel, text, options = {}) =>
-      // Slack /chat.postMessage はメッセージ送信 API（Slack Web API 仕様）
-      client.post('/chat.postMessage', { channel, text, ...options }) as Promise<void>,
+    postMessage: async (channel, text, options = {}) => {
+      await client.post('/chat.postMessage', { channel, text, ...options });
+    },
 
-    postBlocks: (channel, blocks, options = {}) =>
-      // Slack Web API: 応答本文を使わないため Promise<void> に確定
-      client.post('/chat.postMessage', { channel, blocks, ...options }) as Promise<void>,
+    postBlocks: async (channel, blocks, options = {}) => {
+      await client.post('/chat.postMessage', { channel, blocks, ...options });
+    },
 
-    update: (channel, ts, text, options = {}) =>
-      // Slack Web API: 応答本文を使わないため Promise<void> に確定
-      client.post('/chat.update', { channel, ts, text, ...options }) as Promise<void>,
+    update: async (channel, ts, text, options = {}) => {
+      await client.post('/chat.update', { channel, ts, text, ...options });
+    },
 
-    delete: (channel, ts) =>
-      // Slack Web API: 応答本文を使わないため Promise<void> に確定
-      client.post('/chat.delete', { channel, ts }) as Promise<void>,
+    delete: async (channel, ts) => {
+      await client.post('/chat.delete', { channel, ts });
+    },
   });
 
 // ============================================================================
@@ -125,13 +126,13 @@ const reactions =
     }
   > =>
   (client) => ({
-    addReaction: (channel, timestamp, name) =>
-      // Slack Web API: 応答本文を使わないため Promise<void> に確定
-      client.post('/reactions.add', { channel, timestamp, name }) as Promise<void>,
+    addReaction: async (channel, timestamp, name) => {
+      await client.post('/reactions.add', { channel, timestamp, name });
+    },
 
-    removeReaction: (channel, timestamp, name) =>
-      // Slack Web API: 応答本文を使わないため Promise<void> に確定
-      client.post('/reactions.remove', { channel, timestamp, name }) as Promise<void>,
+    removeReaction: async (channel, timestamp, name) => {
+      await client.post('/reactions.remove', { channel, timestamp, name });
+    },
   });
 
 // ============================================================================
