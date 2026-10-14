@@ -1,5 +1,6 @@
 /**
  * SlackFilters.ts
+ *
  * @description LazyTemplate用 Slack装飾フィルター群（純粋関数）。
  *
  * LazyTemplate との統合例:
@@ -11,6 +12,8 @@
 // ユーティリティ
 // ============================================================================
 
+// テンプレートに渡る任意の値を String() の既定規則で文字列にするのがフィルターの仕様
+// eslint-disable-next-line @typescript-eslint/no-base-to-string -- オブジェクトが [object Object] になるのも仕様どおり
 const toString = (v: unknown): string => (v == null ? '' : String(v));
 
 const processList = (v: unknown, formatFn: (line: string) => string): string => {
@@ -134,6 +137,8 @@ const escapeJson = (v: unknown): string => {
   if (s === '') {
     return '';
   }
+  // JSON 文字列でエスケープが必要な制御文字（U+0000〜U+001F）を対象にする
+  // eslint-disable-next-line no-control-regex -- 制御文字を検出するのがこの正規表現の目的
   return s.replace(/[\u0000-\u001f"\\]/g, (match) => {
     const c = match.charCodeAt(0);
     switch (c) {
@@ -186,7 +191,7 @@ const numberedList = (v: unknown): string => {
     return '';
   }
   const lines = Array.isArray(v) ? v.map(String) : toString(v).split(/\r?\n/);
-  return lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
+  return lines.map((line, i) => `${String(i + 1)}. ${line}`).join('\n');
 };
 
 /** Slack ネイティブ日時装飾（Unix タイムスタンプ） */
