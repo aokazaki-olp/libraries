@@ -28,6 +28,16 @@ const mockTransport = (
   };
 };
 
+/** { ok: boolean } を検証する decoder（§2.7 の境界 decode の例） */
+const decodeOk = (body: unknown): { ok: boolean } => {
+  const ok: unknown =
+    typeof body === 'object' && body !== null ? Reflect.get(body, 'ok') : undefined;
+  if (typeof ok !== 'boolean') {
+    throw new TypeError('ok が boolean ではありません');
+  }
+  return { ok };
+};
+
 // ============================================================================
 // バリデーション
 // ============================================================================
@@ -148,9 +158,16 @@ describe('InvoiceApiClient.create — レスポンス', () => {
   it('成功時はレスポンス body を返す', async () => {
     const body = { announcement: [{ registratedNumber: 'T1234567890123', name: '株式会社A' }] };
     const transport = mockTransport({ body });
-    const client = InvoiceApiClient.create<typeof body>(VALID_APP_ID, { transport });
+    const client = InvoiceApiClient.create(VALID_APP_ID, { transport });
     const result = await client.get('/num', { number: 'T1234567890123' });
-    expect(result.announcement[0]?.registratedNumber).toBe('T1234567890123');
+    expect(result).toEqual(body);
+  });
+
+  it('decode を渡すと、その戻り値がレスポンスになる', async () => {
+    const transport = mockTransport({ body: { ok: false, extra: 1 } });
+    const client = InvoiceApiClient.create(VALID_APP_ID, { transport, decode: decodeOk });
+    const result = await client.get('/num');
+    expect(result).toEqual({ ok: false });
   });
 
   it('HTTP 404 では HttpError がスローされる', async () => {
@@ -170,9 +187,10 @@ describe('InvoiceApiClient.create — リトライ', () => {
       { status: 503, body: 'service unavailable' },
       { status: 200, body: { ok: true } },
     ]);
-    const client = InvoiceApiClient.create<{ ok: boolean }>(VALID_APP_ID, {
+    const client = InvoiceApiClient.create(VALID_APP_ID, {
       transport,
       baseDelayMs: 1,
+      decode: decodeOk,
     });
     const result = await client.get('/num');
     expect(result.ok).toBe(true);

@@ -12,7 +12,7 @@
 // ============================================================================
 
 export type { BaseClient, Plugin, ResponseHandler } from './ApiClient.ts';
-export type { Transport, FetchOptions, RawResponse, RequestOptions } from './httpTypes.ts';
+export type { Transport, FetchOptions, RawResponse, RequestOptions, Decoder } from './httpTypes.ts';
 export { HttpError, RetryExhaustedError } from './httpTypes.ts';
 export type { Logger } from './LoggerFacade.ts';
 

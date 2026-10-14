@@ -15,7 +15,7 @@ import { ApiClient } from './ApiClient.ts';
 import { HttpCore } from './HttpCore.ts';
 import type { BaseClient } from './ApiClient.ts';
 import type { Logger } from './LoggerFacade.ts';
-import type { Transport } from './httpTypes.ts';
+import type { Decoder, Transport } from './httpTypes.ts';
 
 type GBizInfoApiVersion = 'v1' | 'v2';
 
@@ -39,13 +39,19 @@ interface GBizInfoClientOptions {
  *
  * @param token - gBizINFO API トークン
  * @param options - オプション設定 (version 既定値は 'v2')
+ * @param options.decode - レスポンスボディの検証・変換。指定するとレスポンス型がその戻り値の型になる。省略時は unknown
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)
  * @throws {TypeError} token が空文字または string 以外の場合
  */
-const create = <TResponse = unknown>(
+function create(token: string, options?: GBizInfoClientOptions): BaseClient;
+function create<TResponse>(
   token: string,
-  options: GBizInfoClientOptions = {},
-): BaseClient<TResponse> => {
+  options: GBizInfoClientOptions & { decode: Decoder<TResponse> },
+): BaseClient<TResponse>;
+function create<TResponse>(
+  token: string,
+  options: GBizInfoClientOptions & { decode?: Decoder<TResponse> } = {},
+): BaseClient<TResponse> | BaseClient {
   if (typeof token !== 'string' || token === '') {
     throw new TypeError('token には gBizINFO API token (string) を指定してください');
   }
@@ -56,6 +62,7 @@ const create = <TResponse = unknown>(
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     logger,
     transport: injectedTransport,
+    decode,
   } = options;
 
   // TS 型は as any 等でバイパスされるため、ランタイムでも未対応バージョンを弾く
@@ -67,20 +74,22 @@ const create = <TResponse = unknown>(
   // デコレータ適用順 (内側 → 外側): createClient(headers で token 付与) → Retry → Logger
   // - Logger は url/method/status のみを観測し headers を観測しない前提のため token は流出しない
   // - Retry は HttpError を捕捉して再送できる
-  return ApiClient.createClient<TResponse>({
-    baseUrl: `${BASE_URL}/${version}`,
-    transport: injectedTransport ?? HttpCore.createTransport(),
-    headers: {
-      Accept: 'application/json',
-      [AUTH_HEADER]: token,
-    },
-    logger,
-    // レスポンスボディを TResponse として扱う (gBizINFO レスポンスの型保証は呼び出し側の責務)
-    responseHandler: (response) => response.body as TResponse,
-  })
-    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-    .extend((t) => HttpCore.withLogger(t, logger));
-};
+  const build = <T>(decodeBody: Decoder<T>): BaseClient<T> =>
+    ApiClient.createClient({
+      baseUrl: `${BASE_URL}/${version}`,
+      transport: injectedTransport ?? HttpCore.createTransport(),
+      headers: {
+        Accept: 'application/json',
+        [AUTH_HEADER]: token,
+      },
+      logger,
+      responseHandler: (response) => decodeBody(response.body),
+    })
+      .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+      .extend((t) => HttpCore.withLogger(t, logger));
+
+  return decode ? build(decode) : build((body) => body);
+}
 
 export const GBizInfoApiClient = { create };
 export type { GBizInfoClientOptions, GBizInfoApiVersion };

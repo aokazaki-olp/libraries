@@ -29,6 +29,16 @@ const mockTransport = (
   };
 };
 
+/** { ok: boolean } を検証する decoder（§2.7 の境界 decode の例） */
+const decodeOk = (body: unknown): { ok: boolean } => {
+  const ok: unknown =
+    typeof body === 'object' && body !== null ? Reflect.get(body, 'ok') : undefined;
+  if (typeof ok !== 'boolean') {
+    throw new TypeError('ok が boolean ではありません');
+  }
+  return { ok };
+};
+
 // ============================================================================
 // バリデーション
 // ============================================================================
@@ -172,9 +182,22 @@ describe('GBizInfoApiClient.create — レスポンスハンドラ', () => {
   it('成功時はレスポンス body を返す', async () => {
     const body = { 'hojin-infos': [{ corporate_number: '1234567890123', name: 'A 社' }] };
     const transport = mockTransport({ body });
-    const client = GBizInfoApiClient.create<typeof body>('t', { transport });
+    const client = GBizInfoApiClient.create('t', { transport });
     const result = await client.get('/hojin/1234567890123');
-    expect(result['hojin-infos'][0]?.corporate_number).toBe('1234567890123');
+    expect(result).toEqual(body);
+  });
+
+  it('decode を渡すと、その戻り値がレスポンスになる', async () => {
+    const transport = mockTransport({ body: { ok: true, extra: 1 } });
+    const client = GBizInfoApiClient.create('t', { transport, decode: decodeOk });
+    const result = await client.get('/hojin/1');
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('decode が throw すると呼び出しが reject される', async () => {
+    const transport = mockTransport({ body: { error: 'unexpected' } });
+    const client = GBizInfoApiClient.create('t', { transport, decode: decodeOk });
+    await expect(client.get('/hojin/1')).rejects.toThrow('ok が boolean ではありません');
   });
 
   it('HTTP 404 では HttpError がスローされる', async () => {
@@ -204,9 +227,10 @@ describe('GBizInfoApiClient.create — リトライ', () => {
       { status: 503, body: 'service unavailable' },
       { status: 200, body: { ok: true } },
     ]);
-    const client = GBizInfoApiClient.create<{ ok: boolean }>('t', {
+    const client = GBizInfoApiClient.create('t', {
       transport,
       baseDelayMs: 1,
+      decode: decodeOk,
     });
     const result = await client.get('/hojin/1');
     expect(result.ok).toBe(true);
@@ -218,9 +242,10 @@ describe('GBizInfoApiClient.create — リトライ', () => {
       { status: 429, body: 'Too Many Requests' },
       { status: 200, body: { ok: true } },
     ]);
-    const client = GBizInfoApiClient.create<{ ok: boolean }>('t', {
+    const client = GBizInfoApiClient.create('t', {
       transport,
       baseDelayMs: 1,
+      decode: decodeOk,
     });
     const result = await client.get('/hojin/1');
     expect(result.ok).toBe(true);
