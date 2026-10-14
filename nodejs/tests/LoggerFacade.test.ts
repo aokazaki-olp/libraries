@@ -30,8 +30,8 @@ describe('LoggerFacade.createLogger — null / falsy', () => {
     ['true', true],
     ['数値', 1],
     ['文字列', 'console'],
-  ])('プリミティブ（%s）を渡すと null を返す', (_label, value) => {
-    expect(LoggerFacade.createLogger(value)).toBeNull();
+  ])('偽値でないプリミティブ（%s）は TypeError（黙ってロガー無しにしない）', (_label, value) => {
+    expect(() => LoggerFacade.createLogger(value)).toThrow(TypeError);
   });
 });
 
@@ -82,12 +82,22 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
     expect(finer).toHaveBeenCalledWith('msg');
   });
 
-  it('trace: 候補が全てなければ何もしない（noop）', () => {
-    const impl = {};
+  it('どのレベルかに対応するメソッドが無ければ TypeError（黙って noop にしない）', () => {
+    expect(() => LoggerFacade.createLogger({})).toThrow(
+      'logger に trace / debug / info / warn / error に対応するメソッドがありません',
+    );
+    expect(() => LoggerFacade.createLogger({ info: vi.fn() })).toThrow(
+      'logger に trace / debug / warn / error に対応するメソッドがありません',
+    );
+  });
+
+  it('作成後にメソッドが関数でなくなったら、呼び出し時に TypeError', () => {
+    const impl: Record<string, unknown> = { log: vi.fn() };
     const logger = createNonNullLogger(impl);
+    impl['log'] = 'gone';
     expect(() => {
-      logger.trace('msg');
-    }).not.toThrow();
+      logger.info('msg');
+    }).toThrow('logger.log が関数ではなくなりました');
   });
 
   it('debug: debug を最優先で解決する', () => {
@@ -162,7 +172,7 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
 describe('LoggerFacade.createLogger — 引数の透過', () => {
   it('複数引数をそのままロガーに渡す', () => {
     const info = vi.fn();
-    const impl = { info };
+    const impl = { info, log: vi.fn() };
     const logger = createNonNullLogger(impl);
     const err = new Error('test');
     logger.info('message', err, { extra: 1 });
@@ -171,7 +181,7 @@ describe('LoggerFacade.createLogger — 引数の透過', () => {
 
   it('引数なしでも呼べる', () => {
     const info = vi.fn();
-    const logger = createNonNullLogger({ info });
+    const logger = createNonNullLogger({ info, log: vi.fn() });
     expect(() => {
       logger.info();
     }).not.toThrow();

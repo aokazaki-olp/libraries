@@ -30,44 +30,51 @@ export interface Logger {
  *   - warn:  warn → warning → log
  *   - error: error → severe → log
  *
- * @param logger - ロガー実装（null の場合は null を返す）
- * @returns 統一されたLoggerインターフェース、loggerがnullish・プリミティブの場合はnull
+ * @param logger - ロガー実装。偽値（undefined・null・false・'' 等）なら「ロガー無し」として null を返す
+ * @returns 統一されたLoggerインターフェース、logger が偽値の場合は null
+ * @throws {TypeError} logger がオブジェクトでない場合、またはどのレベルかに対応するメソッドが無い場合
+ *   （黙って noop にすると、警告やエラーが記録されていないことに気づけない）
  */
 const createLogger = (logger: unknown): Logger | null => {
+  // `logger: debug && console` のような書き方を許すため、偽値はロガー無しとして扱う
   if (!logger) {
     return null;
   }
-
-  // プリミティブはメソッドを持てない（Reflect.get も TypeError になる）
   if (typeof logger !== 'object' && typeof logger !== 'function') {
-    return null;
+    throw new TypeError(`logger にはオブジェクトを指定してください (received: ${typeof logger})`);
   }
   const impl = logger;
+  const missing: string[] = [];
 
-  const noop: LogMethod = () => {};
-
-  const resolve = (...candidates: string[]): LogMethod => {
-    for (const name of candidates) {
-      if (typeof Reflect.get(impl, name) === 'function') {
-        // メソッドは呼び出し時に引く（作成後に差し替えられた実装・spy にも追従する）
-        return (...args: unknown[]) => {
-          const method: unknown = Reflect.get(impl, name);
-          if (typeof method === 'function') {
-            method.call(impl, ...args);
-          }
-        };
-      }
+  const resolve = (level: keyof Logger, ...candidates: string[]): LogMethod => {
+    const name = candidates.find((candidate) => typeof Reflect.get(impl, candidate) === 'function');
+    if (name === undefined) {
+      missing.push(level);
+      return () => {};
     }
-    return noop;
+    // メソッドは呼び出し時に引く（作成後に差し替えられた実装・spy にも追従する）
+    return (...args: unknown[]) => {
+      const method: unknown = Reflect.get(impl, name);
+      if (typeof method !== 'function') {
+        throw new TypeError(`logger.${name} が関数ではなくなりました`);
+      }
+      method.call(impl, ...args);
+    };
   };
 
-  return {
-    trace: resolve('trace', 'finest', 'finer', 'debug', 'log'),
-    debug: resolve('debug', 'fine', 'log'),
-    info: resolve('info', 'log'),
-    warn: resolve('warn', 'warning', 'log'),
-    error: resolve('error', 'severe', 'log'),
+  const facade: Logger = {
+    trace: resolve('trace', 'trace', 'finest', 'finer', 'debug', 'log'),
+    debug: resolve('debug', 'debug', 'fine', 'log'),
+    info: resolve('info', 'info', 'log'),
+    warn: resolve('warn', 'warn', 'warning', 'log'),
+    error: resolve('error', 'error', 'severe', 'log'),
   };
+  if (missing.length > 0) {
+    throw new TypeError(
+      `logger に ${missing.join(' / ')} に対応するメソッドがありません（log メソッドがあれば全レベルを賄えます）`,
+    );
+  }
+  return facade;
 };
 
 export const LoggerFacade = { createLogger };
