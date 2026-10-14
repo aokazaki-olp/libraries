@@ -81,7 +81,7 @@ class LazyTemplate {
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
   /** バックスラッシュ一時退避センチネル (PUA U+E000 で囲みテンプレート本文との衝突を回避) */
-  static readonly BACKSLASH_SENTINEL = '__LT_BS__';
+  static readonly BACKSLASH_SENTINEL = '\uE000__LT_BS__\uE000';
 
   /** プリミティブフィルター 18個 */
   static readonly PRIMITIVE_FILTERS = {
