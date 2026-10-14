@@ -1,5 +1,6 @@
 /**
  * SalesforceApiClient.ts
+ *
  * @description Salesforce REST API のプロトコル層クライアント。
  *              認証(Bearer)・リトライ・ロギング・baseUrl 構築のみを提供する。
  *              SOQL クエリや sObject CRUD は呼び出し側で .use() する。

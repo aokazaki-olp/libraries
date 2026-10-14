@@ -1,5 +1,6 @@
 /**
  * GBizInfoApiClient.ts
+ *
  * @description 経済産業省 gBizINFO API のプロトコル層クライアント。
  *              認証(X-hojinInfo-api-token ヘッダ)・リトライ・ロギング・baseUrl 構築のみを提供する。
  *              法人情報取得・補助金検索などのドメインメソッドは呼び出し側で .use() する。

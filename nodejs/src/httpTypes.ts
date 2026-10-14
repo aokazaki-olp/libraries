@@ -1,5 +1,6 @@
 /**
  * httpTypes.ts
+ *
  * @description HTTP Transport 層の共通型・エラー定義
  */
 

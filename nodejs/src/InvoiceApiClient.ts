@@ -1,5 +1,6 @@
 /**
  * InvoiceApiClient.ts
+ *
  * @description 国税庁 適格請求書発行事業者公表システム Web-API (通称: インボイス Web-API) の
  *              プロトコル層クライアント。認証(クエリパラメータ id)・必須共通クエリ(type/version)・
  *              リトライ・ロギング・baseUrl 構築のみを提供する。

@@ -1,5 +1,6 @@
 /**
  * index.ts
+ *
  * @description ライブラリの公開 API エントリーポイント
  *
  * このファイルのみを import することを推奨する。
