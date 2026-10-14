@@ -2,10 +2,18 @@
   "name": "libraries-nodejs",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.12.0"
+  },
   "scripts": {
+    "lint": "eslint --max-warnings 0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --project tsconfig.test.json"
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "csv-parse": "^6.2.1",
@@ -13,9 +21,13 @@
     "got": "^14"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "tsx": "^4",
-    "typescript": "^5",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
     "vitest": "^2"
   }
 }
