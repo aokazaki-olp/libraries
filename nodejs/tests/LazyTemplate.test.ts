@@ -179,34 +179,22 @@ describe('LazyTemplate.evaluate — フィルター', () => {
     );
   });
 
-  it('存在しないフィルターは Error（綴り間違いを黙って素通ししない）', () => {
-    expect(() => new LazyTemplate('{{{name | nonexistent}}}').evaluate({ name: 'hello' })).toThrow(
-      '未知のフィルターです: nonexistent',
-    );
+  it('存在しないフィルターは適用せずに値を素通しする（仕様。GAS 版・Python 版と同じ出力）', () => {
+    expect(new LazyTemplate('{{{name | nonexistent}}}').evaluate({ name: 'hello' })).toBe('hello');
   });
 
   it.each([
     ['空の項', '{{{ | upper }}}'],
     ['キーとして解釈できない', '{{{ a b }}}'],
     ['閉じていないブラケット', '{{{ a[ }}}'],
-  ])('不正な式（%s）は Error', (_label, template) => {
-    expect(() => new LazyTemplate(template).evaluate({ a: 1 })).toThrow('テンプレート式が不正です');
+  ])('解釈できない式（%s）は不在値として空文字になる（仕様）', (_label, template) => {
+    expect(new LazyTemplate(template).evaluate({ a: 1 })).toBe('');
   });
 
-  it('json フィルターは JSON にできない値で Error（元の例外を cause に持つ）', () => {
+  it('json フィルターは JSON にできない値で "{}" を返す（仕様）', () => {
     const circular: Record<string, unknown> = {};
     circular['self'] = circular;
-    const t = new LazyTemplate('{{{x | json}}}');
-
-    let error: unknown;
-    try {
-      t.evaluate({ x: circular });
-    } catch (e) {
-      error = e;
-    }
-    expect(error).toBeInstanceOf(Error);
-    expect(error).toMatchObject({ message: 'json フィルターで JSON にできない値です' });
-    expect(error).toHaveProperty('cause', expect.any(TypeError));
+    expect(new LazyTemplate('{{{x | json}}}').evaluate({ x: circular })).toBe('{}');
   });
 
   it('フォールバックとフィルターを組み合わせる', () => {
@@ -399,9 +387,9 @@ describe('LazyTemplate — インスタンスごとにフィルターキャッ�
     const t1 = new LazyTemplate('{{{x | shout}}}');
     const t2 = new LazyTemplate('{{{x | shout}}}');
     t1.registerFilter('shout', (v) => `${String(v)}!`);
-    // t2 には shout が未登録のため未知フィルターとして Error
+    // t2 には shout が未登録のため未知フィルターとしてパススルー
     expect(t1.evaluate({ x: 'hi' })).toBe('hi!');
-    expect(() => t2.evaluate({ x: 'hi' })).toThrow('未知のフィルターです: shout');
+    expect(t2.evaluate({ x: 'hi' })).toBe('hi');
   });
 });
 

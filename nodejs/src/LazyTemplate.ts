@@ -46,13 +46,14 @@ type CompiledEvaluator = (data: object) => unknown;
 /**
  * JSON 文字列にする（json / jsonPretty フィルター）
  *
- * @throws {Error} 循環参照・BigInt など JSON にできない値の場合（元の例外を cause に持つ）
+ * 循環参照・BigInt など JSON にできない値は '{}' にする。例外にしないのは仕様
+ * （LAZY_TEMPLATE_SPEC.md「安全なデータアクセス」。GAS 版・Python 版と出力を揃える）
  */
 const stringifyJson = (value: unknown, indent?: number): string | undefined => {
   try {
     return JSON.stringify(value, null, indent);
-  } catch (e) {
-    throw new Error('json フィルターで JSON にできない値です', { cause: e });
+  } catch {
+    return '{}';
   }
 };
 
@@ -236,8 +237,7 @@ class LazyTemplate {
   /**
    * 式文字列をコンパイルしてキャッシュに登録する
    * @param expression - テンプレート式（`{{{...}}}` の内側）
-   * @returns コンパイル済み評価関数（未知のフィルターは評価時に Error）
-   * @throws {Error} 式が構文として不正な場合
+   * @returns コンパイル済み評価関数（解釈できない式は不在値として評価する）
    */
   compile(expression: string): CompiledEvaluator {
     const key = LazyTemplate.stripWhitespaceWithoutStringLiteral(expression);
@@ -280,11 +280,11 @@ class LazyTemplate {
     let current = value;
     for (const name of filterNames) {
       const filter = this.filters[name];
-      if (typeof filter !== 'function') {
-        // 綴り間違いを黙って素通しすると、装飾が抜けたまま出力される
-        throw new Error(`未知のフィルターです: ${name}`);
+      // 未知のフィルターは適用せずに値を素通しする。例外にしないのは仕様（GAS 版・Python 版と出力を揃える。
+      // REVIEW.md M-5: テンプレートエンジンとしてのフォールバック動作。CODING_RULES.md §5.4 からの意図的な逸脱）
+      if (typeof filter === 'function') {
+        current = filter(current);
       }
-      current = filter(current);
     }
     return current;
   }
@@ -338,8 +338,9 @@ class LazyTemplate {
     const compiled: CompiledEvaluator[] = terms.map((rawTerm) => {
       const segments = this.parseFilters(rawTerm);
       const term = segments.shift();
-      if (term === undefined || term === '') {
-        throw new Error(`テンプレート式が不正です: {{{${expression}}}}`);
+      // 解釈できない式は不在値（undefined）として評価する。例外にしないのは仕様（GAS 版・Python 版と出力を揃える）
+      if (term === undefined) {
+        return () => undefined;
       }
       const filterNames = segments;
 
@@ -395,7 +396,7 @@ class LazyTemplate {
       }
 
       if (!valid || path.length === 0) {
-        throw new Error(`テンプレート式が不正です: {{{${expression}}}}`);
+        return () => undefined;
       }
 
       return (data: object) => {
@@ -430,7 +431,6 @@ class LazyTemplate {
    * @param data - プレースホルダーに展開するデータオブジェクト
    * @returns 評価済み文字列
    * @throws {TypeError} data が null/undefined の場合
-   * @throws {Error} 式が不正な場合・未知のフィルターを使った場合・json フィルターで JSON にできない場合
    */
   evaluate(data: object): string {
     // 公開 API の境界。型が object でも JS からは何でも渡りうる
@@ -465,7 +465,6 @@ class LazyTemplate {
    * @param filters - カスタムフィルターマップ
    * @returns 評価済み文字列
    * @throws {TypeError} template が文字列でない場合、または data が null/undefined の場合
-   * @throws {Error} 式が不正な場合・未知のフィルターを使った場合・json フィルターで JSON にできない場合
    */
   static evaluate(template: string, data: object, filters: FilterMap = {}): string {
     return new LazyTemplate(template, filters).evaluate(data);
