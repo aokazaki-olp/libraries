@@ -165,7 +165,7 @@ interface TokenResult {
  * @param options.signal - 中断シグナル
  * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns access_token と instance_url
- * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
+ * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正 / maxRetries・baseDelayMs が不正
  * @throws {HttpError} token endpoint が非 2xx を返した場合
  * @throws {Error} レスポンスに access_token / instance_url が欠落していた場合
  */
@@ -199,6 +199,7 @@ const getAccessTokenByJwt = async (
   }
 
   const audience = normalizeTokenHost(tokenHost);
+  HttpCore.assertRetryOptions(maxRetries, baseDelayMs);
 
   const transport =
     dependencies.transport ??

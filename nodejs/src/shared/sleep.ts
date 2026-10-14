@@ -4,7 +4,7 @@
  * @description 中断可能な待機（リトライのバックオフ・ポーリング間隔）
  */
 
-import { toError } from './toError.ts';
+import { abortReason } from './abort.ts';
 
 /**
  * 指定ミリ秒待つ。signal が中断されたら待機をやめて reject する
@@ -23,18 +23,14 @@ export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
     return promise;
   }
 
-  const abortReason = (): Error => {
-    const reason: unknown = signal.reason;
-    return toError(reason);
-  };
   if (signal.aborted) {
-    reject(abortReason());
+    reject(abortReason(signal));
     return promise;
   }
 
   const onAbort = (): void => {
     clearTimeout(timer);
-    reject(abortReason());
+    reject(abortReason(signal));
   };
   const timer = setTimeout(() => {
     signal.removeEventListener('abort', onAbort);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.ts';
-import { HttpError, RetryExhaustedError } from '../src/httpTypes.ts';
+import { HttpError, RequestValidationError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
 import { createMockLogger, makeRawResponse, makeTransport } from './helpers.ts';
 
@@ -177,11 +177,40 @@ describe('HttpCore.withRetry — リトライ対象外', () => {
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('TypeError（呼び出し側の誤り）はリトライしない', async () => {
-    const transport = makeErrorTransport(new TypeError('bad method'));
+  it('RequestValidationError（組み立ての誤り）はリトライしない', async () => {
+    const transport = makeErrorTransport(new RequestValidationError('bad method'));
     const retrying = HttpCore.withRetry(transport, { maxRetries: 3 });
 
-    await expect(retrying.fetch('https://example.com')).rejects.toThrow(TypeError);
+    await expect(retrying.fetch('https://example.com')).rejects.toThrow(RequestValidationError);
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('TypeError 一般（fetch の通信障害）はリトライする', async () => {
+    const transport = makeErrorTransport(new TypeError('fetch failed'));
+    const retrying = HttpCore.withRetry(transport, { maxRetries: 1, baseDelayMs: 0 });
+
+    await expect(retrying.fetch('https://example.com')).rejects.toThrow(RetryExhaustedError);
+    expect(transport.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('HttpCore.withRetry — 設定の検査', () => {
+  it.each([
+    ['NaN', { maxRetries: Number.NaN }],
+    ['負数', { maxRetries: -1 }],
+    ['小数', { maxRetries: 1.5 }],
+    ['baseDelayMs が NaN', { baseDelayMs: Number.NaN }],
+    ['baseDelayMs が負数', { baseDelayMs: -1 }],
+  ])('%s は TypeError（リトライが止まらなくなるのを防ぐ）', (_label, options) => {
+    const transport = makeErrorTransport(new Error('x'));
+    expect(() => HttpCore.withRetry(transport, options)).toThrow(TypeError);
+  });
+
+  it('maxRetries: 0 は1回だけ呼んで RetryExhaustedError', async () => {
+    const transport = makeErrorTransport(new Error('network'));
+    const retrying = HttpCore.withRetry(transport, { maxRetries: 0 });
+
+    await expect(retrying.fetch('https://example.com')).rejects.toThrow(RetryExhaustedError);
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 });
@@ -319,15 +348,28 @@ describe('HttpCore — デコレータ積み重ね', () => {
 // ============================================================================
 
 describe('HttpCore.createTransport — got 統合', () => {
-  it('HTTP メソッドでない method は got を呼ばずに TypeError をスローする', async () => {
+  it('HTTP メソッドの構文でない method は got を呼ばずに RequestValidationError をスローする', async () => {
     const mockGotFn = vi.fn();
     const mockGot = mockGotFn as unknown as import('got').Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
-    await expect(transport.fetch('https://example.com', { method: 'FETCH' })).rejects.toThrow(
-      TypeError,
+    await expect(transport.fetch('https://example.com', { method: 'GE T' })).rejects.toThrow(
+      RequestValidationError,
     );
     expect(mockGotFn).not.toHaveBeenCalled();
+  });
+
+  it('拡張メソッド（PURGE 等）は構文が正しければ got に渡す', async () => {
+    const mockGotFn = vi.fn().mockResolvedValue({ statusCode: 200, headers: {}, body: '' });
+    const mockGot = mockGotFn as unknown as import('got').Got;
+
+    const transport = HttpCore.createTransport({ got: mockGot });
+    await transport.fetch('https://example.com', { method: 'purge' });
+
+    expect(mockGotFn).toHaveBeenCalledWith(
+      'https://example.com',
+      expect.objectContaining({ method: 'PURGE' }),
+    );
   });
 
   it('値が undefined のヘッダは RawResponse.headers から除く', async () => {

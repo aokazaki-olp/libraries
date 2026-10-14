@@ -13,9 +13,10 @@ import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { ApiClient } from './ApiClient.ts';
 import { HttpCore } from './HttpCore.ts';
-import { HttpError, RetryExhaustedError } from './httpTypes.ts';
+import { HttpError, RequestValidationError, RetryExhaustedError } from './httpTypes.ts';
 import type { BaseClient } from './ApiClient.ts';
-import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
+import type { CallOptions, FetchOptions, RawResponse, Transport } from './httpTypes.ts';
+import { abortReason } from './shared/abort.ts';
 import { sleep } from './shared/sleep.ts';
 
 export class SlackApiError extends Error {
@@ -73,12 +74,13 @@ const retryAfterMs = (headers: Record<string, string | string[]>): number => {
  *
  * - 429: Retry-After を尊重する
  * - 5xx・ネットワークエラー等: 指数バックオフ
- * - 4xx（429 以外）・TypeError（呼び出し側の誤り）・RetryExhaustedError（二重ラップ防止）: リトライしない
+ * - 4xx（429 以外）・RequestValidationError（組み立ての誤り）・RetryExhaustedError（二重ラップ防止）: リトライしない
+ *   （fetch ベースの Transport は通信障害を TypeError で投げるので、TypeError 一般はリトライ対象）
  */
 const planRetry = (e: unknown, attempt: number, baseDelayMs: number): RetryPlan | null => {
   const backoffMs = 2 ** attempt * baseDelayMs;
 
-  if (e instanceof RetryExhaustedError || e instanceof TypeError) {
+  if (e instanceof RetryExhaustedError || e instanceof RequestValidationError) {
     return null;
   }
   if (!(e instanceof HttpError)) {
@@ -108,12 +110,14 @@ const planRetry = (e: unknown, attempt: number, baseDelayMs: number): RetryPlan 
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定
- * @returns リトライ機能付きTransport
- * @throws {RetryExhaustedError} リトライ上限に達した場合
+ * @returns リトライ機能付きTransport。signal が中断されたらリトライも待機もやめて中断理由を投げ、
+ *   上限に達したら RetryExhaustedError を投げる
+ * @throws {TypeError} maxRetries / baseDelayMs が不正な場合
  */
 const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  HttpCore.assertRetryOptions(maxRetries, baseDelayMs);
   const log = LoggerFacade.createLogger(options.logger);
 
   return {
@@ -126,8 +130,11 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
           const plan = planRetry(e, attempt, baseDelayMs);
-          // 呼び出し側が中断したものは再送しない
-          if (fetchOptions?.signal?.aborted === true || plan === null) {
+          // 呼び出し側が中断したものは再送しない。どの時点で気づいても中断理由を投げる
+          if (fetchOptions?.signal?.aborted === true) {
+            throw abortReason(fetchOptions.signal);
+          }
+          if (plan === null) {
             throw e;
           }
 
@@ -238,13 +245,8 @@ interface SlackWebhookOptions {
   transport?: Transport;
 }
 
-interface SlackWebhookSendOptions {
-  /** 中断シグナル。中断されると送信を打ち切り、リトライもしない */
-  signal?: AbortSignal;
-}
-
 interface SlackWebhookInstance {
-  send(payload: SlackPayload, options?: SlackWebhookSendOptions): Promise<void>;
+  send(payload: SlackPayload, options?: CallOptions): Promise<void>;
 }
 
 /**
@@ -272,16 +274,15 @@ const createWebhookClient = (
     transport: injectedTransport,
   } = options;
 
+  HttpCore.assertRetryOptions(maxRetries, baseDelayMs);
+
   const baseTransport = injectedTransport ?? HttpCore.createTransport();
   const transport = HttpCore.withLogger(
     maxRetries > 0 ? withRetry(baseTransport, { maxRetries, baseDelayMs, logger }) : baseTransport,
     logger,
   );
 
-  const send = async (
-    payload: SlackPayload,
-    sendOptions: SlackWebhookSendOptions = {},
-  ): Promise<void> => {
+  const send = async (payload: SlackPayload, sendOptions: CallOptions = {}): Promise<void> => {
     await transport.fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -305,7 +306,7 @@ const createWebhookClient = (
 const sendWebhook = (
   webhookUrl: string,
   payload: SlackPayload,
-  options: SlackWebhookOptions & SlackWebhookSendOptions = {},
+  options: SlackWebhookOptions & CallOptions = {},
 ): Promise<void> =>
   createWebhookClient(webhookUrl, options).send(payload, { signal: options.signal });
 
@@ -315,7 +316,6 @@ export const SlackWebhookClient = {
 };
 
 export type {
-  SlackWebhookSendOptions,
   SlackRetryOptions,
   SlackApiClientOptions,
   SlackWebhookOptions,

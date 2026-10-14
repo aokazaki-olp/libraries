@@ -12,8 +12,15 @@
 // ============================================================================
 
 export type { BaseClient, Plugin, ResponseHandler } from './ApiClient.ts';
-export type { Transport, FetchOptions, RawResponse, RequestOptions, Decoder } from './httpTypes.ts';
-export { HttpError, RetryExhaustedError } from './httpTypes.ts';
+export type {
+  Transport,
+  FetchOptions,
+  RawResponse,
+  RequestOptions,
+  Decoder,
+  CallOptions,
+} from './httpTypes.ts';
+export { HttpError, RequestValidationError, RetryExhaustedError } from './httpTypes.ts';
 export type { Logger } from './LoggerFacade.ts';
 
 // ============================================================================
@@ -50,7 +57,6 @@ export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient
 export type {
   SlackApiClientOptions,
   SlackWebhookOptions,
-  SlackWebhookSendOptions,
   SlackPayload,
   SlackWebhookInstance,
 } from './SlackClient.ts';

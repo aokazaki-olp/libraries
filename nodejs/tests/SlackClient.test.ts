@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClient.ts';
 import { SlackApiError } from '../src/SlackClient.ts';
-import { HttpError, RetryExhaustedError } from '../src/httpTypes.ts';
+import { HttpError, RequestValidationError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
 import { createMockLogger, makeTransport } from './helpers.ts';
 
@@ -200,12 +200,27 @@ describe('SlackCore.withRetry — リトライ対象外', () => {
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('TypeError（呼び出し側の誤り）はリトライしない', async () => {
-    const transport = makeTransport(() => Promise.reject(new TypeError('bad method')));
+  it('RequestValidationError（組み立ての誤り）はリトライしない', async () => {
+    const transport = makeTransport(() => Promise.reject(new RequestValidationError('bad method')));
     const retrying = SlackCore.withRetry(transport, { maxRetries: 3 });
 
-    await expect(retrying.fetch('https://slack.com/api/test')).rejects.toThrow(TypeError);
+    await expect(retrying.fetch('https://slack.com/api/test')).rejects.toThrow(
+      RequestValidationError,
+    );
     expect(transport.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('TypeError 一般（fetch の通信障害）はリトライする', async () => {
+    const transport = makeTransport(() => Promise.reject(new TypeError('fetch failed')));
+    const retrying = SlackCore.withRetry(transport, { maxRetries: 1, baseDelayMs: 0 });
+
+    await expect(retrying.fetch('https://slack.com/api/test')).rejects.toThrow(RetryExhaustedError);
+    expect(transport.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('maxRetries が NaN なら作成時に TypeError（リトライが止まらなくなるのを防ぐ）', () => {
+    const transport = makeTransport(() => Promise.reject(new Error('x')));
+    expect(() => SlackCore.withRetry(transport, { maxRetries: Number.NaN })).toThrow(TypeError);
   });
 });
 

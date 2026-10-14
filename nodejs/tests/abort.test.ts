@@ -107,22 +107,58 @@ describe('signal の伝播', () => {
   });
 });
 
+describe('withLogger は呼び出し側の中断を error にしない', () => {
+  it('中断なら warn、それ以外の失敗なら error', async () => {
+    const calls: string[] = [];
+    const logger = {
+      trace: (): void => {},
+      debug: (): void => {},
+      info: (): void => {},
+      warn: (): void => {
+        calls.push('warn');
+      },
+      error: (): void => {
+        calls.push('error');
+      },
+    };
+    const controller = new AbortController();
+    const transport = HttpCore.withLogger(
+      makeTransport(() => {
+        controller.abort();
+        return Promise.reject(new Error('aborted'));
+      }),
+      logger,
+    );
+    await expect(
+      transport.fetch('https://example.com', { signal: controller.signal }),
+    ).rejects.toThrow();
+
+    const failing = HttpCore.withLogger(
+      makeTransport(() => Promise.reject(new Error('network'))),
+      logger,
+    );
+    await expect(failing.fetch('https://example.com')).rejects.toThrow('network');
+
+    expect(calls).toEqual(['warn', 'error']);
+  });
+});
+
 // ============================================================================
 // 中断されたらリトライしない
 // ============================================================================
 
 describe('中断されたらリトライしない', () => {
-  it('HttpCore.withRetry: 中断済みなら再送せずに元の例外を投げる', async () => {
+  it('HttpCore.withRetry: 中断済みなら再送せずに中断理由を投げる', async () => {
     const controller = new AbortController();
     const transport = makeTransport(() => {
-      controller.abort();
-      return Promise.reject(new Error('aborted by caller'));
+      controller.abort(new Error('caller stop'));
+      return Promise.reject(new HttpError('HTTPエラー 503', 503, null));
     });
     const retrying = HttpCore.withRetry(transport, { maxRetries: 3, baseDelayMs: 1 });
 
     await expect(
       retrying.fetch('https://example.com', { signal: controller.signal }),
-    ).rejects.toThrow('aborted by caller');
+    ).rejects.toThrow('caller stop');
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -149,17 +185,17 @@ describe('中断されたらリトライしない', () => {
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('SlackCore.withRetry: 中断済みなら再送しない', async () => {
+  it('SlackCore.withRetry: 中断済みなら再送せずに中断理由を投げる', async () => {
     const controller = new AbortController();
     const transport = makeTransport(() => {
-      controller.abort();
+      controller.abort(new Error('caller stop'));
       return Promise.reject(new HttpError('503', 503, null));
     });
     const retrying = SlackCore.withRetry(transport, { maxRetries: 3, baseDelayMs: 1 });
 
     await expect(
       retrying.fetch('https://slack.com/api/test', { signal: controller.signal }),
-    ).rejects.toThrow(HttpError);
+    ).rejects.toThrow('caller stop');
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -228,9 +264,11 @@ describe('got との結合: 中断で即座に止まる', () => {
     const before = requests;
     const started = Date.now();
 
-    await expect(transport.fetch(url, { signal: AbortSignal.timeout(100) })).rejects.toThrow(
-      /aborted/,
-    );
+    const signal = AbortSignal.timeout(100);
+    // got の AbortError ではなく、signal の中断理由（TimeoutError）がそのまま投げられる
+    const error: unknown = await transport.fetch(url, { signal }).catch((e: unknown) => e);
+    expect(error).toBe(signal.reason);
+    expect(error).toMatchObject({ name: 'TimeoutError' });
 
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(requests - before).toBe(1);

@@ -46,6 +46,12 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+/** 外部 I/O を伴う呼び出しに共通のオプション */
+export interface CallOptions {
+  /** 中断シグナル。中断されると処理を打ち切り、リトライもしない */
+  signal?: AbortSignal;
+}
+
 /**
  * レスポンスボディを検証して型付きの値に変換する関数（境界の decode）
  *
@@ -88,6 +94,16 @@ export class HttpError extends Error {
     this.text = text;
     this.request = request;
   }
+}
+
+/**
+ * リクエストの組み立ての誤り（HTTP メソッドの形式不正・GET に body を付けた等）。
+ *
+ * 再送しても結果が変わらないので、リトライデコレータは再送しない。
+ * TypeError のサブクラスなので、`catch (e) { if (e instanceof TypeError) ... }` でも捕まる。
+ */
+export class RequestValidationError extends TypeError {
+  override readonly name = 'RequestValidationError';
 }
 
 /** リトライ上限に達した場合にスローされるエラー。 */

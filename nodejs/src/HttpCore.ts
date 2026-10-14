@@ -13,8 +13,9 @@ import got, { type Got, type Method, type OptionsOfTextResponseBodyWrapped } fro
 import type { IncomingHttpHeaders } from 'node:http';
 import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
-import { HttpError, RetryExhaustedError } from './httpTypes.ts';
+import { HttpError, RequestValidationError, RetryExhaustedError } from './httpTypes.ts';
 import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
+import { abortReason } from './shared/abort.ts';
 import { sleep } from './shared/sleep.ts';
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -36,18 +37,30 @@ const hasHeader = (headers: Record<string, string>, key: string): boolean => {
   return Object.keys(headers).some((k) => k.toLowerCase() === needle);
 };
 
-const METHODS: ReadonlySet<string> = new Set<Method>([
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'HEAD',
-  'DELETE',
-  'OPTIONS',
-  'TRACE',
-]);
+/** HTTP メソッドの構文（RFC 9110 §9.1 の method = token） */
+const METHOD_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
-const isMethod = (method: string): method is Method => METHODS.has(method);
+/**
+ * リトライ設定を検査する（create 時に fail-fast させる）
+ *
+ * NaN・負数・小数を通すと、上限判定が成立せずリトライが止まらなくなる。
+ *
+ * @param maxRetries - リトライ最大回数
+ * @param baseDelayMs - 指数バックオフの基準ミリ秒
+ * @throws {TypeError} maxRetries が 0 以上の整数でない場合、baseDelayMs が 0 以上の有限数でない場合
+ */
+const assertRetryOptions = (maxRetries: number, baseDelayMs: number): void => {
+  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+    throw new TypeError(
+      `maxRetries には 0 以上の整数を指定してください (received: ${String(maxRetries)})`,
+    );
+  }
+  if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+    throw new TypeError(
+      `baseDelayMs には 0 以上の有限数を指定してください (received: ${String(baseDelayMs)})`,
+    );
+  }
+};
 
 /** got のヘッダ（値に undefined を含みうる）から値のあるものだけを残す */
 const normalizeHeaders = (headers: IncomingHttpHeaders): Record<string, string | string[]> => {
@@ -72,9 +85,9 @@ interface TransportDeps {
  * got を使った基本Transportを作成する
  *
  * @param deps - 依存注入（テスト用）
- * @returns Transport
- * @throws {TypeError} options.method が HTTP メソッドでない場合
- * @throws {HttpError} HTTPステータスが2xx以外の場合
+ * @returns Transport。返した fetch は次を投げる:
+ *   RequestValidationError（method が HTTP メソッドの構文でない）・
+ *   HttpError（ステータスが 2xx 以外）・中断理由（signal が中断された）・got の通信エラー
  */
 const createTransport = (deps?: TransportDeps): Transport => {
   const http = deps?.got ?? got;
@@ -82,12 +95,16 @@ const createTransport = (deps?: TransportDeps): Transport => {
   return {
     fetch: async (url: string, options: FetchOptions = {}): Promise<RawResponse> => {
       const method = (options.method ?? 'GET').toUpperCase();
-      if (!isMethod(method)) {
-        throw new TypeError(`method には HTTP メソッドを指定してください (received: ${method})`);
+      if (!METHOD_TOKEN.test(method)) {
+        throw new RequestValidationError(
+          `method には HTTP メソッドを指定してください (received: ${method})`,
+        );
       }
 
       const fetchOptions: OptionsOfTextResponseBodyWrapped = {
-        method,
+        // got の Method 型は代表的な動詞の union だが、実行時は任意の token（PURGE 等）を送れる。
+        // 構文は上で検査済み。union に無い拡張メソッドを通すためのキャスト
+        method: method as Method,
         responseType: 'text',
         resolveBodyOnly: false,
         headers: options.headers,
@@ -108,7 +125,16 @@ const createTransport = (deps?: TransportDeps): Transport => {
         fetchOptions.timeout = { request: options.timeoutMs };
       }
 
-      const response = await http(url, fetchOptions);
+      let response;
+      try {
+        response = await http(url, fetchOptions);
+      } catch (e) {
+        // got は中断理由を捨てて自前の AbortError を投げる。どの経路でも signal.reason を投げるよう揃える
+        if (options.signal?.aborted === true) {
+          throw abortReason(options.signal);
+        }
+        throw e;
+      }
 
       const text = response.body;
       let body: unknown = null;
@@ -152,11 +178,12 @@ const shouldRetry = (e: unknown): boolean => {
   if (e instanceof HttpError) {
     return e.status === 429 || (e.status >= 500 && e.status < 600);
   }
-  // TypeError は呼び出し側の誤り（不正な method 等）。再送しても結果は変わらない
-  if (e instanceof TypeError || e instanceof RetryExhaustedError) {
+  // 組み立ての誤りは再送しても変わらない。RetryExhaustedError は二重に包まない
+  if (e instanceof RequestValidationError || e instanceof RetryExhaustedError) {
     return false;
   }
   // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする
+  // （fetch ベースの Transport は通信障害を TypeError で投げるので、TypeError も対象）
   return true;
 };
 
@@ -165,12 +192,14 @@ const shouldRetry = (e: unknown): boolean => {
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定
- * @returns リトライ機能付きTransport（fetchOptions.signal が中断されたらリトライも待機もやめる）
- * @throws {RetryExhaustedError} リトライ上限に達した場合
+ * @returns リトライ機能付きTransport。fetchOptions.signal が中断されたらリトライも待機もやめ、
+ *   中断理由（signal.reason）を投げる。リトライ上限に達したら RetryExhaustedError を投げる
+ * @throws {TypeError} maxRetries / baseDelayMs が不正な場合
  */
 const withRetry = (transport: Transport, options: RetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  assertRetryOptions(maxRetries, baseDelayMs);
   const log = LoggerFacade.createLogger(options.logger);
 
   return {
@@ -182,8 +211,11 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          // 呼び出し側が中断したものは再送しない
-          if (fetchOptions?.signal?.aborted === true || !shouldRetry(e)) {
+          // 呼び出し側が中断したものは再送しない。どの時点で気づいても中断理由を投げる
+          if (fetchOptions?.signal?.aborted === true) {
+            throw abortReason(fetchOptions.signal);
+          }
+          if (!shouldRetry(e)) {
             throw e;
           }
 
@@ -240,7 +272,12 @@ const withLogger = (transport: Transport, logger?: Logger): Transport => {
         return response;
       } catch (e) {
         const elapsedMs = Date.now() - startMs;
-        log.error(`[HTTP] ✖ ${method} ${url} ${String(elapsedMs)}ms`, e);
+        // 呼び出し側の中断は障害ではないので error にしない
+        if (options?.signal?.aborted === true) {
+          log.warn(`[HTTP] ⏹ ABORTED ${method} ${url} ${String(elapsedMs)}ms`);
+        } else {
+          log.error(`[HTTP] ✖ ${method} ${url} ${String(elapsedMs)}ms`, e);
+        }
         throw e;
       }
     },
@@ -253,6 +290,7 @@ export const HttpCore = {
   cloneHeaders,
   mergeHeaders,
   hasHeader,
+  assertRetryOptions,
   createTransport,
   withRetry,
   withLogger,
