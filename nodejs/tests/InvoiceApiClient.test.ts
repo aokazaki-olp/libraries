@@ -41,15 +41,12 @@ describe('InvoiceApiClient.create — バリデーション', () => {
     ['真偽値 true', true],
     ['オブジェクト', {}],
     ['配列', []],
-  ] as [string, unknown][])(
-    'applicationId が %s だと TypeError',
-    (_label, appId) => {
-      expect(() =>
-        // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
-        InvoiceApiClient.create(appId),
-      ).toThrow(TypeError);
-    },
-  );
+  ] as [string, unknown][])('applicationId が %s だと TypeError', (_label, appId) => {
+    expect(() =>
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
+      InvoiceApiClient.create(appId),
+    ).toThrow(TypeError);
+  });
 
   it('未対応 version 指定で TypeError', () => {
     expect(() =>
@@ -190,10 +187,10 @@ describe('InvoiceApiClient.create — リトライ', () => {
 describe('InvoiceApiClient.create — use()', () => {
   it('.use() で byNumber 等のドメインメソッドを注入できる', async () => {
     const transport = mockTransport({ body: { announcement: [{ name: '株式会社A' }] } });
-    const client = InvoiceApiClient.create(VALID_APP_ID, { transport })
-      .use('byNumber', (c) => (number: string) =>
-        c.get('/num', { number, history: 0 }),
-      );
+    const client = InvoiceApiClient.create(VALID_APP_ID, { transport }).use(
+      'byNumber',
+      (c) => (number: string) => c.get('/num', { number, history: 0 }),
+    );
     const result = await client.byNumber('T1234567890123');
     expect((result as { announcement: { name: string }[] }).announcement[0].name).toBe('株式会社A');
     const url = transport.calls[0].url;
@@ -214,8 +211,11 @@ describe('InvoiceApiClient.create — logger', () => {
     const client = InvoiceApiClient.create(VALID_APP_ID, { transport, logger });
     await client.get('/num');
     const total =
-      logger.calls.trace.length + logger.calls.debug.length +
-      logger.calls.info.length + logger.calls.warn.length + logger.calls.error.length;
+      logger.calls.trace.length +
+      logger.calls.debug.length +
+      logger.calls.info.length +
+      logger.calls.warn.length +
+      logger.calls.error.length;
     expect(total).toBeGreaterThan(0);
   });
 });

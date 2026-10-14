@@ -11,8 +11,7 @@ import { createMockLogger, makeRawResponse, makeTransport } from './helpers.ts';
 const makeSuccessTransport = (response?: Partial<RawResponse>) =>
   makeTransport(() => Promise.resolve(makeRawResponse(response)));
 
-const makeErrorTransport = (error: unknown) =>
-  makeTransport(() => Promise.reject(error));
+const makeErrorTransport = (error: unknown) => makeTransport(() => Promise.reject(error));
 
 // ============================================================================
 // cloneHeaders / mergeHeaders / hasHeader
@@ -33,17 +32,17 @@ describe('HttpCore.cloneHeaders', () => {
 
 describe('HttpCore.mergeHeaders', () => {
   it('base と override をマージする', () => {
-    const base = { 'Accept': 'application/json', 'X-Custom': 'base' };
-    const override = { 'X-Custom': 'overridden', 'Authorization': 'Bearer token' };
+    const base = { Accept: 'application/json', 'X-Custom': 'base' };
+    const override = { 'X-Custom': 'overridden', Authorization: 'Bearer token' };
     expect(HttpCore.mergeHeaders(base, override)).toEqual({
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'X-Custom': 'overridden',
-      'Authorization': 'Bearer token',
+      Authorization: 'Bearer token',
     });
   });
 
   it('override が undefined でも動作する', () => {
-    const base = { 'Accept': 'application/json' };
+    const base = { Accept: 'application/json' };
     expect(HttpCore.mergeHeaders(base, undefined)).toEqual(base);
   });
 });
@@ -59,7 +58,7 @@ describe('HttpCore.hasHeader', () => {
   });
 
   it('存在しない場合 false を返す', () => {
-    expect(HttpCore.hasHeader({ 'Accept': 'application/json' }, 'Content-Type')).toBe(false);
+    expect(HttpCore.hasHeader({ Accept: 'application/json' }, 'Content-Type')).toBe(false);
   });
 
   it('空オブジェクトは false を返す', () => {
@@ -319,7 +318,9 @@ describe('HttpCore.createTransport — got 統合', () => {
     const mockGot = mockGotFn as unknown as import('got').Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
-    await expect(transport.fetch('https://example.com/not-found', { method: 'GET' })).rejects.toThrow(HttpError);
+    await expect(
+      transport.fetch('https://example.com/not-found', { method: 'GET' }),
+    ).rejects.toThrow(HttpError);
   });
 
   it('200 正常系 + JSON レスポンス: body が parse された object になる', async () => {

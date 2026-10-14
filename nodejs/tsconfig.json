@@ -16,12 +16,5 @@
     "noUnusedParameters": true,
     "noEmit": true
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.mts",
-    "tests/**/*.ts",
-    "tests/**/*.mts",
-    "*.ts",
-    "*.mts"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.mts", "tests/**/*.ts", "tests/**/*.mts", "*.ts", "*.mts"]
 }

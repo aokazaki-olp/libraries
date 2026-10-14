@@ -77,8 +77,8 @@ const create = <TResponse = unknown>(
     // レスポンスボディを TResponse として扱う (gBizINFO レスポンスの型保証は呼び出し側の責務)
     responseHandler: (response) => response.body as TResponse,
   })
-    .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-    .extend(t => HttpCore.withLogger(t, logger));
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withLogger(t, logger));
 };
 
 export const GBizInfoApiClient = { create };

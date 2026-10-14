@@ -23,7 +23,7 @@ describe('ApiClient.withBearerAuth', () => {
     const transport = mockTransport();
     const authed = ApiClient.withBearerAuth(transport, 'token');
     await authed.fetch('https://example.com', {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const call = transport.calls[0];
@@ -156,7 +156,10 @@ describe('ApiClient.createClient — HTTPメソッドショートカット', () 
 describe('ApiClient.createClient — extend', () => {
   it('extend() は新しいクライアントを返し、元のクライアントを変更しない', async () => {
     const baseTransport = mockTransport({ body: 'base' });
-    const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport: baseTransport });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://api.example.com',
+      transport: baseTransport,
+    });
 
     let decoratorCalled = false;
     const extended = client.extend((t) => ({
@@ -240,9 +243,7 @@ describe('ApiClient.createClient — use', () => {
     const transport = mockTransport();
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
-    expect(() =>
-      client.use(() => 'not an object' as unknown as object),
-    ).toThrow(TypeError);
+    expect(() => client.use(() => 'not an object' as unknown as object)).toThrow(TypeError);
   });
 });
 
@@ -284,9 +285,9 @@ describe('ApiClient.createClient — use() plugin が HTTP メソッド名と衝
 
   it('sobject plugin の delete が正しいエンドポイントを叩く', async () => {
     const transport = mockTransport({ status: 204, body: null });
-    const sf = SalesforceApiClient
-      .create('https://example.my.salesforce.com', 'token', { transport })
-      .use(SalesforceApiClientPlugins.sobject('Account'));
+    const sf = SalesforceApiClient.create('https://example.my.salesforce.com', 'token', {
+      transport,
+    }).use(SalesforceApiClientPlugins.sobject('Account'));
 
     await sf.delete('001xxx');
 
@@ -305,7 +306,7 @@ describe('ApiClient.createClient — デフォルトヘッダー', () => {
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
       transport,
-      headers: { 'Accept': 'application/json', 'X-Api-Key': 'key123' },
+      headers: { Accept: 'application/json', 'X-Api-Key': 'key123' },
     });
 
     await client.get('/data');

@@ -59,7 +59,8 @@ export interface SoqlResult<TRow = unknown> {
 // ============================================================================
 
 export type IngestOperation = 'insert' | 'update' | 'upsert' | 'delete' | 'hardDelete';
-export type IngestState = 'Open' | 'UploadComplete' | 'InProgress' | 'JobComplete' | 'Failed' | 'Aborted';
+export type IngestState =
+  'Open' | 'UploadComplete' | 'InProgress' | 'JobComplete' | 'Failed' | 'Aborted';
 export type QueryOperation = 'query' | 'queryAll';
 export type QueryState = 'UploadComplete' | 'InProgress' | 'JobComplete' | 'Failed' | 'Aborted';
 export type ColumnDelimiter = 'COMMA' | 'TAB' | 'SEMICOLON' | 'PIPE' | 'CARET' | 'BACKQUOTE';
@@ -227,8 +228,7 @@ export interface BulkQueryPlugin {
 // 内部ヘルパー
 // ============================================================================
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Ingest / Query で終了状態が将来変わる可能性に備えて別定数として定義している
 const TERMINAL_INGEST_STATES = new Set<IngestState>(['JobComplete', 'Failed', 'Aborted']);
@@ -270,39 +270,44 @@ const mergeCsvPages = (pages: string[]): string => {
  *   await sf.query('SELECT Id FROM Account');
  *   await sf.queryAll('SELECT Id FROM Account'); // nextRecordsUrl を自動追跡
  */
-const soql = <TRow = unknown>(): Plugin<unknown, {
-  /**
-   * SOQL クエリを実行する（最大 2000 件）
-   * @param soql - SOQL クエリ文字列
-   */
-  query(soql: string): Promise<SoqlResult<TRow>>;
-  /**
-   * SOQL クエリを全件取得する（nextRecordsUrl を自動的に辿る）
-   * @param soql - SOQL クエリ文字列
-   */
-  queryAll(soql: string): Promise<TRow[]>;
-}> => (client) => ({
-  query: (q) =>
-    // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される
-    client.get('/query', { q }) as Promise<SoqlResult<TRow>>,
-
-  queryAll: async (q) => {
-    const records: TRow[] = [];
-    // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される（soql.query と同じ理由）
-    let result = await client.get('/query', { q }) as SoqlResult<TRow>;
-    records.push(...result.records);
-    while (!result.done && result.nextRecordsUrl) {
-      // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
-      // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
-      // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
-      const relPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
-      // 継続ページも同じく SF REST API 仕様で SoqlResult 形式が保証される
-      result = await client.get(relPath) as SoqlResult<TRow>;
-      records.push(...result.records);
+const soql =
+  <TRow = unknown>(): Plugin<
+    unknown,
+    {
+      /**
+       * SOQL クエリを実行する（最大 2000 件）
+       * @param soql - SOQL クエリ文字列
+       */
+      query(soql: string): Promise<SoqlResult<TRow>>;
+      /**
+       * SOQL クエリを全件取得する（nextRecordsUrl を自動的に辿る）
+       * @param soql - SOQL クエリ文字列
+       */
+      queryAll(soql: string): Promise<TRow[]>;
     }
-    return records;
-  },
-});
+  > =>
+  (client) => ({
+    query: (q) =>
+      // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される
+      client.get('/query', { q }) as Promise<SoqlResult<TRow>>,
+
+    queryAll: async (q) => {
+      const records: TRow[] = [];
+      // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される（soql.query と同じ理由）
+      let result = (await client.get('/query', { q })) as SoqlResult<TRow>;
+      records.push(...result.records);
+      while (!result.done && result.nextRecordsUrl) {
+        // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
+        // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
+        // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
+        const relPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
+        // 継続ページも同じく SF REST API 仕様で SoqlResult 形式が保証される
+        result = (await client.get(relPath)) as SoqlResult<TRow>;
+        records.push(...result.records);
+      }
+      return records;
+    },
+  });
 
 // ============================================================================
 // sobject プラグイン
@@ -318,42 +323,49 @@ const soql = <TRow = unknown>(): Plugin<unknown, {
  *   const acc = await sf.findById('001...');
  *   await sf.update('001...', { Name: 'New Name' });
  */
-const sobject = <TRecord = unknown>(type: string): Plugin<unknown, {
-  /**
-   * @param id - Salesforce レコード ID (15桁 or 18桁)
-   */
-  findById(id: string): Promise<TRecord>;
-  /**
-   * @param data - 作成するレコードのフィールド値
-   * @returns 作成されたレコードの id と success フラグ
-   */
-  create(data: Partial<TRecord>): Promise<{ id: string; success: boolean }>;
-  /**
-   * @param id - 更新対象のレコード ID
-   * @param data - 更新するフィールド値
-   */
-  update(id: string, data: Partial<TRecord>): Promise<void>;
-  /**
-   * @param id - 削除対象のレコード ID
-   */
-  delete(id: string): Promise<void>;
-}> => (client) => ({
-  findById: (id) =>
-    // SF /sobjects/{type}/{id} は TRecord 形式で返すことが SF REST API 仕様で保証される
-    client.get(`/sobjects/${type}/${id}`) as Promise<TRecord>,
+const sobject =
+  <TRecord = unknown>(
+    type: string,
+  ): Plugin<
+    unknown,
+    {
+      /**
+       * @param id - Salesforce レコード ID (15桁 or 18桁)
+       */
+      findById(id: string): Promise<TRecord>;
+      /**
+       * @param data - 作成するレコードのフィールド値
+       * @returns 作成されたレコードの id と success フラグ
+       */
+      create(data: Partial<TRecord>): Promise<{ id: string; success: boolean }>;
+      /**
+       * @param id - 更新対象のレコード ID
+       * @param data - 更新するフィールド値
+       */
+      update(id: string, data: Partial<TRecord>): Promise<void>;
+      /**
+       * @param id - 削除対象のレコード ID
+       */
+      delete(id: string): Promise<void>;
+    }
+  > =>
+  (client) => ({
+    findById: (id) =>
+      // SF /sobjects/{type}/{id} は TRecord 形式で返すことが SF REST API 仕様で保証される
+      client.get(`/sobjects/${type}/${id}`) as Promise<TRecord>,
 
-  create: (data) =>
-    // SF /sobjects/{type} POST のレスポンス形式は SF REST API 仕様で保証される
-    client.post(`/sobjects/${type}`, data) as Promise<{ id: string; success: boolean }>,
+    create: (data) =>
+      // SF /sobjects/{type} POST のレスポンス形式は SF REST API 仕様で保証される
+      client.post(`/sobjects/${type}`, data) as Promise<{ id: string; success: boolean }>,
 
-  update: (id, data) =>
-    // SF PATCH は 204 No Content を返し、BaseClient が void 相当を返す
-    client.patch(`/sobjects/${type}/${id}`, data) as Promise<void>,
+    update: (id, data) =>
+      // SF PATCH は 204 No Content を返し、BaseClient が void 相当を返す
+      client.patch(`/sobjects/${type}/${id}`, data) as Promise<void>,
 
-  delete: (id) =>
-    // SF DELETE は 204 No Content を返し、BaseClient が void 相当を返す
-    client.delete(`/sobjects/${type}/${id}`) as Promise<void>,
-});
+    delete: (id) =>
+      // SF DELETE は 204 No Content を返し、BaseClient が void 相当を返す
+      client.delete(`/sobjects/${type}/${id}`) as Promise<void>,
+  });
 
 // ============================================================================
 // bulkIngest
@@ -483,7 +495,10 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
    * @throws {Error} タイムアウトした場合
    */
-  const waitForCompletion = async (jobId: string, options: WaitOptions = {}): Promise<IngestJobInfo> => {
+  const waitForCompletion = async (
+    jobId: string,
+    options: WaitOptions = {},
+  ): Promise<IngestJobInfo> => {
     const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
     const deadline = Date.now() + timeoutMs;
     while (true) {
@@ -600,7 +615,10 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @param options.locator - 前回レスポンスの nextLocator（ページネーション）
    * @returns CSV 文字列と次ページのロケーター
    */
-  const getResults = async (jobId: string, options: GetResultsOptions = {}): Promise<QueryResultsPage> => {
+  const getResults = async (
+    jobId: string,
+    options: GetResultsOptions = {},
+  ): Promise<QueryResultsPage> => {
     let nextLocator: string | null = null;
 
     // Sforce-Locator レスポンスヘッダーをキャプチャするために transport をラップする。
@@ -611,13 +629,11 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
       fetch: async (url: string, fetchOptions?: FetchOptions) => {
         const response = await t.fetch(url, fetchOptions);
         // HTTP ヘッダーは RFC 7230 でケースインセンシティブなため、小文字正規化して検索する
-        const locatorEntry = Object.entries(response.headers)
-          .find(([k]) => k.toLowerCase() === 'sforce-locator');
+        const locatorEntry = Object.entries(response.headers).find(
+          ([k]) => k.toLowerCase() === 'sforce-locator',
+        );
         const rawLocator = locatorEntry?.[1];
-        nextLocator =
-          typeof rawLocator === 'string' && rawLocator !== 'null'
-            ? rawLocator
-            : null;
+        nextLocator = typeof rawLocator === 'string' && rawLocator !== 'null' ? rawLocator : null;
         return response;
       },
     }));
@@ -631,7 +647,7 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
     }
 
     // SF Bulk API v2 Query Results エンドポイントは text/csv を返し、SalesforceApiClient が文字列として処理する
-    const csv = await capturingClient.get(`/jobs/query/${jobId}/results`, query) as string;
+    const csv = (await capturingClient.get(`/jobs/query/${jobId}/results`, query)) as string;
     return { csv, nextLocator };
   };
 
@@ -647,7 +663,10 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @param options.parallelism - 将来用（現在は未使用）
    * @returns ヘッダー行 1 行 + 全データ行を結合した CSV 文字列
    */
-  const getResultsParallel = async (jobId: string, options: GetResultsParallelOptions = {}): Promise<string> => {
+  const getResultsParallel = async (
+    jobId: string,
+    options: GetResultsParallelOptions = {},
+  ): Promise<string> => {
     void options; // parallelism は将来の並列化実装のために予約されており現在は未使用
     const pages: string[] = [];
     let locator: string | null = null;
@@ -670,7 +689,10 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
    * @throws {Error} タイムアウトした場合
    */
-  const waitForCompletion = async (jobId: string, options: WaitOptions = {}): Promise<QueryJobInfo> => {
+  const waitForCompletion = async (
+    jobId: string,
+    options: WaitOptions = {},
+  ): Promise<QueryJobInfo> => {
     const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
     const deadline = Date.now() + timeoutMs;
     while (true) {
@@ -802,7 +824,12 @@ const Utils = {
 
       if (allRows.length === 0) {
         errors.push({ message: 'ヘッダー行がありません' });
-        return { valid: false, errors, warnings, summary: { rowCount: 0, columnCount: 0, headers: [] } };
+        return {
+          valid: false,
+          errors,
+          warnings,
+          summary: { rowCount: 0, columnCount: 0, headers: [] },
+        };
       }
 
       headers = allRows[0];
@@ -810,7 +837,7 @@ const Utils = {
       const dataRows = allRows.slice(1);
       rowCount = dataRows.length;
 
-      if (headers.some(h => h === '')) {
+      if (headers.some((h) => h === '')) {
         errors.push({ message: '空のヘッダー列が含まれています' });
       }
 
@@ -821,7 +848,10 @@ const Utils = {
 
       for (const [i, row] of dataRows.entries()) {
         if (row.length !== columnCount) {
-          errors.push({ row: i + 2, message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})` });
+          errors.push({
+            row: i + 2,
+            message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})`,
+          });
         }
       }
 
@@ -834,7 +864,9 @@ const Utils = {
       }
 
       if (rowCount > 150_000_000) {
-        errors.push({ message: `レコード数が Bulk API v2 の上限（1億5000万件）を超えています: ${rowCount} 件` });
+        errors.push({
+          message: `レコード数が Bulk API v2 の上限（1億5000万件）を超えています: ${rowCount} 件`,
+        });
       }
     } catch (e) {
       errors.push({ message: `CSV パースエラー: ${e instanceof Error ? e.message : String(e)}` });

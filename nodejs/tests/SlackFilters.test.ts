@@ -25,7 +25,7 @@ describe('SlackFilters — Mrkdwn装飾', () => {
 
   it.each([SlackFilters.bold, SlackFilters.italic, SlackFilters.strike, SlackFilters.code])(
     '空文字/null/undefined → 空文字を返す',
-    fn => {
+    (fn) => {
       expect(fn('')).toBe('');
       expect(fn(null)).toBe('');
       expect(fn(undefined)).toBe('');
@@ -84,7 +84,7 @@ describe('SlackFilters — メンション・参照', () => {
     SlackFilters.mentionSpecial,
     SlackFilters.link,
     SlackFilters.mail,
-  ])('空文字/null → 空文字', fn => {
+  ])('空文字/null → 空文字', (fn) => {
     expect(fn('')).toBe('');
     expect(fn(null)).toBe('');
   });
@@ -117,7 +117,7 @@ describe('SlackFilters — escapeHtml', () => {
 });
 
 describe('SlackFilters — escapeMrkdwn', () => {
-  it.each(['*', '_', '~', '`'])('"%s" をエスケープする', ch => {
+  it.each(['*', '_', '~', '`'])('"%s" をエスケープする', (ch) => {
     expect(SlackFilters.escapeMrkdwn(ch)).toBe(`\\${ch}`);
   });
 
@@ -234,9 +234,7 @@ describe('SlackFilters — numbered / numberedList', () => {
 
 describe('SlackFilters — date', () => {
   it('Unix タイムスタンプを Slack ネイティブ日時記法に変換', () => {
-    expect(SlackFilters.date(1700000000)).toBe(
-      '<!date^1700000000^{date} {time}|1700000000>',
-    );
+    expect(SlackFilters.date(1700000000)).toBe('<!date^1700000000^{date} {time}|1700000000>');
   });
 
   it('空文字 → 空文字', () => {

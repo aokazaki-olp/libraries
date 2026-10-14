@@ -55,8 +55,8 @@ const createLogger = (logger: unknown): Logger | null => {
   return {
     trace: resolve('trace', 'finest', 'finer', 'debug', 'log'),
     debug: resolve('debug', 'fine', 'log'),
-    info:  resolve('info', 'log'),
-    warn:  resolve('warn', 'warning', 'log'),
+    info: resolve('info', 'log'),
+    warn: resolve('warn', 'warning', 'log'),
     error: resolve('error', 'severe', 'log'),
   };
 };

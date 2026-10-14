@@ -7,7 +7,9 @@ import { makeRawResponse } from './helpers.ts';
 // テストユーティリティ
 // ============================================================================
 
-const mockTransport = (body: unknown = null): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
+const mockTransport = (
+  body: unknown = null,
+): Transport & { calls: { url: string; options?: FetchOptions }[] } => {
   const calls: { url: string; options?: FetchOptions }[] = [];
   return {
     calls,
@@ -38,8 +40,7 @@ describe('SalesforceApiClient.create — バリデーション', () => {
     '%s → TypeError（メッセージに "%s" を含む）',
     (_label, args, expectedInMessage) => {
       // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
-      expect(() => SalesforceApiClient.create(...args))
-        .toThrow(TypeError);
+      expect(() => SalesforceApiClient.create(...args)).toThrow(TypeError);
       try {
         // @ts-expect-error: バリデーションの runtime 動作を確認するため意図的に型を違反させる
         SalesforceApiClient.create(...args);
@@ -89,7 +90,9 @@ describe('SalesforceApiClient.create — baseUrl', () => {
 
   it('apiVersion を指定すると URL に反映される', async () => {
     const { calls, transport } = captureTransport();
-    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN, { apiVersion: 'v61.0' });
+    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN, {
+      apiVersion: 'v61.0',
+    });
     const extended = client.extend(() => transport);
     await extended.get('/query');
     expect(calls[0].url).toContain('/services/data/v61.0/query');
@@ -137,8 +140,9 @@ describe('SalesforceApiClient.create — Authorization ヘッダー', () => {
 describe('SalesforceApiClient.create — HTTPメソッド', () => {
   const makeClient = (body: unknown = null) => {
     const transport = mockTransport(body);
-    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN)
-      .extend(() => transport);
+    const client = SalesforceApiClient.create(VALID_INSTANCE_URL, VALID_ACCESS_TOKEN).extend(
+      () => transport,
+    );
     return { client, transport };
   };
 

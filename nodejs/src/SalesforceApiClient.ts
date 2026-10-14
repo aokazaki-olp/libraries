@@ -50,7 +50,9 @@ const create = <TResponse = unknown>(
     throw new TypeError('instanceUrl には Salesforce instance URL (string) を指定してください');
   }
   if (typeof accessToken !== 'string' || accessToken === '') {
-    throw new TypeError('accessToken には Salesforce OAuth access token (string) を指定してください');
+    throw new TypeError(
+      'accessToken には Salesforce OAuth access token (string) を指定してください',
+    );
   }
 
   const {
@@ -81,9 +83,9 @@ const create = <TResponse = unknown>(
     // レスポンスボディを TResponse として扱う（SF REST API の型保証は呼び出し側の責務）
     responseHandler: (response) => response.body as TResponse,
   })
-    .extend(t => ApiClient.withBearerAuth(t, accessToken))
-    .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-    .extend(t => HttpCore.withLogger(t, logger));
+    .extend((t) => ApiClient.withBearerAuth(t, accessToken))
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withLogger(t, logger));
 };
 
 export const SalesforceApiClient = { create };

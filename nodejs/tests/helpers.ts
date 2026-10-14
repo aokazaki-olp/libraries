@@ -4,15 +4,21 @@ import type { Logger } from '../src/LoggerFacade.ts';
 
 export const createMockLogger = () => {
   const calls: Record<keyof Logger, unknown[][]> = {
-    trace: [], debug: [], info: [], warn: [], error: [],
+    trace: [],
+    debug: [],
+    info: [],
+    warn: [],
+    error: [],
   };
   const make = (key: keyof Logger) =>
-    vi.fn((...args: unknown[]) => { calls[key].push(args); });
+    vi.fn((...args: unknown[]) => {
+      calls[key].push(args);
+    });
   return {
     trace: make('trace'),
     debug: make('debug'),
-    info:  make('info'),
-    warn:  make('warn'),
+    info: make('info'),
+    warn: make('warn'),
     error: make('error'),
     calls,
   };

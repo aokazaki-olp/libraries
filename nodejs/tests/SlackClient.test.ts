@@ -420,10 +420,10 @@ describe('SlackApiClient.create — ok:false', () => {
 describe('SlackApiClient — use()', () => {
   it('postMessage メソッドを use() で追加できる', async () => {
     const transport = makeSuccessTransport({ ok: true, ts: '999.000' });
-    const client = SlackApiClient.create('token', { transport })
-      .use('postMessage', c => (channel: string, text: string) =>
-        c.post('/chat.postMessage', { channel, text }),
-      );
+    const client = SlackApiClient.create('token', { transport }).use(
+      'postMessage',
+      (c) => (channel: string, text: string) => c.post('/chat.postMessage', { channel, text }),
+    );
 
     const result = await client.postMessage('#general', 'Hello!');
     expect((result as { ok: boolean }).ok).toBe(true);

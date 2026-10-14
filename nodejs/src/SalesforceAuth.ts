@@ -37,10 +37,8 @@ const defaultSigner: Signer = {
     sign.update(input);
     return sign.sign(privateKey);
   },
-  base64EncodeWebSafe: (bytes: Buffer): string =>
-    bytes.toString('base64url'),
-  newBlob: (str: string): Buffer =>
-    Buffer.from(str, 'utf-8'),
+  base64EncodeWebSafe: (bytes: Buffer): string => bytes.toString('base64url'),
+  newBlob: (str: string): Buffer => Buffer.from(str, 'utf-8'),
 };
 
 // ============================================================================
@@ -57,14 +55,14 @@ const normalizeTokenHost = (host: unknown): string => {
   if (typeof host !== 'string') {
     throw new TypeError(
       'tokenHost には組織の My Domain URL (string) を指定してください ' +
-      '(例: https://yourcompany.my.salesforce.com)',
+        '(例: https://yourcompany.my.salesforce.com)',
     );
   }
   const raw = host.trim();
   if (raw === '') {
     throw new TypeError(
       'tokenHost には組織の My Domain URL を指定してください ' +
-      '(例: https://yourcompany.my.salesforce.com)',
+        '(例: https://yourcompany.my.salesforce.com)',
     );
   }
   if (raw !== raw.toLowerCase()) {
@@ -81,8 +79,8 @@ const normalizeTokenHost = (host: unknown): string => {
   if (!/^https:\/\/[^/]+$/.test(raw)) {
     throw new TypeError(
       'tokenHost は https:// で始まるホスト部のみを指定してください ' +
-      '(http:// 不可、/services/oauth2/token などのパス指定不可)。' +
-      `received: ${host}`,
+        '(http:// 不可、/services/oauth2/token などのパス指定不可)。' +
+        `received: ${host}`,
     );
   }
   return raw;
@@ -182,21 +180,27 @@ const getAccessTokenByJwt = async (
   } = options;
 
   if (typeof consumerKey !== 'string' || consumerKey === '') {
-    throw new TypeError('consumerKey には External Client App の Consumer Key (string) を指定してください');
+    throw new TypeError(
+      'consumerKey には External Client App の Consumer Key (string) を指定してください',
+    );
   }
   if (typeof username !== 'string' || username === '') {
     throw new TypeError('username には Salesforce ユーザーの username (string) を指定してください');
   }
   if (typeof privateKey !== 'string' || privateKey === '') {
-    throw new TypeError('privateKey には PEM 形式 (PKCS#8) の RSA 秘密鍵 (string) を指定してください');
+    throw new TypeError(
+      'privateKey には PEM 形式 (PKCS#8) の RSA 秘密鍵 (string) を指定してください',
+    );
   }
 
   const audience = normalizeTokenHost(tokenHost);
 
-  const transport = dependencies.transport ?? HttpCore.withLogger(
-    HttpCore.withRetry(HttpCore.createTransport(), { maxRetries, baseDelayMs, logger }),
-    logger,
-  );
+  const transport =
+    dependencies.transport ??
+    HttpCore.withLogger(
+      HttpCore.withRetry(HttpCore.createTransport(), { maxRetries, baseDelayMs, logger }),
+      logger,
+    );
 
   const signer = dependencies.signer ?? defaultSigner;
   const url = `${audience}/services/oauth2/token`;
@@ -216,21 +220,22 @@ const getAccessTokenByJwt = async (
   } catch (e) {
     if (e instanceof HttpError) {
       // assertion が request.body 経由でログに乗らないよう redacted 版に差し替え
-      throw new HttpError(
-        e.message,
-        e.status,
-        e.body,
-        e.headers,
-        e.text,
-        { ...e.request, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: '[REDACTED]' } },
-      );
+      throw new HttpError(e.message, e.status, e.body, e.headers, e.text, {
+        ...e.request,
+        body: {
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion: '[REDACTED]',
+        },
+      });
     }
     throw e;
   }
 
   const body = response.body;
   if (typeof body !== 'object' || body === null) {
-    throw new Error(`Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`);
+    throw new Error(
+      `Salesforce token endpoint が予期しないレスポンスを返しました: ${response.text}`,
+    );
   }
   // object 型はプロパティアクセス不可のためキャスト（上のガードで object・非 null を確認済み）
   const { access_token: accessToken, instance_url: instanceUrl } = body as Record<string, unknown>;

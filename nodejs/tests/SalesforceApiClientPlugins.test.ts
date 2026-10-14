@@ -70,7 +70,9 @@ describe('SalesforceApiClientPlugins.bulkIngest — createJob', () => {
 
 describe('SalesforceApiClientPlugins.bulkIngest — upload', () => {
   it('PUT /jobs/ingest/{id}/batches に Content-Type: text/csv で CSV を送る', async () => {
-    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ status: 201, body: null })));
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ status: 201, body: null })),
+    );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
@@ -84,7 +86,9 @@ describe('SalesforceApiClientPlugins.bulkIngest — upload', () => {
   });
 
   it('CSV を JSON.stringify せずに送る（生文字列）', async () => {
-    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ status: 201, body: null })));
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ status: 201, body: null })),
+    );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
@@ -126,7 +130,9 @@ describe('SalesforceApiClientPlugins.bulkIngest — close / abort', () => {
 
 describe('SalesforceApiClientPlugins.bulkIngest — deleteJob / getJob / listJobs', () => {
   it('deleteJob() は DELETE リクエストを送る', async () => {
-    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ status: 204, body: null })));
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ status: 204, body: null })),
+    );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
@@ -189,9 +195,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
   });
 
   it('getUnprocessedRecords() は /unprocessedrecords を呼ぶ', async () => {
-    const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: SAMPLE_CSV })),
-    );
+    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ body: SAMPLE_CSV })));
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
@@ -274,7 +278,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — createJob', () => {
 
 describe('SalesforceApiClientPlugins.bulkQuery — abort / deleteJob / getJob / listJobs', () => {
   it('abort() は DELETE リクエストを送る', async () => {
-    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ status: 204, body: null })));
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ status: 204, body: null })),
+    );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
 
@@ -325,7 +331,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
 
   it('Sforce-Locator ヘッダーがある場合 nextLocator を返す', async () => {
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: SAMPLE_CSV, headers: { 'Sforce-Locator': 'LOCATOR_ABC' } })),
+      Promise.resolve(
+        makeRawResponse({ body: SAMPLE_CSV, headers: { 'Sforce-Locator': 'LOCATOR_ABC' } }),
+      ),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -389,10 +397,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — waitForCompletion', () => {
   afterEach(() => vi.useRealTimers());
 
   it('JobComplete になるまでポーリングして返す', async () => {
-    const jobs = [
-      makeQueryJob({ state: 'InProgress' }),
-      makeQueryJob({ state: 'JobComplete' }),
-    ];
+    const jobs = [makeQueryJob({ state: 'InProgress' }), makeQueryJob({ state: 'JobComplete' })];
     let idx = 0;
     const transport = makeTransport(() =>
       Promise.resolve(makeRawResponse({ body: jobs[Math.min(idx++, jobs.length - 1)] })),
@@ -500,19 +505,19 @@ describe('SalesforceApiClientPlugins.Utils.validateCsv', () => {
   it('Id 列がない場合は warnings に含まれる', () => {
     const csv = 'Name,Email\nAcme,acme@example.com';
     const result = SalesforceApiClientPlugins.Utils.validateCsv(csv);
-    expect(result.warnings.some(w => w.message.includes('Id'))).toBe(true);
+    expect(result.warnings.some((w) => w.message.includes('Id'))).toBe(true);
   });
 
   it('列数が不一致の行は errors に含まれる', () => {
     const csv = 'Id,Name\n001xxx,Acme,Extra';
     const result = SalesforceApiClientPlugins.Utils.validateCsv(csv);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.message.includes('列数'))).toBe(true);
+    expect(result.errors.some((e) => e.message.includes('列数'))).toBe(true);
   });
 
   it('データ行 0 件は warnings に含まれる', () => {
     const result = SalesforceApiClientPlugins.Utils.validateCsv('Id,Name');
-    expect(result.warnings.some(w => w.message.includes('0 件'))).toBe(true);
+    expect(result.warnings.some((w) => w.message.includes('0 件'))).toBe(true);
   });
 
   it('summary に rowCount / columnCount / headers が含まれる', () => {

@@ -16,16 +16,37 @@ const RELATIVE_JS = String.raw`/^\.{1,2}\/.*\.m?js$/`;
 const RESTRICTED_SYNTAX = [
   { selector: 'Decorator', message: 'デコレータ構文は Node で実行できない（§4.8）' },
   { selector: 'AccessorProperty', message: 'accessor フィールドは Node で実行できない（§4.8）' },
-  { selector: 'TSAbstractAccessorProperty', message: 'accessor フィールドは Node で実行できない（§4.8）' },
-  { selector: "CallExpression[callee.property.name='forEach']", message: 'forEach は禁止。for...of を使う（§5.1）' },
-  { selector: "CallExpression[callee.property.name='then']", message: '.then() チェーンは禁止。async / await を使う（§5.3）' },
+  {
+    selector: 'TSAbstractAccessorProperty',
+    message: 'accessor フィールドは Node で実行できない（§4.8）',
+  },
+  {
+    selector: "CallExpression[callee.property.name='forEach']",
+    message: 'forEach は禁止。for...of を使う（§5.1）',
+  },
+  {
+    selector: "CallExpression[callee.property.name='then']",
+    message: '.then() チェーンは禁止。async / await を使う（§5.3）',
+  },
 ];
 
 const RESTRICTED_RELATIVE_JS = [
-  { selector: `ImportDeclaration[source.value=${RELATIVE_JS}]`, message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）' },
-  { selector: `ExportNamedDeclaration[source.value=${RELATIVE_JS}]`, message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）' },
-  { selector: `ExportAllDeclaration[source.value=${RELATIVE_JS}]`, message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）' },
-  { selector: `ImportExpression[source.value=${RELATIVE_JS}]`, message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）' },
+  {
+    selector: `ImportDeclaration[source.value=${RELATIVE_JS}]`,
+    message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）',
+  },
+  {
+    selector: `ExportNamedDeclaration[source.value=${RELATIVE_JS}]`,
+    message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）',
+  },
+  {
+    selector: `ExportAllDeclaration[source.value=${RELATIVE_JS}]`,
+    message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）',
+  },
+  {
+    selector: `ImportExpression[source.value=${RELATIVE_JS}]`,
+    message: '相対 import は実ファイルの拡張子（.ts）で書く（§2.2）',
+  },
 ];
 
 // 構文レベルの規則。全拡張子に掛ける

@@ -55,7 +55,10 @@ const quote = (v: unknown): string => {
   if (s === '') {
     return '';
   }
-  return s.split(/\r?\n/).map(line => `> ${line}`).join('\n');
+  return s
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join('\n');
 };
 
 // ============================================================================
@@ -96,14 +99,20 @@ const escapeHtml = (v: unknown): string => {
   if (s === '') {
     return '';
   }
-  return s.replace(/[&<>"']/g, match => {
+  return s.replace(/[&<>"']/g, (match) => {
     switch (match) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      case "'": return '&#39;';
-      default: return match; // 到達しない（正規表現で対象文字が限定されている）
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return match; // 到達しない（正規表現で対象文字が限定されている）
     }
   });
 };
@@ -125,17 +134,25 @@ const escapeJson = (v: unknown): string => {
   if (s === '') {
     return '';
   }
-  return s.replace(/[\u0000-\u001f"\\]/g, match => {
+  return s.replace(/[\u0000-\u001f"\\]/g, (match) => {
     const c = match.charCodeAt(0);
     switch (c) {
-      case 0x08: return '\\b';
-      case 0x09: return '\\t';
-      case 0x0a: return '\\n';
-      case 0x0c: return '\\f';
-      case 0x0d: return '\\r';
-      case 0x22: return '\\"';
-      case 0x5c: return '\\\\';
-      default: return '\\u' + ('0000' + c.toString(16)).slice(-4);
+      case 0x08:
+        return '\\b';
+      case 0x09:
+        return '\\t';
+      case 0x0a:
+        return '\\n';
+      case 0x0c:
+        return '\\f';
+      case 0x0d:
+        return '\\r';
+      case 0x22:
+        return '\\"';
+      case 0x5c:
+        return '\\\\';
+      default:
+        return '\\u' + ('0000' + c.toString(16)).slice(-4);
     }
   });
 };
@@ -157,7 +174,7 @@ const bullet = (v: unknown): string => {
   return s === '' ? '' : `• ${s}`;
 };
 
-const bulletList = (v: unknown): string => processList(v, line => `• ${line}`);
+const bulletList = (v: unknown): string => processList(v, (line) => `• ${line}`);
 
 const numbered = (v: unknown): string => {
   const s = toString(v);

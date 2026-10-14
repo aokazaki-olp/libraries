@@ -11,17 +11,9 @@
 import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { HttpCore } from './HttpCore.ts';
-import type {
-  FetchOptions,
-  RawResponse,
-  RequestOptions,
-  Transport,
-} from './httpTypes.ts';
+import type { FetchOptions, RawResponse, RequestOptions, Transport } from './httpTypes.ts';
 
-export type ResponseHandler<T = unknown> = (
-  response: RawResponse,
-  request: RequestOptions,
-) => T;
+export type ResponseHandler<T = unknown> = (response: RawResponse, request: RequestOptions) => T;
 
 // ============================================================================
 // URL・クエリ文字列ユーティリティ
@@ -116,15 +108,21 @@ const withQueryAuth = (transport: Transport, params: Record<string, string>): Tr
 // ============================================================================
 
 type HttpMethods<TResponse> = {
-  get(endpoint: string, query?: Record<string, unknown>, options?: Partial<RequestOptions>): Promise<TResponse>;
+  get(
+    endpoint: string,
+    query?: Record<string, unknown>,
+    options?: Partial<RequestOptions>,
+  ): Promise<TResponse>;
   post(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   put(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   patch(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
   delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body'>): Promise<TResponse>;
 };
 
-type BaseClient<TResponse = unknown, TMethods extends object = Record<string, never>> =
-  HttpMethods<TResponse> &
+type BaseClient<
+  TResponse = unknown,
+  TMethods extends object = Record<string, never>,
+> = HttpMethods<TResponse> &
   TMethods & {
     call(request: RequestOptions): Promise<TResponse>;
     // extend はトランスポートのみ差し替え、追加メソッドはリセットされる（use()で再追加する）
@@ -184,7 +182,9 @@ const createClient = <TResponse = unknown>(
       if (canHaveBody) {
         options.payload = request.rawBody;
       } else {
-        log?.warn(`[HTTP] ⚠ ${method}リクエストでrawBodyが検出されました。無視されます。 url=${url}`);
+        log?.warn(
+          `[HTTP] ⚠ ${method}リクエストでrawBodyが検出されました。無視されます。 url=${url}`,
+        );
       }
     } else if (hasBody) {
       if (canHaveBody) {
@@ -245,17 +245,13 @@ const createClient = <TResponse = unknown>(
     }) as BaseClient<TResponse, TMethods>['use']; // use のオーバーロードシグネチャは条件型で表現されており、実装シグネチャと型が一致しない
 
     const httpMethods: HttpMethods<TResponse> = {
-      get: (endpoint, query, options) =>
-        call({ ...options, method: 'GET', endpoint, query }),
-      post: (endpoint, body, options) =>
-        call({ ...options, method: 'POST', endpoint, body }),
-      put: (endpoint, body, options) =>
-        call({ ...options, method: 'PUT', endpoint, body }),
-      patch: (endpoint, body, options) =>
-        call({ ...options, method: 'PATCH', endpoint, body }),
+      get: (endpoint, query, options) => call({ ...options, method: 'GET', endpoint, query }),
+      post: (endpoint, body, options) => call({ ...options, method: 'POST', endpoint, body }),
+      put: (endpoint, body, options) => call({ ...options, method: 'PUT', endpoint, body }),
+      patch: (endpoint, body, options) => call({ ...options, method: 'PATCH', endpoint, body }),
       delete: (endpoint, options) =>
         // Omit<Partial<RequestOptions>, 'body'> はスプレッド時に Partial<RequestOptions> として推論されないためキャスト
-        call({ ...options as Partial<RequestOptions>, method: 'DELETE', endpoint }),
+        call({ ...(options as Partial<RequestOptions>), method: 'DELETE', endpoint }),
     };
 
     // plugin が HTTP メソッド名（delete 等）と同名メソッドを定義した場合に plugin を優先するため
@@ -287,7 +283,6 @@ export const ApiClient = {
  * @typeParam TResponse - クライアントのレスポンス型（`BaseClient<TResponse>` に一致させる）
  * @typeParam TNew - プラグインが追加するメソッドの型
  */
-export type Plugin<TResponse, TNew extends object> =
-  (client: BaseClient<TResponse>) => TNew;
+export type Plugin<TResponse, TNew extends object> = (client: BaseClient<TResponse>) => TNew;
 
 export type { BaseClient, ClientConfig };

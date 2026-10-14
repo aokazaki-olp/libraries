@@ -43,13 +43,10 @@ describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
     ['null', null, 'string'],
     ['number', 123, 'string'],
     ['undefined', undefined, 'string'],
-  ] as [string, unknown, string][])(
-    '%s → TypeError（"%s" を含む）',
-    (_label, value, hint) => {
-      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
-      expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
-    },
-  );
+  ] as [string, unknown, string][])('%s → TypeError（"%s" を含む）', (_label, value, hint) => {
+    expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(TypeError);
+    expect(() => SalesforceAuth.normalizeTokenHost(value)).toThrow(hint);
+  });
 
   it.each([
     ['空文字', '', 'My Domain URL'],
@@ -66,12 +63,12 @@ describe('SalesforceAuth.normalizeTokenHost — バリデーション', () => {
     },
   );
 
-  it.each([
-    'https://yourorg.my.salesforce.com',
-    'https://yourorg--sbx.sandbox.my.salesforce.com',
-  ])('正常な tokenHost "%s" はそのまま返す', (host) => {
-    expect(SalesforceAuth.normalizeTokenHost(host)).toBe(host);
-  });
+  it.each(['https://yourorg.my.salesforce.com', 'https://yourorg--sbx.sandbox.my.salesforce.com'])(
+    '正常な tokenHost "%s" はそのまま返す',
+    (host) => {
+      expect(SalesforceAuth.normalizeTokenHost(host)).toBe(host);
+    },
+  );
 });
 
 // ============================================================================
@@ -83,18 +80,22 @@ describe('SalesforceAuth.getAccessTokenByJwt — バリデーション', () => {
 
   it.each([
     ['consumerKey が空文字', { ...VALID_OPTIONS, consumerKey: '' }, 'consumerKey'],
-    ['consumerKey が非string', { ...VALID_OPTIONS, consumerKey: 123 as unknown as string }, 'consumerKey'],
+    [
+      'consumerKey が非string',
+      { ...VALID_OPTIONS, consumerKey: 123 as unknown as string },
+      'consumerKey',
+    ],
     ['username が空文字', { ...VALID_OPTIONS, username: '' }, 'username'],
     ['privateKey が空文字', { ...VALID_OPTIONS, privateKey: '' }, 'privateKey'],
   ] as [string, typeof VALID_OPTIONS, string][])(
     '%s → TypeError（"%s" を含む）',
     async (_label, options, expectedKey) => {
-      await expect(
-        SalesforceAuth.getAccessTokenByJwt(options, { signer }),
-      ).rejects.toThrow(TypeError);
-      await expect(
-        SalesforceAuth.getAccessTokenByJwt(options, { signer }),
-      ).rejects.toThrow(expectedKey);
+      await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
+        TypeError,
+      );
+      await expect(SalesforceAuth.getAccessTokenByJwt(options, { signer })).rejects.toThrow(
+        expectedKey,
+      );
     },
   );
 
@@ -208,7 +209,10 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     const parts = signingInput.split('.');
     expect(parts).toHaveLength(2);
 
-    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<string, unknown>;
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<
+      string,
+      unknown
+    >;
     expect(header['alg']).toBe('RS256');
     expect(header['typ']).toBe('JWT');
   });

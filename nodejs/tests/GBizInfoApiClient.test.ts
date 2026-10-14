@@ -43,21 +43,18 @@ describe('GBizInfoApiClient.create — バリデーション', () => {
     ['真偽値 false', false],
     ['オブジェクト', {}],
     ['配列', []],
-  ] as [string, unknown][])(
-    'token が %s だと TypeError',
-    (_label, token) => {
-      expect(() =>
-        // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
-        GBizInfoApiClient.create(token),
-      ).toThrow(TypeError);
-      try {
-        // @ts-expect-error: 同上
-        GBizInfoApiClient.create(token);
-      } catch (e) {
-        expect((e as TypeError).message).toContain('gBizINFO API token');
-      }
-    },
-  );
+  ] as [string, unknown][])('token が %s だと TypeError', (_label, token) => {
+    expect(() =>
+      // @ts-expect-error: runtime バリデーションを確認するため意図的に型違反
+      GBizInfoApiClient.create(token),
+    ).toThrow(TypeError);
+    try {
+      // @ts-expect-error: 同上
+      GBizInfoApiClient.create(token);
+    } catch (e) {
+      expect((e as TypeError).message).toContain('gBizINFO API token');
+    }
+  });
 });
 
 // ============================================================================
@@ -250,10 +247,10 @@ describe('GBizInfoApiClient.create — リトライ', () => {
 describe('GBizInfoApiClient.create — use()', () => {
   it('.use() で呼び出し側がメソッドを注入できる', async () => {
     const transport = mockTransport({ body: { name: 'A 社' } });
-    const client = GBizInfoApiClient.create('t', { transport })
-      .use('byCorporateNumber', (c) => (corporateNumber: string) =>
-        c.get(`/hojin/${corporateNumber}`),
-      );
+    const client = GBizInfoApiClient.create('t', { transport }).use(
+      'byCorporateNumber',
+      (c) => (corporateNumber: string) => c.get(`/hojin/${corporateNumber}`),
+    );
     const result = await client.byCorporateNumber('1234567890123');
     expect((result as { name: string }).name).toBe('A 社');
     expect(transport.calls[0].url.endsWith('/hojin/1234567890123')).toBe(true);
@@ -283,8 +280,11 @@ describe('GBizInfoApiClient.create — logger', () => {
     const client = GBizInfoApiClient.create('t', { transport, logger });
     await client.get('/hojin/1');
     const total =
-      logger.calls.trace.length + logger.calls.debug.length +
-      logger.calls.info.length + logger.calls.warn.length + logger.calls.error.length;
+      logger.calls.trace.length +
+      logger.calls.debug.length +
+      logger.calls.info.length +
+      logger.calls.warn.length +
+      logger.calls.error.length;
     expect(total).toBeGreaterThan(0);
   });
 });

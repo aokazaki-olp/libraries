@@ -21,8 +21,7 @@ const DEFAULT_BASE_DELAY_MS = 500;
 // ユーティリティ
 // ============================================================================
 
-const cloneHeaders = (headers?: Record<string, string>): Record<string, string> =>
-  ({ ...headers });
+const cloneHeaders = (headers?: Record<string, string>): Record<string, string> => ({ ...headers });
 
 const mergeHeaders = (
   base: Record<string, string>,
@@ -31,11 +30,10 @@ const mergeHeaders = (
 
 const hasHeader = (headers: Record<string, string>, key: string): boolean => {
   const needle = key.toLowerCase();
-  return Object.keys(headers).some(k => k.toLowerCase() === needle);
+  return Object.keys(headers).some((k) => k.toLowerCase() === needle);
 };
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
 // createTransport
@@ -80,7 +78,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
       }
 
       // got の型パラメータを指定しないと Response<unknown> になるためキャスト（string ボディが返ることは got の仕様上保証される）
-      const response = await http(url, fetchOptions) as Response<string>;
+      const response = (await http(url, fetchOptions)) as Response<string>;
 
       const text = response.body;
       let body: unknown = null;

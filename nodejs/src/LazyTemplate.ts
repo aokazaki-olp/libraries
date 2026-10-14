@@ -50,7 +50,8 @@ class LazyTemplate {
   static readonly OPERATOR_OR_TOKEN_PATTERN = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\|\||\||[\s\S]/;
 
   /** キーセグメントパターン */
-  static readonly KEY_SEGMENT_PATTERN = /(?:^|\.)\s*([^\s.[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
+  static readonly KEY_SEGMENT_PATTERN =
+    /(?:^|\.)\s*([^\s.[\]]+)|\[\s*(("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?(?:0|[1-9]\d*)(?:\.\d+)?)\s*)\]/;
 
   /** 数値リテラルパターン */
   static readonly NUMBER_LITERAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
@@ -60,22 +61,43 @@ class LazyTemplate {
 
   /** プリミティブフィルター 18個 */
   static readonly PRIMITIVE_FILTERS = {
-    trim: (v: unknown) => typeof v === 'string' ? v.trim() : v,
-    trimStart: (v: unknown) => typeof v === 'string' ? v.trimStart() : v,
-    trimEnd: (v: unknown) => typeof v === 'string' ? v.trimEnd() : v,
-    upper: (v: unknown) => typeof v === 'string' ? v.toUpperCase() : v,
-    lower: (v: unknown) => typeof v === 'string' ? v.toLowerCase() : v,
-    round: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : v; },
-    int: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : v; },
-    float: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : v; },
-    abs: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.abs(n) : v; },
-    ceil: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.ceil(n) : v; },
-    floor: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.floor(n) : v; },
-    negate: (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? -n : v; },
-    length: (v: unknown) => (typeof v === 'string' || Array.isArray(v)) ? v.length : 0,
-    string: (v: unknown) => v == null ? '' : String(v),
+    trim: (v: unknown) => (typeof v === 'string' ? v.trim() : v),
+    trimStart: (v: unknown) => (typeof v === 'string' ? v.trimStart() : v),
+    trimEnd: (v: unknown) => (typeof v === 'string' ? v.trimEnd() : v),
+    upper: (v: unknown) => (typeof v === 'string' ? v.toUpperCase() : v),
+    lower: (v: unknown) => (typeof v === 'string' ? v.toLowerCase() : v),
+    round: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : v;
+    },
+    int: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.trunc(n) : v;
+    },
+    float: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : v;
+    },
+    abs: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.abs(n) : v;
+    },
+    ceil: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.ceil(n) : v;
+    },
+    floor: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.floor(n) : v;
+    },
+    negate: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? -n : v;
+    },
+    length: (v: unknown) => (typeof v === 'string' || Array.isArray(v) ? v.length : 0),
+    string: (v: unknown) => (v == null ? '' : String(v)),
     boolean: (v: unknown) => Boolean(v),
-    default: (v: unknown) => v == null ? '' : v,
+    default: (v: unknown) => (v == null ? '' : v),
     json: (v: unknown) => {
       try {
         return JSON.stringify(v);
@@ -234,8 +256,7 @@ class LazyTemplate {
         .replace(/\\\\/g, sentinel)
         .replace(/\\'/g, "'")
         .replaceAll(sentinel, '\\\\')
-        .replace(/"/g, '\\"')
-      }"`;
+        .replace(/"/g, '\\"')}"`;
       try {
         return JSON.parse(quoted);
       } catch {
@@ -261,7 +282,9 @@ class LazyTemplate {
     const segments: string[] = [];
     let current = '';
 
-    for (const m of rawTerm.matchAll(new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'))) {
+    for (const m of rawTerm.matchAll(
+      new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'),
+    )) {
       const token = m[0];
       if (token === '|') {
         segments.push(current.trim());
@@ -281,7 +304,9 @@ class LazyTemplate {
     const terms: string[] = [];
     let current = '';
 
-    for (const m of expression.matchAll(new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'))) {
+    for (const m of expression.matchAll(
+      new RegExp(LazyTemplate.OPERATOR_OR_TOKEN_PATTERN.source, 'g'),
+    )) {
       const token = m[0];
       if (token === '||') {
         const trimmed = current.trim();
@@ -299,7 +324,7 @@ class LazyTemplate {
       terms.push(trimmed);
     }
 
-    const compiled: CompiledEvaluator[] = terms.map(rawTerm => {
+    const compiled: CompiledEvaluator[] = terms.map((rawTerm) => {
       const segments = this.parseFilters(rawTerm);
       const term = segments.shift();
       if (term === undefined) {

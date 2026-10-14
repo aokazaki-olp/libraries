@@ -56,7 +56,9 @@ const create = <TResponse = unknown>(
   options: InvoiceClientOptions = {},
 ): BaseClient<TResponse> => {
   if (typeof applicationId !== 'string' || applicationId === '') {
-    throw new TypeError('applicationId にはインボイス Web-API のアプリケーション ID (string) を指定してください');
+    throw new TypeError(
+      'applicationId にはインボイス Web-API のアプリケーション ID (string) を指定してください',
+    );
   }
 
   const {
@@ -89,13 +91,15 @@ const create = <TResponse = unknown>(
     // レスポンスボディを TResponse として扱う（型保証は呼び出し側の責務）
     responseHandler: (response) => response.body as TResponse,
   })
-    .extend(t => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
-    .extend(t => HttpCore.withLogger(t, logger))
-    .extend(t => ApiClient.withQueryAuth(t, {
-      id: applicationId,
-      type,
-      version,
-    }));
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withLogger(t, logger))
+    .extend((t) =>
+      ApiClient.withQueryAuth(t, {
+        id: applicationId,
+        type,
+        version,
+      }),
+    );
 };
 
 export const InvoiceApiClient = { create };
