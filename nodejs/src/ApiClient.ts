@@ -242,7 +242,7 @@ const buildClient = <TResponse>(
   const createExtended = <TMethods extends object>(
     additionalMethods: TMethods,
   ): BaseClient<TResponse, TMethods> => {
-    // eslint-disable-next-line prefer-const
+    // eslint-disable-next-line prefer-const -- use が client を参照するため、use を定義した後で代入する
     let client: BaseClient<TResponse, TMethods>;
 
     // use はオーバーロード（plugin 形式 / name + fn 形式）を持ち、戻り値の型が引数の形で変わる。
