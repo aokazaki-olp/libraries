@@ -19,13 +19,21 @@ import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
 export class SlackApiError extends Error {
   override readonly name = 'SlackApiError';
 
+  readonly code: string;
+  readonly metadata: unknown;
+  readonly response: RawResponse | undefined;
+
   constructor(
     message: string,
-    public readonly code: string,
-    public readonly metadata?: unknown,
-    public readonly response?: RawResponse,
+    code: string,
+    metadata?: unknown,
+    response?: RawResponse,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
+    this.code = code;
+    this.metadata = metadata;
+    this.response = response;
   }
 }
 

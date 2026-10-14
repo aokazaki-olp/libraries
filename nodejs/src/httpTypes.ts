@@ -53,24 +53,31 @@ export interface RequestOptions {
  */
 export class HttpError extends Error {
   override readonly name = 'HttpError';
+  readonly status: number;
+  readonly body: unknown;
+  readonly headers: Record<string, string | string[]>;
+  readonly text: string;
+  readonly request: RequestOptions | undefined;
 
   constructor(
     message: string,
-    public readonly status: number,
-    public readonly body: unknown,
-    public readonly headers: Record<string, string | string[]> = {},
-    public readonly text: string = '',
-    public readonly request?: RequestOptions,
+    status: number,
+    body: unknown,
+    headers: Record<string, string | string[]> = {},
+    text = '',
+    request?: RequestOptions,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
+    this.status = status;
+    this.body = body;
+    this.headers = headers;
+    this.text = text;
+    this.request = request;
   }
 }
 
 /** リトライ上限に達した場合にスローされるエラー。 */
 export class RetryExhaustedError extends Error {
   override readonly name = 'RetryExhaustedError';
-
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-  }
 }
