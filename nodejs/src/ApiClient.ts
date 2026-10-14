@@ -221,6 +221,9 @@ const buildClient = <TResponse>(
     if (typeof request.timeoutMs === 'number') {
       options.timeoutMs = request.timeoutMs;
     }
+    if (request.signal) {
+      options.signal = request.signal;
+    }
 
     const rawResponse: RawResponse = await transport.fetch(url, options);
 

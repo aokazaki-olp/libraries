@@ -133,6 +133,8 @@ interface JwtOptions {
   logger?: Logger;
   maxRetries?: number;
   baseDelayMs?: number;
+  /** 中断シグナル。中断されるとトークン取得を打ち切り、リトライもしない */
+  signal?: AbortSignal;
 }
 
 interface JwtDependencies {
@@ -160,6 +162,7 @@ interface TokenResult {
  * @param options.logger - LoggerFacade 互換ロガー
  * @param options.maxRetries - リトライ最大回数（デフォルト: 3）
  * @param options.baseDelayMs - 指数バックオフ基準ディレイ ms（デフォルト: 500）
+ * @param options.signal - 中断シグナル
  * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns access_token と instance_url
  * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正
@@ -178,6 +181,7 @@ const getAccessTokenByJwt = async (
     logger,
     maxRetries = 3,
     baseDelayMs = 500,
+    signal,
   } = options;
 
   if (typeof consumerKey !== 'string' || consumerKey === '') {
@@ -212,6 +216,7 @@ const getAccessTokenByJwt = async (
   try {
     response = await transport.fetch(url, {
       method: 'POST',
+      signal,
       payload: {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         // 署名済み JWT。access_token と交換可能な credential のためログ出力禁止

@@ -15,6 +15,7 @@ import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { HttpError, RetryExhaustedError } from './httpTypes.ts';
 import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
+import { sleep } from './shared/sleep.ts';
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
@@ -59,8 +60,6 @@ const normalizeHeaders = (headers: IncomingHttpHeaders): Record<string, string |
   return normalized;
 };
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
 // ============================================================================
 // createTransport
 // ============================================================================
@@ -94,6 +93,7 @@ const createTransport = (deps?: TransportDeps): Transport => {
         headers: options.headers,
         throwHttpErrors: false,
         retry: { limit: 0 },
+        signal: options.signal,
       };
 
       if (options.payload != null) {
@@ -165,7 +165,7 @@ const shouldRetry = (e: unknown): boolean => {
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定
- * @returns リトライ機能付きTransport
+ * @returns リトライ機能付きTransport（fetchOptions.signal が中断されたらリトライも待機もやめる）
  * @throws {RetryExhaustedError} リトライ上限に達した場合
  */
 const withRetry = (transport: Transport, options: RetryOptions = {}): Transport => {
@@ -182,7 +182,8 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          if (!shouldRetry(e)) {
+          // 呼び出し側が中断したものは再送しない
+          if (fetchOptions?.signal?.aborted === true || !shouldRetry(e)) {
             throw e;
           }
 
@@ -201,7 +202,7 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
           log?.warn(
             `[HTTP] ⚠ RETRY attempt=${String(attempt + 1)}/${String(maxRetries)}${statusLabel} delay=${String(delay)}ms ${method} ${url}`,
           );
-          await sleep(delay);
+          await sleep(delay, fetchOptions?.signal);
         }
       }
     },

@@ -16,6 +16,7 @@ import { HttpCore } from './HttpCore.ts';
 import { HttpError, RetryExhaustedError } from './httpTypes.ts';
 import type { BaseClient } from './ApiClient.ts';
 import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
+import { sleep } from './shared/sleep.ts';
 
 export class SlackApiError extends Error {
   override readonly name = 'SlackApiError';
@@ -40,8 +41,6 @@ export class SlackApiError extends Error {
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
 // SlackCore
@@ -127,7 +126,8 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
           const plan = planRetry(e, attempt, baseDelayMs);
-          if (plan === null) {
+          // 呼び出し側が中断したものは再送しない
+          if (fetchOptions?.signal?.aborted === true || plan === null) {
             throw e;
           }
 
@@ -141,7 +141,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
           log?.warn(
             `[Slack] ⚠ RETRY attempt=${String(attempt + 1)}/${String(maxRetries)}${plan.label} delay=${String(plan.delayMs)}ms ${method} ${url}`,
           );
-          await sleep(plan.delayMs);
+          await sleep(plan.delayMs, fetchOptions?.signal);
         }
       }
     },
@@ -238,8 +238,13 @@ interface SlackWebhookOptions {
   transport?: Transport;
 }
 
+interface SlackWebhookSendOptions {
+  /** 中断シグナル。中断されると送信を打ち切り、リトライもしない */
+  signal?: AbortSignal;
+}
+
 interface SlackWebhookInstance {
-  send(payload: SlackPayload): Promise<void>;
+  send(payload: SlackPayload, options?: SlackWebhookSendOptions): Promise<void>;
 }
 
 /**
@@ -273,12 +278,16 @@ const createWebhookClient = (
     logger,
   );
 
-  const send = async (payload: SlackPayload): Promise<void> => {
+  const send = async (
+    payload: SlackPayload,
+    sendOptions: SlackWebhookSendOptions = {},
+  ): Promise<void> => {
     await transport.fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       payload: JSON.stringify(payload),
       ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}),
+      signal: sendOptions.signal,
     });
   };
 
@@ -290,14 +299,15 @@ const createWebhookClient = (
  *
  * @param webhookUrl - Webhook URL
  * @param payload - 送信するペイロード
- * @param options - オプション設定
+ * @param options - オプション設定（signal で送信を中断できる）
  * @returns 送信完了 Promise
  */
 const sendWebhook = (
   webhookUrl: string,
   payload: SlackPayload,
-  options?: SlackWebhookOptions,
-): Promise<void> => createWebhookClient(webhookUrl, options).send(payload);
+  options: SlackWebhookOptions & SlackWebhookSendOptions = {},
+): Promise<void> =>
+  createWebhookClient(webhookUrl, options).send(payload, { signal: options.signal });
 
 export const SlackWebhookClient = {
   create: createWebhookClient,
@@ -305,6 +315,7 @@ export const SlackWebhookClient = {
 };
 
 export type {
+  SlackWebhookSendOptions,
   SlackRetryOptions,
   SlackApiClientOptions,
   SlackWebhookOptions,

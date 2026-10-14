@@ -42,6 +42,7 @@
 import type { BaseClient, Plugin } from '../ApiClient.ts';
 import type { FetchOptions } from '../httpTypes.ts';
 import { parse } from 'csv-parse/sync';
+import { sleep } from '../shared/sleep.ts';
 import { toError } from '../shared/toError.ts';
 import { stringify } from 'csv-stringify/sync';
 
@@ -177,6 +178,8 @@ export interface WaitOptions {
   timeoutMs?: number;
   /** ポーリング間隔（ミリ秒、デフォルト: 10_000） */
   intervalMs?: number;
+  /** 中断シグナル。中断されるとポーリングをやめて reject する（ジョブ自体は止まらない） */
+  signal?: AbortSignal;
 }
 
 export interface ValidationError {
@@ -229,8 +232,6 @@ export interface BulkQueryPlugin {
 // ============================================================================
 // 内部ヘルパー
 // ============================================================================
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Ingest / Query で終了状態が将来変わる可能性に備えて別定数として定義している
 const TERMINAL_INGEST_STATES = new Set<IngestState>(['JobComplete', 'Failed', 'Aborted']);
@@ -493,9 +494,9 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @returns ジョブ情報
    */
-  const getJob = (jobId: string): Promise<IngestJobInfo> =>
+  const getJob = (jobId: string, signal?: AbortSignal): Promise<IngestJobInfo> =>
     // 「Get Job Info」: Job Info を返す
-    client.get(`/jobs/ingest/${jobId}`) as Promise<IngestJobInfo>;
+    client.get(`/jobs/ingest/${jobId}`, undefined, { signal }) as Promise<IngestJobInfo>;
 
   /**
    * Ingest ジョブ一覧を取得する
@@ -537,17 +538,19 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param jobId - 待機対象ジョブ ID
    * @param options.timeoutMs - タイムアウト（ミリ秒、デフォルト: 300_000 = 5分）
    * @param options.intervalMs - ポーリング間隔（ミリ秒、デフォルト: 10_000）
+   * @param options.signal - 中断シグナル（中断してもジョブ自体は止まらない。止めるなら abort を呼ぶ）
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
    * @throws {Error} タイムアウトした場合
+   * @throws signal が中断された場合、その理由（既定は AbortError）
    */
   const waitForCompletion = async (
     jobId: string,
     options: WaitOptions = {},
   ): Promise<IngestJobInfo> => {
-    const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
+    const { timeoutMs = 300_000, intervalMs = 10_000, signal } = options;
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const job = await getJob(jobId);
+      const job = await getJob(jobId, signal);
       if (TERMINAL_INGEST_STATES.has(job.state)) {
         return job;
       }
@@ -557,7 +560,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
           `BulkIngest ジョブ (${jobId}) がタイムアウトしました (${String(timeoutMs)}ms)`,
         );
       }
-      await sleep(Math.min(intervalMs, remaining));
+      await sleep(Math.min(intervalMs, remaining), signal);
     }
   };
 
@@ -643,9 +646,9 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @returns ジョブ情報
    */
-  const getJob = (jobId: string): Promise<QueryJobInfo> =>
+  const getJob = (jobId: string, signal?: AbortSignal): Promise<QueryJobInfo> =>
     // 「Get Information About a Query Job」: Job Info を返す
-    client.get(`/jobs/query/${jobId}`) as Promise<QueryJobInfo>;
+    client.get(`/jobs/query/${jobId}`, undefined, { signal }) as Promise<QueryJobInfo>;
 
   /**
    * Query ジョブ一覧を取得する
@@ -737,17 +740,19 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param jobId - 待機対象ジョブ ID
    * @param options.timeoutMs - タイムアウト（ミリ秒、デフォルト: 300_000 = 5分）
    * @param options.intervalMs - ポーリング間隔（ミリ秒、デフォルト: 10_000）
+   * @param options.signal - 中断シグナル（中断してもジョブ自体は止まらない。止めるなら abort を呼ぶ）
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
    * @throws {Error} タイムアウトした場合
+   * @throws signal が中断された場合、その理由（既定は AbortError）
    */
   const waitForCompletion = async (
     jobId: string,
     options: WaitOptions = {},
   ): Promise<QueryJobInfo> => {
-    const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
+    const { timeoutMs = 300_000, intervalMs = 10_000, signal } = options;
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const job = await getJob(jobId);
+      const job = await getJob(jobId, signal);
       if (TERMINAL_QUERY_STATES.has(job.state)) {
         return job;
       }
@@ -757,7 +762,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
           `BulkQuery ジョブ (${jobId}) がタイムアウトしました (${String(timeoutMs)}ms)`,
         );
       }
-      await sleep(Math.min(intervalMs, remaining));
+      await sleep(Math.min(intervalMs, remaining), signal);
     }
   };
 

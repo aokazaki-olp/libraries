@@ -50,6 +50,7 @@ export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient
 export type {
   SlackApiClientOptions,
   SlackWebhookOptions,
+  SlackWebhookSendOptions,
   SlackPayload,
   SlackWebhookInstance,
 } from './SlackClient.ts';

@@ -14,6 +14,8 @@ export interface FetchOptions {
   /** JSON文字列 or form-urlencodedオブジェクト */
   payload?: string | Record<string, string>;
   timeoutMs?: number;
+  /** 中断シグナル。中断されるとリクエストを打ち切り、リトライもしない */
+  signal?: AbortSignal;
 }
 
 export interface RawResponse {
@@ -40,6 +42,8 @@ export interface RequestOptions {
   /** JSON.stringify を経由せず payload に直接セットされる生文字列（CSV アップロード等） */
   rawBody?: string;
   timeoutMs?: number;
+  /** 中断シグナル。中断されるとリクエストを打ち切り、リトライもしない */
+  signal?: AbortSignal;
 }
 
 /**
