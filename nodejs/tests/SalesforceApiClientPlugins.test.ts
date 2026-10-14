@@ -203,6 +203,26 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
 
     expect(transport.calls[0].url).toContain('/unprocessedrecords');
   });
+
+  it('空のボディ（Transport が null にする）は空文字として返す', async () => {
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ body: null, text: '' })),
+    );
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
+    const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
+
+    await expect(bulk.getSuccessfulResults('job001')).resolves.toBe('');
+  });
+
+  it('CSV でない応答（JSON オブジェクト）は Error をスローする', async () => {
+    const transport = makeTransport(() =>
+      Promise.resolve(makeRawResponse({ body: { errorCode: 'X' } })),
+    );
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
+    const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
+
+    await expect(bulk.getFailedResults('job001')).rejects.toThrow('CSV を期待した応答');
+  });
 });
 
 describe('SalesforceApiClientPlugins.bulkIngest — waitForCompletion', () => {
@@ -564,6 +584,21 @@ describe('SalesforceApiClientPlugins.soql — queryAll', () => {
     expect((records[0] as { Id: string }).Id).toBe('001xxx');
     expect((records[1] as { Id: string }).Id).toBe('002xxx');
     expect(transport.calls.length).toBe(2);
+  });
+});
+
+describe('SalesforceApiClientPlugins.soql — 応答の検査', () => {
+  it.each([
+    ['records が配列でない', { totalSize: 0, done: true, records: null }],
+    ['done が無い', { totalSize: 0, records: [] }],
+    ['オブジェクトでない', 'INVALID_SESSION'],
+  ])('SOQL の結果形式でない応答（%s）は Error をスローする', async (_label, body) => {
+    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ body })));
+    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport }).use(
+      SalesforceApiClientPlugins.soql(),
+    );
+
+    await expect(sf.query('SELECT Id FROM Account')).rejects.toThrow('SOQL の結果形式でない');
   });
 });
 

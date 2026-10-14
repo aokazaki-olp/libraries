@@ -1,5 +1,6 @@
 /**
  * plugins/salesforce.ts
+ *
  * @description Salesforce REST API / Bulk API v2 用プラグインセット
  *
  * 使用例（REST API）:
@@ -41,6 +42,7 @@
 import type { BaseClient, Plugin } from '../ApiClient.ts';
 import type { FetchOptions } from '../httpTypes.ts';
 import { parse } from 'csv-parse/sync';
+import { toError } from '../shared/toError.ts';
 import { stringify } from 'csv-stringify/sync';
 
 // ============================================================================
@@ -234,21 +236,60 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const TERMINAL_INGEST_STATES = new Set<IngestState>(['JobComplete', 'Failed', 'Aborted']);
 const TERMINAL_QUERY_STATES = new Set<QueryState>(['JobComplete', 'Failed', 'Aborted']);
 
-/** 複数 CSV ページを結合する（先頭ページのヘッダー行を保持し、以降のヘッダー行を除去） */
-const mergeCsvPages = (pages: string[]): string => {
-  if (pages.length === 0) {
+/**
+ * SOQL 応答のエンベロープ（records / totalSize / done）を検査する
+ *
+ * records の各要素は検査しない。行の型は利用者が型パラメータで与える（PLUGIN_SYSTEM_RULES §2.3）
+ *
+ * @throws {Error} エンベロープの形をしていない場合
+ */
+const toSoqlResult = <TRow>(body: unknown): SoqlResult<TRow> => {
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !Array.isArray(Reflect.get(body, 'records')) ||
+    typeof Reflect.get(body, 'totalSize') !== 'number' ||
+    typeof Reflect.get(body, 'done') !== 'boolean'
+  ) {
+    throw new Error('Salesforce /query が SOQL の結果形式でない応答を返しました');
+  }
+  // records・totalSize・done は上で検査済み。行（TRow）は利用者の型パラメータで、ここでは検査しない
+  return body as SoqlResult<TRow>;
+};
+
+/**
+ * CSV を返すエンドポイントの応答を文字列として受ける
+ *
+ * 空のボディは Transport が null にするので空文字に戻す。
+ *
+ * @throws {Error} 文字列でも空でもない応答の場合
+ */
+const toCsv = (body: unknown): string => {
+  if (typeof body === 'string') {
+    return body;
+  }
+  if (body == null) {
     return '';
   }
-  if (pages.length === 1) {
-    return pages[0];
+  throw new Error(`CSV を期待した応答に ${typeof body} が返りました`);
+};
+
+/** 複数 CSV ページを結合する（先頭ページのヘッダー行を保持し、以降のヘッダー行を除去） */
+const mergeCsvPages = (pages: string[]): string => {
+  const [first, ...rest] = pages;
+  if (first === undefined) {
+    return '';
+  }
+  if (rest.length === 0) {
+    return first;
   }
   // 末尾の \r?\n を除去してから LF で結合する（末尾改行による空行挿入を防ぐ）
   // 入力が CRLF であっても結合後は LF に統一される（Salesforce は LF/CRLF 両対応）
-  const parts = [pages[0].replace(/\r?\n$/, '')];
-  for (let i = 1; i < pages.length; i++) {
-    const idx = pages[i].indexOf('\n');
+  const parts = [first.replace(/\r?\n$/, '')];
+  for (const page of rest) {
+    const idx = page.indexOf('\n');
     if (idx >= 0) {
-      const tail = pages[i].slice(idx + 1).replace(/\r?\n$/, '');
+      const tail = page.slice(idx + 1).replace(/\r?\n$/, '');
       if (tail) {
         parts.push(tail);
       }
@@ -287,22 +328,18 @@ const soql =
     }
   > =>
   (client) => ({
-    query: (q) =>
-      // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される
-      client.get('/query', { q }) as Promise<SoqlResult<TRow>>,
+    query: async (q) => toSoqlResult<TRow>(await client.get('/query', { q })),
 
     queryAll: async (q) => {
       const records: TRow[] = [];
-      // SF /query は SoqlResult 形式で返すことが SF REST API 仕様で保証される（soql.query と同じ理由）
-      let result = (await client.get('/query', { q })) as SoqlResult<TRow>;
+      let result = toSoqlResult<TRow>(await client.get('/query', { q }));
       records.push(...result.records);
       while (!result.done && result.nextRecordsUrl) {
         // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
         // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
         // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
         const relPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
-        // 継続ページも同じく SF REST API 仕様で SoqlResult 形式が保証される
-        result = (await client.get(relPath)) as SoqlResult<TRow>;
+        result = toSoqlResult<TRow>(await client.get(relPath));
         records.push(...result.records);
       }
       return records;
@@ -351,20 +388,21 @@ const sobject =
   > =>
   (client) => ({
     findById: (id) =>
-      // SF /sobjects/{type}/{id} は TRecord 形式で返すことが SF REST API 仕様で保証される
+      // レコードの型は利用者が型パラメータで与える（PLUGIN_SYSTEM_RULES §2.3。検証なしの型パラメータ）
       client.get(`/sobjects/${type}/${id}`) as Promise<TRecord>,
 
     create: (data) =>
-      // SF /sobjects/{type} POST のレスポンス形式は SF REST API 仕様で保証される
+      // POST /sobjects/{type} は id / success / errors を返す
+      // （REST API Developer Guide「Create a Record」の Response body）
       client.post(`/sobjects/${type}`, data) as Promise<{ id: string; success: boolean }>,
 
-    update: (id, data) =>
-      // SF PATCH は 204 No Content を返し、BaseClient が void 相当を返す
-      client.patch(`/sobjects/${type}/${id}`, data) as Promise<void>,
+    update: async (id, data) => {
+      await client.patch(`/sobjects/${type}/${id}`, data);
+    },
 
-    delete: (id) =>
-      // SF DELETE は 204 No Content を返し、BaseClient が void 相当を返す
-      client.delete(`/sobjects/${type}/${id}`) as Promise<void>,
+    delete: async (id) => {
+      await client.delete(`/sobjects/${type}/${id}`);
+    },
   });
 
 // ============================================================================
@@ -394,16 +432,17 @@ const sobject =
  *
  * @remarks `.use()` パターン非対応。`SalesforceApiClientPlugins.bulkIngest(sfClient)` の形で直接呼び出すこと。
  */
-const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
+const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
   /**
    * Ingest ジョブを作成する
    * @param options - 操作種別・対象オブジェクト等の設定
    * @returns 作成されたジョブ情報
    */
-  // 以下の as キャストは、BaseClient<unknown> のメソッドが Promise<unknown> を返すことに対し、
-  // SF Bulk API v2 仕様で保証されるレスポンス形状へ変換するもの。プラグイン内部に閉じ込める。
+  // 以下の JSON 応答の as キャストは、Bulk API 2.0 Developer Guide の各リソースの
+  // Response Body に記載された形へ絞るもの（PLUGIN_SYSTEM_RULES §2.5）。キャストごとに節名を書く
 
   const createJob = (options: CreateIngestJobOptions): Promise<IngestJobInfo> =>
+    // 「Create a Job」: 作成したジョブの Job Info を返す
     client.post('/jobs/ingest', options) as Promise<IngestJobInfo>;
 
   /**
@@ -411,13 +450,14 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @param jobId - アップロード対象ジョブ ID
    * @param csv - RFC4180 形式の CSV 文字列（ヘッダー行必須）
    */
-  const upload = (jobId: string, csv: string): Promise<void> =>
-    client.call({
+  const upload = async (jobId: string, csv: string): Promise<void> => {
+    await client.call({
       method: 'PUT',
       endpoint: `/jobs/ingest/${jobId}/batches`,
       rawBody: csv,
       headers: { 'Content-Type': 'text/csv' },
-    }) as Promise<void>;
+    });
+  };
 
   /**
    * ジョブをクローズしてデータ処理を開始する（state: UploadComplete）
@@ -425,6 +465,7 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns 更新されたジョブ情報
    */
   const close = (jobId: string): Promise<IngestJobInfo> =>
+    // 「Close or Abort a Job」: 更新後の Job Info を返す
     client.patch(`/jobs/ingest/${jobId}`, { state: 'UploadComplete' }) as Promise<IngestJobInfo>;
 
   /**
@@ -436,14 +477,16 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns 更新されたジョブ情報
    */
   const abort = (jobId: string): Promise<IngestJobInfo> =>
+    // 「Close or Abort a Job」: 更新後の Job Info を返す
     client.patch(`/jobs/ingest/${jobId}`, { state: 'Aborted' }) as Promise<IngestJobInfo>;
 
   /**
    * ジョブを削除する（Aborted 状態のジョブのみ削除可能）
    * @param jobId - 削除対象ジョブ ID
    */
-  const deleteJob = (jobId: string): Promise<void> =>
-    client.delete(`/jobs/ingest/${jobId}`) as Promise<void>;
+  const deleteJob = async (jobId: string): Promise<void> => {
+    await client.delete(`/jobs/ingest/${jobId}`);
+  };
 
   /**
    * ジョブ情報を取得する
@@ -451,6 +494,7 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns ジョブ情報
    */
   const getJob = (jobId: string): Promise<IngestJobInfo> =>
+    // 「Get Job Info」: Job Info を返す
     client.get(`/jobs/ingest/${jobId}`) as Promise<IngestJobInfo>;
 
   /**
@@ -459,6 +503,7 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListIngestJobsOptions): Promise<ListIngestJobsResponse> =>
+    // 「Get All Jobs」: records / done / nextRecordsUrl を返す
     // { ...undefined } は空オブジェクトになるため options が undefined でも安全
     client.get('/jobs/ingest', { ...options }) as Promise<ListIngestJobsResponse>;
 
@@ -467,24 +512,24 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @returns CSV 文字列
    */
-  const getSuccessfulResults = (jobId: string): Promise<string> =>
-    client.get(`/jobs/ingest/${jobId}/successfulResults`) as Promise<string>;
+  const getSuccessfulResults = async (jobId: string): Promise<string> =>
+    toCsv(await client.get(`/jobs/ingest/${jobId}/successfulResults`));
 
   /**
    * 処理失敗レコードの結果 CSV を取得する（sf__Error, sf__Id 列を含む）
    * @param jobId - 取得対象ジョブ ID
    * @returns CSV 文字列
    */
-  const getFailedResults = (jobId: string): Promise<string> =>
-    client.get(`/jobs/ingest/${jobId}/failedResults`) as Promise<string>;
+  const getFailedResults = async (jobId: string): Promise<string> =>
+    toCsv(await client.get(`/jobs/ingest/${jobId}/failedResults`));
 
   /**
    * 未処理レコードの CSV を取得する
    * @param jobId - 取得対象ジョブ ID
    * @returns CSV 文字列
    */
-  const getUnprocessedRecords = (jobId: string): Promise<string> =>
-    client.get(`/jobs/ingest/${jobId}/unprocessedrecords`) as Promise<string>;
+  const getUnprocessedRecords = async (jobId: string): Promise<string> =>
+    toCsv(await client.get(`/jobs/ingest/${jobId}/unprocessedrecords`));
 
   /**
    * ジョブが完了状態になるまでポーリングして待機する
@@ -501,14 +546,16 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
   ): Promise<IngestJobInfo> => {
     const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
     const deadline = Date.now() + timeoutMs;
-    while (true) {
+    for (;;) {
       const job = await getJob(jobId);
       if (TERMINAL_INGEST_STATES.has(job.state)) {
         return job;
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new Error(`BulkIngest ジョブ (${jobId}) がタイムアウトしました (${timeoutMs}ms)`);
+        throw new Error(
+          `BulkIngest ジョブ (${jobId}) がタイムアウトしました (${String(timeoutMs)}ms)`,
+        );
       }
       await sleep(Math.min(intervalMs, remaining));
     }
@@ -554,9 +601,9 @@ const bulkIngest = (client: BaseClient<unknown>): BulkIngestPlugin => {
  *
  * @remarks `.use()` パターン非対応。`SalesforceApiClientPlugins.bulkQuery(sfClient)` の形で直接呼び出すこと。
  */
-const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
-  // 以下の as キャストは、BaseClient<unknown> のメソッドが Promise<unknown> を返すことに対し、
-  // SF Bulk API v2 仕様で保証されるレスポンス形状へ変換するもの。プラグイン内部に閉じ込める。
+const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
+  // 以下の JSON 応答の as キャストは、Bulk API 2.0 Developer Guide の各リソースの
+  // Response Body に記載された形へ絞るもの（PLUGIN_SYSTEM_RULES §2.5）。キャストごとに節名を書く
 
   /**
    * Query ジョブを作成して即座に処理を開始する
@@ -564,6 +611,7 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @returns 作成されたジョブ情報
    */
   const createJob = (options: CreateQueryJobOptions): Promise<QueryJobInfo> =>
+    // 「Create a Query Job」: 作成したジョブの Job Info を返す
     client.post('/jobs/query', options) as Promise<QueryJobInfo>;
 
   /**
@@ -574,8 +622,9 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    *
    * @param jobId - 中断対象ジョブ ID
    */
-  const abort = (jobId: string): Promise<void> =>
-    client.delete(`/jobs/query/${jobId}`) as Promise<void>;
+  const abort = async (jobId: string): Promise<void> => {
+    await client.delete(`/jobs/query/${jobId}`);
+  };
 
   /**
    * ジョブを削除する
@@ -585,8 +634,9 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    *
    * @param jobId - 削除対象ジョブ ID
    */
-  const deleteJob = (jobId: string): Promise<void> =>
-    client.delete(`/jobs/query/${jobId}`) as Promise<void>;
+  const deleteJob = async (jobId: string): Promise<void> => {
+    await client.delete(`/jobs/query/${jobId}`);
+  };
 
   /**
    * ジョブ情報を取得する
@@ -594,6 +644,7 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @returns ジョブ情報
    */
   const getJob = (jobId: string): Promise<QueryJobInfo> =>
+    // 「Get Information About a Query Job」: Job Info を返す
     client.get(`/jobs/query/${jobId}`) as Promise<QueryJobInfo>;
 
   /**
@@ -602,6 +653,7 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    * @returns ジョブ一覧
    */
   const listJobs = (options?: ListQueryJobsOptions): Promise<ListQueryJobsResponse> =>
+    // 「Get Information About All Query Jobs」: records / done / nextRecordsUrl を返す
     // { ...undefined } は空オブジェクトになるため options が undefined でも安全
     client.get('/jobs/query', { ...options }) as Promise<ListQueryJobsResponse>;
 
@@ -646,8 +698,7 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
       query['locator'] = options.locator;
     }
 
-    // SF Bulk API v2 Query Results エンドポイントは text/csv を返し、SalesforceApiClient が文字列として処理する
-    const csv = (await capturingClient.get(`/jobs/query/${jobId}/results`, query)) as string;
+    const csv = toCsv(await capturingClient.get(`/jobs/query/${jobId}/results`, query));
     return { csv, nextLocator };
   };
 
@@ -665,9 +716,9 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
    */
   const getResultsParallel = async (
     jobId: string,
-    options: GetResultsParallelOptions = {},
+    // parallelism は将来の並列化実装のために予約されており現在は未使用
+    _options: GetResultsParallelOptions = {},
   ): Promise<string> => {
-    void options; // parallelism は将来の並列化実装のために予約されており現在は未使用
     const pages: string[] = [];
     let locator: string | null = null;
 
@@ -695,14 +746,16 @@ const bulkQuery = (client: BaseClient<unknown>): BulkQueryPlugin => {
   ): Promise<QueryJobInfo> => {
     const { timeoutMs = 300_000, intervalMs = 10_000 } = options;
     const deadline = Date.now() + timeoutMs;
-    while (true) {
+    for (;;) {
       const job = await getJob(jobId);
       if (TERMINAL_QUERY_STATES.has(job.state)) {
         return job;
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new Error(`BulkQuery ジョブ (${jobId}) がタイムアウトしました (${timeoutMs}ms)`);
+        throw new Error(
+          `BulkQuery ジョブ (${jobId}) がタイムアウトしました (${String(timeoutMs)}ms)`,
+        );
       }
       await sleep(Math.min(intervalMs, remaining));
     }
@@ -740,8 +793,8 @@ const Utils = {
     if (!csv || csv.trim() === '') {
       return [];
     }
-    // csv-parse/sync は any を返すため、SF Bulk API v2 CSV の形式（文字列フィールドのみ）に合わせてキャスト
-    return parse(csv, { columns: true, skip_empty_lines: true }) as Record<string, string>[];
+    // csv-parse は cast オプション未指定なら全フィールドを文字列で返す（columns: true でヘッダー名がキー）
+    return parse<Record<string, string>>(csv, { columns: true, skip_empty_lines: true });
   },
 
   /**
@@ -766,8 +819,7 @@ const Utils = {
     if (!csv || csv.trim() === '') {
       return 0;
     }
-    // csv-parse/sync は any を返すため、件数取得目的で unknown[] にキャスト
-    const records = parse(csv, { columns: true, skip_empty_lines: true }) as unknown[];
+    const records = parse(csv, { columns: true, skip_empty_lines: true });
     return records.length;
   },
 
@@ -780,8 +832,7 @@ const Utils = {
     if (!csv || csv.trim() === '') {
       return [];
     }
-    // csv-parse/sync は any を返すため、ヘッダー行のみ取得して string[][] にキャスト
-    const rows = parse(csv, { columns: false, to_line: 1 }) as string[][];
+    const rows = parse(csv, { columns: false, to_line: 1 });
     return rows[0] ?? [];
   },
 
@@ -815,14 +866,13 @@ const Utils = {
 
     try {
       // columns: false で1回だけパースし、行配列から直接検証する（二重パース回避）
-      // csv-parse/sync は any を返すため、行×列の2次元配列として string[][] にキャスト
-      const allRows = parse(csv, {
+      const [headerRow, ...dataRows] = parse(csv, {
         columns: false,
         skip_empty_lines: true,
         relax_column_count: true,
-      }) as string[][];
+      });
 
-      if (allRows.length === 0) {
+      if (headerRow === undefined) {
         errors.push({ message: 'ヘッダー行がありません' });
         return {
           valid: false,
@@ -832,9 +882,8 @@ const Utils = {
         };
       }
 
-      headers = allRows[0];
+      headers = headerRow;
       columnCount = headers.length;
-      const dataRows = allRows.slice(1);
       rowCount = dataRows.length;
 
       if (headers.some((h) => h === '')) {
@@ -850,7 +899,7 @@ const Utils = {
         if (row.length !== columnCount) {
           errors.push({
             row: i + 2,
-            message: `列数がヘッダーと一致しません (expected: ${columnCount}, actual: ${row.length})`,
+            message: `列数がヘッダーと一致しません (expected: ${String(columnCount)}, actual: ${String(row.length)})`,
           });
         }
       }
@@ -865,11 +914,11 @@ const Utils = {
 
       if (rowCount > 150_000_000) {
         errors.push({
-          message: `レコード数が Bulk API v2 の上限（1億5000万件）を超えています: ${rowCount} 件`,
+          message: `レコード数が Bulk API v2 の上限（1億5000万件）を超えています: ${String(rowCount)} 件`,
         });
       }
     } catch (e) {
-      errors.push({ message: `CSV パースエラー: ${e instanceof Error ? e.message : String(e)}` });
+      errors.push({ message: `CSV パースエラー: ${toError(e).message}` });
     }
 
     return {
