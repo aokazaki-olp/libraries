@@ -1,18 +1,27 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "lib": ["ES2025", "ESNext.Disposable", "ESNext.Error"],
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
     "strict": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "lib": ["ES2022"],
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "noEmit": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.mts",
+    "tests/**/*.ts",
+    "tests/**/*.mts",
+    "*.ts",
+    "*.mts"
+  ]
 }
