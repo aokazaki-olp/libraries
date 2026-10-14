@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { HttpCore } from '../src/HttpCore.js';
-import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
-import type { RawResponse } from '../src/httpTypes.js';
-import { createMockLogger, makeRawResponse, makeTransport } from './helpers.js';
+import { HttpCore } from '../src/HttpCore.ts';
+import { HttpError, RetryExhaustedError } from '../src/httpTypes.ts';
+import type { RawResponse } from '../src/httpTypes.ts';
+import { createMockLogger, makeRawResponse, makeTransport } from './helpers.ts';
 
 // ============================================================================
 // テストユーティリティ

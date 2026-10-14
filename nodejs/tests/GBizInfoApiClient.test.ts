@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GBizInfoApiClient } from '../src/GBizInfoApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
-import { HttpError } from '../src/httpTypes.js';
-import { createMockLogger, makeRawResponse } from './helpers.js';
+import { GBizInfoApiClient } from '../src/GBizInfoApiClient.ts';
+import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
+import { HttpError } from '../src/httpTypes.ts';
+import { createMockLogger, makeRawResponse } from './helpers.ts';
 
 const VALID_TOKEN = 'my-token-12345';
 const BASE_URL = 'https://api.info.gbiz.go.jp/hojin/v2';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LazyTemplate } from '../src/LazyTemplate.js';
+import { LazyTemplate } from '../src/LazyTemplate.ts';
 
 // ============================================================================
 // コンストラクタ

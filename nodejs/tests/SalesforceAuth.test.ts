@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as crypto from 'node:crypto';
-import { SalesforceAuth } from '../src/SalesforceAuth.js';
-import { HttpError } from '../src/httpTypes.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
-import type { Signer } from '../src/SalesforceAuth.js';
-import { makeRawResponse } from './helpers.js';
+import { SalesforceAuth } from '../src/SalesforceAuth.ts';
+import { HttpError } from '../src/httpTypes.ts';
+import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
+import type { Signer } from '../src/SalesforceAuth.ts';
+import { makeRawResponse } from './helpers.ts';
 
 // ============================================================================
 // テストユーティリティ

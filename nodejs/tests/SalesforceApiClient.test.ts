@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import type { FetchOptions, Transport } from '../src/httpTypes.js';
-import { makeRawResponse } from './helpers.js';
+import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
+import type { FetchOptions, Transport } from '../src/httpTypes.ts';
+import { makeRawResponse } from './helpers.ts';
 
 // ============================================================================
 // テストユーティリティ

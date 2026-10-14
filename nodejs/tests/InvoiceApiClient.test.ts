@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { InvoiceApiClient } from '../src/InvoiceApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
-import { HttpError } from '../src/httpTypes.js';
-import { createMockLogger, makeRawResponse } from './helpers.js';
+import { InvoiceApiClient } from '../src/InvoiceApiClient.ts';
+import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
+import { HttpError } from '../src/httpTypes.ts';
+import { createMockLogger, makeRawResponse } from './helpers.ts';
 
 const VALID_APP_ID = 'app-id-xxxxxxxx';
 const BASE_URL = 'https://web-api.invoice-kohyo.nta.go.jp/1';

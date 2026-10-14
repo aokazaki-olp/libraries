@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.js';
-import { ApiClient } from '../src/ApiClient.js';
-import type { RawResponse } from '../src/httpTypes.js';
-import { mockTransport } from './helpers.js';
+import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
+import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
+import { ApiClient } from '../src/ApiClient.ts';
+import type { RawResponse } from '../src/httpTypes.ts';
+import { mockTransport } from './helpers.ts';
 
 // ============================================================================
 // withBearerAuth

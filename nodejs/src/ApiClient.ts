@@ -8,15 +8,15 @@
  *   - call() が async になった以外、GAS版と同じAPI
  */
 
-import { LoggerFacade } from './LoggerFacade.js';
-import type { Logger } from './LoggerFacade.js';
-import { HttpCore } from './HttpCore.js';
+import { LoggerFacade } from './LoggerFacade.ts';
+import type { Logger } from './LoggerFacade.ts';
+import { HttpCore } from './HttpCore.ts';
 import type {
   FetchOptions,
   RawResponse,
   RequestOptions,
   Transport,
-} from './httpTypes.js';
+} from './httpTypes.ts';
 
 export type ResponseHandler<T = unknown> = (
   response: RawResponse,

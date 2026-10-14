@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClient.js';
-import { SlackApiError } from '../src/SlackClient.js';
-import { HttpError, RetryExhaustedError } from '../src/httpTypes.js';
-import type { RawResponse } from '../src/httpTypes.js';
-import { createMockLogger, makeTransport } from './helpers.js';
+import { SlackCore, SlackApiClient, SlackWebhookClient } from '../src/SlackClient.ts';
+import { SlackApiError } from '../src/SlackClient.ts';
+import { HttpError, RetryExhaustedError } from '../src/httpTypes.ts';
+import type { RawResponse } from '../src/httpTypes.ts';
+import { createMockLogger, makeTransport } from './helpers.ts';
 
 // ============================================================================
 // テストユーティリティ

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { SlackFilters } from '../src/SlackFilters.js';
-import { LazyTemplate } from '../src/LazyTemplate.js';
+import { SlackFilters } from '../src/SlackFilters.ts';
+import { LazyTemplate } from '../src/LazyTemplate.ts';
 
 // ============================================================================
 // Mrkdwn装飾

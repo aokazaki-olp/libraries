@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
-import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.js';
-import type { Logger } from '../src/LoggerFacade.js';
+import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
+import type { Logger } from '../src/LoggerFacade.ts';
 
 export const createMockLogger = () => {
   const calls: Record<keyof Logger, unknown[][]> = {

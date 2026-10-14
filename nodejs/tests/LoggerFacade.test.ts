@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { LoggerFacade } from '../src/LoggerFacade.js';
+import { LoggerFacade } from '../src/LoggerFacade.ts';
 
 // ============================================================================
 // createLogger(null / falsy)

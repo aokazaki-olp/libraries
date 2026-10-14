@@ -38,8 +38,8 @@
  * ポーリングによる状態監視（waitForCompletion）を使用すること。
  */
 
-import type { BaseClient, Plugin } from '../ApiClient.js';
-import type { FetchOptions } from '../httpTypes.js';
+import type { BaseClient, Plugin } from '../ApiClient.ts';
+import type { FetchOptions } from '../httpTypes.ts';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 

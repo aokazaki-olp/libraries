@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SalesforceApiClient } from '../src/SalesforceApiClient.js';
-import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.js';
-import { makeTransport, makeRawResponse } from './helpers.js';
-import type { IngestJobInfo, QueryJobInfo } from '../src/plugins/salesforce.js';
+import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
+import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
+import { makeTransport, makeRawResponse } from './helpers.ts';
+import type { IngestJobInfo, QueryJobInfo } from '../src/plugins/salesforce.ts';
 
 // ============================================================================
 // テストユーティリティ

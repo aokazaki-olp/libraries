@@ -9,10 +9,10 @@
  */
 
 import got, { type Got, type Method, type OptionsInit, type Response } from 'got';
-import { LoggerFacade } from './LoggerFacade.js';
-import type { Logger } from './LoggerFacade.js';
-import { HttpError, RetryExhaustedError } from './httpTypes.js';
-import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
+import { LoggerFacade } from './LoggerFacade.ts';
+import type { Logger } from './LoggerFacade.ts';
+import { HttpError, RetryExhaustedError } from './httpTypes.ts';
+import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;

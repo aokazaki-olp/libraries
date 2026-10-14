@@ -9,7 +9,7 @@
  *   await slack.postBlocks('C123456', [{ type: 'section', text: { type: 'mrkdwn', text: '*Bold*' } }]);
  */
 
-import type { Plugin } from '../ApiClient.js';
+import type { Plugin } from '../ApiClient.ts';
 
 // ============================================================================
 // 共通型定義

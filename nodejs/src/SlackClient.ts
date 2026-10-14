@@ -8,13 +8,13 @@
  *   SlackWebhookClient - Slack Incoming Webhooks用クライアント（URL認証）
  */
 
-import { LoggerFacade } from './LoggerFacade.js';
-import type { Logger } from './LoggerFacade.js';
-import { ApiClient } from './ApiClient.js';
-import { HttpCore } from './HttpCore.js';
-import { HttpError, RetryExhaustedError } from './httpTypes.js';
-import type { BaseClient } from './ApiClient.js';
-import type { FetchOptions, RawResponse, Transport } from './httpTypes.js';
+import { LoggerFacade } from './LoggerFacade.ts';
+import type { Logger } from './LoggerFacade.ts';
+import { ApiClient } from './ApiClient.ts';
+import { HttpCore } from './HttpCore.ts';
+import { HttpError, RetryExhaustedError } from './httpTypes.ts';
+import type { BaseClient } from './ApiClient.ts';
+import type { FetchOptions, RawResponse, Transport } from './httpTypes.ts';
 
 export class SlackApiError extends Error {
   override readonly name = 'SlackApiError';

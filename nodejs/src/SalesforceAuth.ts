@@ -14,10 +14,10 @@
  */
 
 import { createSign } from 'node:crypto';
-import { HttpCore } from './HttpCore.js';
-import { HttpError } from './httpTypes.js';
-import type { Logger } from './LoggerFacade.js';
-import type { Transport } from './httpTypes.js';
+import { HttpCore } from './HttpCore.ts';
+import { HttpError } from './httpTypes.ts';
+import type { Logger } from './LoggerFacade.ts';
+import type { Transport } from './httpTypes.ts';
 
 const JWT_LIFETIME_SEC = 180;
 

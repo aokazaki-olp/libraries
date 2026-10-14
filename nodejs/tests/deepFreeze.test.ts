@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deepFreeze } from '../src/deepFreeze.js';
+import { deepFreeze } from '../src/deepFreeze.ts';
 
 describe('deepFreeze — 型チェック', () => {
   it('非オブジェクト(文字列)を渡すと TypeError', () => {

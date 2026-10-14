@@ -15,11 +15,11 @@
  *   const res = await client.get('/num', { number: 'T1234567890123', history: 0 });
  */
 
-import { ApiClient } from './ApiClient.js';
-import { HttpCore } from './HttpCore.js';
-import type { BaseClient } from './ApiClient.js';
-import type { Logger } from './LoggerFacade.js';
-import type { Transport } from './httpTypes.js';
+import { ApiClient } from './ApiClient.ts';
+import { HttpCore } from './HttpCore.ts';
+import type { BaseClient } from './ApiClient.ts';
+import type { Logger } from './LoggerFacade.ts';
+import type { Transport } from './httpTypes.ts';
 
 type InvoiceApiVersion = '1';
 type InvoiceResponseType = '01' | '21' | '31'; // 01=CSV, 21=JSON, 31=XML

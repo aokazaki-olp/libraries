@@ -13,11 +13,11 @@
  *   await client.queryAll('SELECT Id FROM Account');
  */
 
-import { ApiClient } from './ApiClient.js';
-import { HttpCore } from './HttpCore.js';
-import type { BaseClient } from './ApiClient.js';
-import type { Logger } from './LoggerFacade.js';
-import type { Transport } from './httpTypes.js';
+import { ApiClient } from './ApiClient.ts';
+import { HttpCore } from './HttpCore.ts';
+import type { BaseClient } from './ApiClient.ts';
+import type { Logger } from './LoggerFacade.ts';
+import type { Transport } from './httpTypes.ts';
 
 const DEFAULT_API_VERSION = 'v60.0';
 const DEFAULT_MAX_RETRIES = 3;

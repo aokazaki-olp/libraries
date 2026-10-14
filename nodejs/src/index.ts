@@ -10,54 +10,54 @@
 // 型
 // ============================================================================
 
-export type { BaseClient, Plugin, ResponseHandler } from './ApiClient.js';
-export type { Transport, FetchOptions, RawResponse, RequestOptions } from './httpTypes.js';
-export { HttpError, RetryExhaustedError } from './httpTypes.js';
-export type { Logger } from './LoggerFacade.js';
+export type { BaseClient, Plugin, ResponseHandler } from './ApiClient.ts';
+export type { Transport, FetchOptions, RawResponse, RequestOptions } from './httpTypes.ts';
+export { HttpError, RetryExhaustedError } from './httpTypes.ts';
+export type { Logger } from './LoggerFacade.ts';
 
 // ============================================================================
 // ユーティリティ
 // ============================================================================
 
-export { LazyTemplate } from './LazyTemplate.js';
-export type { FilterFn, FilterMap } from './LazyTemplate.js';
-export { SlackFilters } from './SlackFilters.js';
-export type { SlackFilterMap } from './SlackFilters.js';
-export { deepFreeze } from './deepFreeze.js';
+export { LazyTemplate } from './LazyTemplate.ts';
+export type { FilterFn, FilterMap } from './LazyTemplate.ts';
+export { SlackFilters } from './SlackFilters.ts';
+export type { SlackFilterMap } from './SlackFilters.ts';
+export { deepFreeze } from './deepFreeze.ts';
 
 // ============================================================================
 // クライアント
 // ============================================================================
 
-export { SalesforceApiClient } from './SalesforceApiClient.js';
-export type { SalesforceClientOptions } from './SalesforceApiClient.js';
+export { SalesforceApiClient } from './SalesforceApiClient.ts';
+export type { SalesforceClientOptions } from './SalesforceApiClient.ts';
 
-export { GBizInfoApiClient } from './GBizInfoApiClient.js';
-export type { GBizInfoClientOptions } from './GBizInfoApiClient.js';
+export { GBizInfoApiClient } from './GBizInfoApiClient.ts';
+export type { GBizInfoClientOptions } from './GBizInfoApiClient.ts';
 
-export { InvoiceApiClient } from './InvoiceApiClient.js';
+export { InvoiceApiClient } from './InvoiceApiClient.ts';
 export type {
   InvoiceClientOptions,
   InvoiceApiVersion,
   InvoiceResponseType,
-} from './InvoiceApiClient.js';
+} from './InvoiceApiClient.ts';
 
-export { SalesforceAuth } from './SalesforceAuth.js';
-export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.js';
+export { SalesforceAuth } from './SalesforceAuth.ts';
+export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.ts';
 
-export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient.js';
+export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient.ts';
 export type {
   SlackApiClientOptions,
   SlackWebhookOptions,
   SlackPayload,
   SlackWebhookInstance,
-} from './SlackClient.js';
+} from './SlackClient.ts';
 
 // ============================================================================
 // プラグイン
 // ============================================================================
 
-export { SalesforceApiClientPlugins } from './plugins/salesforce.js';
+export { SalesforceApiClientPlugins } from './plugins/salesforce.ts';
 export type {
   SoqlResult,
   IngestOperation, IngestState, QueryOperation, QueryState, ColumnDelimiter, LineEnding,
@@ -66,7 +66,7 @@ export type {
   GetResultsOptions, QueryResultsPage, GetResultsParallelOptions,
   WaitOptions, ValidationError, ValidationWarning, ValidationResult,
   BulkIngestPlugin, BulkQueryPlugin,
-} from './plugins/salesforce.js';
+} from './plugins/salesforce.ts';
 
-export { SlackPlugins } from './plugins/slack.js';
-export type { ChatOptions, SlackBlock } from './plugins/slack.js';
+export { SlackPlugins } from './plugins/slack.ts';
+export type { ChatOptions, SlackBlock } from './plugins/slack.ts';
