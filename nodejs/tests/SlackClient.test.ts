@@ -188,6 +188,14 @@ describe('SlackCore.withRetry — リトライ対象外', () => {
     await expect(retrying.fetch('https://slack.com/api/test')).rejects.toThrow('already exhausted');
     expect(transport.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('TypeError（呼び出し側の誤り）はリトライしない', async () => {
+    const transport = makeTransport(() => Promise.reject(new TypeError('bad method')));
+    const retrying = SlackCore.withRetry(transport, { maxRetries: 3 });
+
+    await expect(retrying.fetch('https://slack.com/api/test')).rejects.toThrow(TypeError);
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ============================================================================

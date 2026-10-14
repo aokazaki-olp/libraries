@@ -1,5 +1,6 @@
 /**
  * SlackClient.ts
+ *
  * @description Slack用クライアント群（SlackCore / SlackApiClient / SlackWebhookClient）
  *
  * 構成:
@@ -52,6 +53,56 @@ interface SlackRetryOptions {
   logger?: Logger;
 }
 
+interface RetryPlan {
+  delayMs: number;
+  /** ログ用のラベル（先頭に空白を含む） */
+  label: string;
+  /** RetryExhaustedError のメッセージに付ける理由（先頭に空白を含む） */
+  reason: string;
+}
+
+/** Retry-After ヘッダの秒数を読む。読めなければ 1 秒 */
+const retryAfterMs = (headers: Record<string, string | string[]>): number => {
+  const raw = headers['Retry-After'] ?? headers['retry-after'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const secs = parseInt(value ?? '', 10);
+  return (Number.isFinite(secs) && secs > 0 ? secs : 1) * 1000;
+};
+
+/**
+ * 例外からリトライ方針を決める。リトライしないなら null
+ *
+ * - 429: Retry-After を尊重する
+ * - 5xx・ネットワークエラー等: 指数バックオフ
+ * - 4xx（429 以外）・TypeError（呼び出し側の誤り）・RetryExhaustedError（二重ラップ防止）: リトライしない
+ */
+const planRetry = (e: unknown, attempt: number, baseDelayMs: number): RetryPlan | null => {
+  const backoffMs = 2 ** attempt * baseDelayMs;
+
+  if (e instanceof RetryExhaustedError || e instanceof TypeError) {
+    return null;
+  }
+  if (!(e instanceof HttpError)) {
+    return { delayMs: backoffMs, label: '', reason: '' };
+  }
+  if (e.status === 429) {
+    const delayMs = retryAfterMs(e.headers);
+    return {
+      delayMs,
+      label: ` status=429 Retry-After=${String(delayMs / 1000)}s`,
+      reason: ' (HTTP 429)',
+    };
+  }
+  if (e.status >= 500 && e.status < 600) {
+    return {
+      delayMs: backoffMs,
+      label: ` status=${String(e.status)}`,
+      reason: ` (HTTP ${String(e.status)})`,
+    };
+  }
+  return null;
+};
+
 /**
  * Slack用のリトライ機能をTransportに追加する。
  * HTTP 429 の際は Retry-After ヘッダーを尊重し、5xx は指数バックオフで再試行する。
@@ -69,78 +120,30 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
   return {
     fetch: async (url: string, fetchOptions?: FetchOptions): Promise<RawResponse> => {
       const method = fetchOptions?.method ?? 'GET';
-      let lastError: unknown = null;
 
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 成功で return、リトライ不能・上限到達で throw するまで回る（ループ後に到達しない）
+      for (let attempt = 0; ; attempt++) {
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          if (e instanceof RetryExhaustedError) {
+          const plan = planRetry(e, attempt, baseDelayMs);
+          if (plan === null) {
             throw e;
           }
 
-          lastError = e;
-
-          if (e instanceof HttpError) {
-            const { status } = e;
-
-            if (status === 429) {
-              const raw = e.headers['Retry-After'] ?? e.headers['retry-after'];
-              const rawStr = Array.isArray(raw) ? raw[0] : (raw ?? '');
-              const secs = parseInt(rawStr, 10);
-              const delayMs = (Number.isFinite(secs) && secs > 0 ? secs : 1) * 1000;
-
-              if (attempt === maxRetries) {
-                log?.error(
-                  `[Slack] ✖ RETRY exhausted status=429 Retry-After=${secs}s ${method} ${url}`,
-                );
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP 429)`, {
-                  cause: e,
-                });
-              }
-
-              log?.warn(
-                `[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=429 Retry-After=${secs}s ${method} ${url}`,
-              );
-              await sleep(delayMs);
-              continue;
-            }
-
-            if (status >= 500 && status < 600) {
-              const delay = Math.pow(2, attempt) * baseDelayMs;
-
-              if (attempt === maxRetries) {
-                log?.error(`[Slack] ✖ RETRY exhausted status=${status} ${method} ${url}`);
-                throw new RetryExhaustedError(`リトライ回数上限に達しました (HTTP ${status})`, {
-                  cause: e,
-                });
-              }
-
-              log?.warn(
-                `[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} status=${status} delay=${delay}ms ${method} ${url}`,
-              );
-              await sleep(delay);
-              continue;
-            }
-
-            // 4xx（429以外）はリトライしない
-            throw e;
+          if (attempt >= maxRetries) {
+            log?.error(`[Slack] ✖ RETRY exhausted${plan.label} ${method} ${url}`, e);
+            throw new RetryExhaustedError(`リトライ回数上限に達しました${plan.reason}`, {
+              cause: e,
+            });
           }
 
-          // ネットワークエラー等 → 指数バックオフ
-          const delay = Math.pow(2, attempt) * baseDelayMs;
-          if (attempt === maxRetries) {
-            log?.error(`[Slack] ✖ RETRY exhausted ${method} ${url}`, e);
-            throw new RetryExhaustedError('リトライ回数上限に達しました', { cause: e });
-          }
           log?.warn(
-            `[Slack] ⚠ RETRY attempt=${attempt + 1}/${maxRetries} delay=${delay}ms ${method} ${url}`,
+            `[Slack] ⚠ RETRY attempt=${String(attempt + 1)}/${String(maxRetries)}${plan.label} delay=${String(plan.delayMs)}ms ${method} ${url}`,
           );
-          await sleep(delay);
+          await sleep(plan.delayMs);
         }
       }
-
-      throw lastError ?? new RetryExhaustedError('リトライ回数上限に達しました');
     },
   };
 };
@@ -153,27 +156,19 @@ export const SlackCore = { withRetry };
 
 const SLACK_BASE_URL = 'https://slack.com/api';
 
-interface SlackApiResponse {
-  ok: boolean;
-  error?: string;
-  response_metadata?: { messages?: string[] };
-  [key: string]: unknown;
-}
-
-type ResponseHandler = (response: RawResponse) => unknown;
-
-const slackResponseHandler: ResponseHandler = (response) => {
+/** Slack Web API の応答のうち ok:false を SlackApiError に変換する */
+const slackResponseHandler = (response: RawResponse): unknown => {
   const body = response.body;
   if (typeof body !== 'object' || body === null) {
     return body;
   }
-  // 直前で object かつ非 null を確認済み。SlackApiResponse として ok を検査
-  const typed = body as SlackApiResponse;
-  if (typed.ok === false) {
+  if (Reflect.get(body, 'ok') === false) {
+    const error: unknown = Reflect.get(body, 'error');
+    const code = typeof error === 'string' ? error : undefined;
     throw new SlackApiError(
-      `Slack API エラー: ${typed.error ?? 'unknown'}`,
-      typed.error ?? 'slack_error',
-      typed.response_metadata,
+      `Slack API エラー: ${code ?? 'unknown'}`,
+      code ?? 'slack_error',
+      Reflect.get(body, 'response_metadata'),
       response,
     );
   }
