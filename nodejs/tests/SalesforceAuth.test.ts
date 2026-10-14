@@ -175,11 +175,27 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     expect(typeof claims['exp']).toBe('number');
   });
 
-  it('JWT の assertion がログに流出しない（redacted で HttpError を再スロー）', async () => {
+  it('request を持たない HttpError はそのまま投げる（作り直さない）', async () => {
     const signer = makeMockSigner();
+    const original = new HttpError('HTTPエラー 400', 400, { error: 'invalid_grant' });
     const transport: Transport = {
       fetch: vi.fn(async () => {
-        throw new HttpError('HTTPエラー 400', 400, { error: 'invalid_grant' });
+        throw original;
+      }),
+    };
+
+    await expect(
+      SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer }),
+    ).rejects.toBe(original);
+  });
+
+  it('request.body を持つ HttpError は assertion を伏せて作り直す（cause に元を残さない）', async () => {
+    const signer = makeMockSigner();
+    const transport: Transport = {
+      fetch: vi.fn(async (_url: string, options?: FetchOptions) => {
+        throw new HttpError('HTTPエラー 400', 400, { error: 'invalid_grant' }, {}, '', {
+          body: options?.payload,
+        });
       }),
     };
 
@@ -194,6 +210,7 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     const httpError = caughtError as HttpError;
     const requestBody = httpError.request?.body as Record<string, unknown> | undefined;
     expect(requestBody?.['assertion']).toBe('[REDACTED]');
+    expect(httpError.cause).toBeUndefined();
   });
 
   it('JWT の signingInput が header.claims の Base64URL 連結形式になる', async () => {
