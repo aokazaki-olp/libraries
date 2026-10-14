@@ -302,3 +302,54 @@ describe('waitForCompletion の timeoutMs', () => {
     );
   });
 });
+
+describe('waitForCompletion の待ち時間の設定', () => {
+  const job = (state: string) => respond({ id: 'job001', state });
+
+  it.each([
+    ['timeoutMs が NaN', { timeoutMs: Number.NaN }],
+    ['timeoutMs が負数', { timeoutMs: -1 }],
+    ['intervalMs が 0', { intervalMs: 0 }],
+    ['intervalMs が NaN', { intervalMs: Number.NaN }],
+    ['intervalMs がタイマーの上限超え', { intervalMs: 2 ** 31 }],
+  ])('%s は TypeError（API を連打しない・すぐ打ち切らない）', async (_label, options) => {
+    const { client, transport } = salesforce(job('InProgress'));
+    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+
+    await expect(bulk.waitForCompletion('job001', options)).rejects.toThrow(TypeError);
+    expect(transport.calls).toHaveLength(0);
+  });
+
+  it.each([
+    ['Infinity（無期限）', Number.POSITIVE_INFINITY],
+    ['小数', 1000.5],
+    ['タイマーの上限超え', 3_000_000_000],
+  ])('timeoutMs が %s でも取得して完了を返す', async (_label, timeoutMs) => {
+    const { client } = salesforce(job('JobComplete'));
+    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+
+    await expect(bulk.waitForCompletion('job001', { timeoutMs })).resolves.toMatchObject({
+      state: 'JobComplete',
+    });
+  });
+
+  it('timeoutMs が 0 でも 1 回は取得し、完了していれば返す', async () => {
+    const { client, transport } = salesforce(job('JobComplete'));
+    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+
+    await expect(bulk.waitForCompletion('job001', { timeoutMs: 0 })).resolves.toMatchObject({
+      state: 'JobComplete',
+    });
+    expect(transport.calls).toHaveLength(1);
+  });
+
+  it('timeoutMs が 0 で未完了なら、1 回取得してタイムアウト', async () => {
+    const { client, transport } = salesforce(job('InProgress'));
+    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+
+    await expect(bulk.waitForCompletion('job001', { timeoutMs: 0 })).rejects.toThrow(
+      'がタイムアウトしました (0ms)',
+    );
+    expect(transport.calls).toHaveLength(1);
+  });
+});

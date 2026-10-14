@@ -168,7 +168,7 @@ export type GetResultsParallelOptions = CallOptions;
 
 export interface WaitOptions extends CallOptions {
   /**
-   * タイムアウト（ミリ秒、デフォルト: 300_000 = 5分）。ポーリング間隔だけでなく、ジョブ情報の取得 1 回分にも掛かる
+   * タイムアウト（ミリ秒、デフォルト: 300_000 = 5分。Infinity で無期限）。ポーリング間隔だけでなく、ジョブ情報の取得 1 回分にも掛かる
    * GWS 環境では最大 25 分程度まで延長可能
    */
   timeoutMs?: number;
@@ -438,11 +438,43 @@ const mergeCsvPages = (pages: string[]): string => {
   return parts.join('\n');
 };
 
+/** タイマーに渡せる最大のミリ秒（これを超えると Node は 1ms に丸める） */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * waitForCompletion の待ち時間の設定を検査する（作成時に fail-fast させる）
+ *
+ * @throws {TypeError} timeoutMs が 0 以上の数（Infinity は無期限）でない場合、
+ *   intervalMs が 1 以上でタイマーの上限以下の有限数でない場合
+ */
+const assertWaitOptions = (timeoutMs: number, intervalMs: number): void => {
+  if (Number.isNaN(timeoutMs) || timeoutMs < 0) {
+    throw new TypeError(
+      `timeoutMs には 0 以上の数（無期限なら Infinity）を指定してください (received: ${String(timeoutMs)})`,
+    );
+  }
+  if (!Number.isFinite(intervalMs) || intervalMs < 1 || intervalMs > MAX_TIMER_MS) {
+    throw new TypeError(
+      `intervalMs には 1〜${String(MAX_TIMER_MS)} の数を指定してください (received: ${String(intervalMs)})`,
+    );
+  }
+};
+
+/** 残り時間で打ち切る signal を作る。残り時間がタイマーで表せない（0 以下・無期限・上限超え）なら作らない */
+const deadlineSignal = (deadline: number): AbortSignal | undefined => {
+  const remaining = deadline - Date.now();
+  return remaining > 0 && remaining <= MAX_TIMER_MS
+    ? AbortSignal.timeout(Math.ceil(remaining))
+    : undefined;
+};
+
 /**
  * ジョブが終了状態になるまでポーリングする（bulkIngest / bulkQuery 共通）
  *
  * timeoutMs はポーリング間隔だけでなく、ジョブ情報の取得 1 回分にも掛ける。
+ * timeoutMs が 0 でも 1 回は取得する（取得の時点で終了していれば返す）。
  *
+ * @throws {TypeError} timeoutMs / intervalMs が不正な場合
  * @throws {Error} タイムアウトした場合
  * @throws signal が中断された場合、その理由
  */
@@ -453,18 +485,20 @@ const pollUntilTerminal = async <TJob extends { state: string }>(
   options: WaitOptions,
 ): Promise<TJob> => {
   const { timeoutMs = 300_000, intervalMs = 10_000, signal } = options;
+  assertWaitOptions(timeoutMs, intervalMs);
   const deadline = Date.now() + timeoutMs;
   const timeoutError = (cause?: unknown): Error =>
     new Error(`${label} がタイムアウトしました (${String(timeoutMs)}ms)`, { cause });
 
   for (;;) {
-    const timeout = AbortSignal.timeout(Math.max(deadline - Date.now(), 1));
-    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const timeout = deadlineSignal(deadline);
+    const signals = [signal, timeout].filter((s) => s !== undefined);
+    const requestSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
     let job: TJob;
     try {
       job = await fetchJob({ signal: requestSignal });
     } catch (e) {
-      if (timeout.aborted && signal?.aborted !== true) {
+      if (timeout?.aborted === true && signal?.aborted !== true) {
         throw timeoutError(e);
       }
       throw e;
@@ -779,6 +813,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param options - timeoutMs（既定 300_000）・intervalMs（既定 10_000）・signal
    *   （中断してもジョブ自体は止まらない。止めるなら abort を呼ぶ）
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
+   * @throws {TypeError} timeoutMs / intervalMs が不正な場合
    * @throws {Error} タイムアウトした場合
    * @throws signal が中断された場合、その理由（既定は AbortError）
    */
@@ -990,6 +1025,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param options - timeoutMs（既定 300_000）・intervalMs（既定 10_000）・signal
    *   （中断してもジョブ自体は止まらない。止めるなら abort を呼ぶ）
    * @returns 完了時のジョブ情報（state: JobComplete | Failed | Aborted）
+   * @throws {TypeError} timeoutMs / intervalMs が不正な場合
    * @throws {Error} タイムアウトした場合
    * @throws signal が中断された場合、その理由（既定は AbortError）
    */
