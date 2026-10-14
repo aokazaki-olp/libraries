@@ -1,5 +1,6 @@
 /**
  * LoggerFacade.ts
+ *
  * @description 各種ロガー実装を統一インターフェースに変換するファサード（SLF4J互換）
  *
  * 対応する実装:
@@ -30,23 +31,31 @@ export interface Logger {
  *   - error: error → severe → log
  *
  * @param logger - ロガー実装（null の場合は null を返す）
- * @returns 統一されたLoggerインターフェース、loggerがnullish の場合はnull
+ * @returns 統一されたLoggerインターフェース、loggerがnullish・プリミティブの場合はnull
  */
 const createLogger = (logger: unknown): Logger | null => {
   if (!logger) {
     return null;
   }
 
-  // unknown の logger からメソッドを検査するため Record 型にキャスト
-  const impl = logger as Record<string, unknown>;
+  // プリミティブはメソッドを持てない（Reflect.get も TypeError になる）
+  if (typeof logger !== 'object' && typeof logger !== 'function') {
+    return null;
+  }
+  const impl = logger;
 
   const noop: LogMethod = () => {};
 
   const resolve = (...candidates: string[]): LogMethod => {
     for (const name of candidates) {
-      if (typeof impl[name] === 'function') {
-        // 直前で typeof === 'function' を確認済み。LogMethod として呼ぶ
-        return (...args: unknown[]) => (impl[name] as LogMethod).call(impl, ...args);
+      if (typeof Reflect.get(impl, name) === 'function') {
+        // メソッドは呼び出し時に引く（作成後に差し替えられた実装・spy にも追従する）
+        return (...args: unknown[]) => {
+          const method: unknown = Reflect.get(impl, name);
+          if (typeof method === 'function') {
+            method.call(impl, ...args);
+          }
+        };
       }
     }
     return noop;

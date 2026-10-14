@@ -15,6 +15,14 @@ describe('LoggerFacade.createLogger — null / falsy', () => {
   ])('%s を渡すと null を返す', (_label, value) => {
     expect(LoggerFacade.createLogger(value)).toBeNull();
   });
+
+  it.each([
+    ['true', true],
+    ['数値', 1],
+    ['文字列', 'console'],
+  ])('プリミティブ（%s）を渡すと null を返す', (_label, value) => {
+    expect(LoggerFacade.createLogger(value)).toBeNull();
+  });
 });
 
 // ============================================================================
