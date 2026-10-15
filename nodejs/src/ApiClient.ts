@@ -142,7 +142,7 @@ type BaseClient<
     ): BaseClient<TResponse, TMethods & TNew>;
     use<TName extends string, TFn>(
       name: TName,
-      fn: (client: BaseClient<TResponse, TMethods>) => TFn,
+      factory: (client: BaseClient<TResponse, TMethods>) => TFn,
     ): BaseClient<TResponse, TMethods & Record<TName, TFn>>;
   };
 
@@ -255,19 +255,19 @@ const buildClient = <TResponse>(
     ): BaseClient<TResponse, TMethods & TNew>;
     function use<TName extends string, TFn>(
       name: TName,
-      fn: (c: Client) => TFn,
+      factory: (c: Client) => TFn,
     ): BaseClient<TResponse, TMethods & Record<TName, TFn>>;
     function use(
       pluginOrName: ((c: Client) => unknown) | string,
-      fn?: (c: Client) => unknown,
+      factory?: (c: Client) => unknown,
     ): BaseClient<TResponse, object> {
       let newMethods: unknown;
 
       if (typeof pluginOrName === 'string') {
-        if (!fn) {
-          throw new TypeError('use(name, fn) の形式では fn を指定してください');
+        if (!factory) {
+          throw new TypeError('use(name, factory) の形式では factory を指定してください');
         }
-        newMethods = { [pluginOrName]: fn(client) };
+        newMethods = { [pluginOrName]: factory(client) };
       } else {
         newMethods = pluginOrName(client);
       }

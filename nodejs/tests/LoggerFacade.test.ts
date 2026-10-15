@@ -3,8 +3,8 @@ import { LoggerFacade } from '../src/LoggerFacade.ts';
 import type { Logger } from '../src/LoggerFacade.ts';
 
 /** null でないロガーを作る（null ならテストを失敗させる） */
-const createNonNullLogger = (impl: unknown): Logger => {
-  const logger = LoggerFacade.createLogger(impl);
+const createNonNullLogger = (backend: unknown): Logger => {
+  const logger = LoggerFacade.createLogger(backend);
   if (logger === null) {
     throw new Error('createLogger が null を返しました');
   }
@@ -59,8 +59,8 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
   it('trace: trace を最優先で解決する', () => {
     const trace = vi.fn();
     const finest = vi.fn();
-    const impl = { trace, finest, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { trace, finest, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.trace('msg');
     expect(trace).toHaveBeenCalledWith('msg');
     expect(finest).not.toHaveBeenCalled();
@@ -68,16 +68,16 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
 
   it('trace: trace がなければ finest にフォールバック', () => {
     const finest = vi.fn();
-    const impl = { finest, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { finest, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.trace('msg');
     expect(finest).toHaveBeenCalledWith('msg');
   });
 
   it('trace: finest もなければ finer にフォールバック', () => {
     const finer = vi.fn();
-    const impl = { finer, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { finer, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.trace('msg');
     expect(finer).toHaveBeenCalledWith('msg');
   });
@@ -92,9 +92,9 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
   });
 
   it('作成後にメソッドが関数でなくなったら、呼び出し時に TypeError', () => {
-    const impl: Record<string, unknown> = { log: vi.fn() };
-    const logger = createNonNullLogger(impl);
-    impl['log'] = 'gone';
+    const backend: Record<string, unknown> = { log: vi.fn() };
+    const logger = createNonNullLogger(backend);
+    backend['log'] = 'gone';
     expect(() => {
       logger.info('msg');
     }).toThrow('logger.log が関数ではなくなりました');
@@ -102,64 +102,64 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
 
   it('debug: debug を最優先で解決する', () => {
     const debug = vi.fn();
-    const impl = { debug, fine: vi.fn(), log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { debug, fine: vi.fn(), log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.debug('msg');
     expect(debug).toHaveBeenCalledWith('msg');
   });
 
   it('debug: debug がなければ fine にフォールバック', () => {
     const fine = vi.fn();
-    const impl = { fine, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { fine, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.debug('msg');
     expect(fine).toHaveBeenCalledWith('msg');
   });
 
   it('info: info を最優先で解決する', () => {
     const info = vi.fn();
-    const impl = { info, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { info, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.info('msg');
     expect(info).toHaveBeenCalledWith('msg');
   });
 
   it('info: info がなければ log にフォールバック', () => {
     const log = vi.fn();
-    const impl = { log };
-    const logger = createNonNullLogger(impl);
+    const backend = { log };
+    const logger = createNonNullLogger(backend);
     logger.info('msg');
     expect(log).toHaveBeenCalledWith('msg');
   });
 
   it('warn: warn を最優先で解決する', () => {
     const warn = vi.fn();
-    const impl = { warn, warning: vi.fn(), log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { warn, warning: vi.fn(), log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.warn('msg');
     expect(warn).toHaveBeenCalledWith('msg');
   });
 
   it('warn: warn がなければ warning にフォールバック', () => {
     const warning = vi.fn();
-    const impl = { warning, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { warning, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.warn('msg');
     expect(warning).toHaveBeenCalledWith('msg');
   });
 
   it('error: error を最優先で解決する', () => {
     const error = vi.fn();
-    const impl = { error, severe: vi.fn(), log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { error, severe: vi.fn(), log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.error('msg');
     expect(error).toHaveBeenCalledWith('msg');
   });
 
   it('error: error がなければ severe にフォールバック', () => {
     const severe = vi.fn();
-    const impl = { severe, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { severe, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     logger.error('msg');
     expect(severe).toHaveBeenCalledWith('msg');
   });
@@ -172,8 +172,8 @@ describe('LoggerFacade.createLogger — メソッド解決', () => {
 describe('LoggerFacade.createLogger — 引数の透過', () => {
   it('複数引数をそのままロガーに渡す', () => {
     const info = vi.fn();
-    const impl = { info, log: vi.fn() };
-    const logger = createNonNullLogger(impl);
+    const backend = { info, log: vi.fn() };
+    const logger = createNonNullLogger(backend);
     const err = new Error('test');
     logger.info('message', err, { extra: 1 });
     expect(info).toHaveBeenCalledWith('message', err, { extra: 1 });

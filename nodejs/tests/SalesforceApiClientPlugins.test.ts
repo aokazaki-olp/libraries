@@ -412,9 +412,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — waitForCompletion', () => {
 
   it('JobComplete になるまでポーリングして返す', async () => {
     const jobs = [makeQueryJob({ state: 'InProgress' }), makeQueryJob({ state: 'JobComplete' })];
-    let idx = 0;
+    let callIndex = 0;
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: jobs[Math.min(idx++, jobs.length - 1)] })),
+      Promise.resolve(makeRawResponse({ body: jobs[Math.min(callIndex++, jobs.length - 1)] })),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);

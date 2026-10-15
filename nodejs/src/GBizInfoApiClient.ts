@@ -8,7 +8,7 @@
  * 使用例:
  *   const client = GBizInfoApiClient.create(token, { logger: console });        // v2 (デフォルト)
  *   const client = GBizInfoApiClient.create(token, { version: 'v1' });          // v1 を明示
- *   const res = await client.get('/hojin/1234567890123');
+ *   const response = await client.get('/hojin/1234567890123');
  */
 
 import { ApiClient } from './ApiClient.ts';

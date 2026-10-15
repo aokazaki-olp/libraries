@@ -23,11 +23,9 @@
  *   const page  = await query.getResults(job.id);
  *   const full  = await query.getResultsParallel(job.id); // 全ページ結合
  *
- * ⚠️ GAS実行時間制限について
- * waitForCompletion() はポーリングにより完了を待機する。GAS の実行時間上限
- * （標準: 6分 / GWS: 30分）内に処理が完了しない場合タイムアウトエラーが発生する。
- * 大量レコード（目安: 標準GAS=1万件超、GWS=20万件超）を扱う場合は、
- * PropertiesService と時間ベーストリガーを組み合わせた分割実行を検討すること。
+ * ⚠️ 待機時間について
+ * waitForCompletion() はポーリングで完了を待つ。timeoutMs（既定 5 分）を過ぎると Error になるが、
+ * ジョブ自体は Salesforce 側で続く。実行時間に上限のある環境では、待たずに getJob() で状態を確かめる。
  *
  * ⚠️ Abort について
  * abort() でジョブを中断しても、処理済みレコードはロールバックされない。
@@ -41,6 +39,8 @@
 
 import type { BaseClient, Plugin } from '../ApiClient.ts';
 import type { CallOptions, Decoder, FetchOptions, RawResponse } from '../httpTypes.ts';
+// 汎用プラグインは外部依存を持たない原則の例外（PLUGIN_SYSTEM_RULES §2.2）。
+// Bulk API は CSV で入出力し、引用符・改行を含む値を正しく扱うには RFC 4180 準拠のパーサーが要る
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 // shared は末端の共有ユーティリティ（コアにもクライアントにも依存しない）。
@@ -364,7 +364,9 @@ const checkJobInfo = (body: unknown, states: ReadonlySet<string>, label: string)
 };
 
 // 以下2つの as は、id と state を checkJobInfo で検査したうえで、残りのフィールドを
-// Bulk API 2.0 Developer Guide の Job Info の Response Body の記載に基づいて型付けするもの（PLUGIN_SYSTEM_RULES §2.5）
+// Bulk API 2.0 Developer Guide の Job Info の Response Body の記載に基づいて型付けするもの（PLUGIN_SYSTEM_RULES §2.5）。
+// 対象はジョブ情報を返すエンドポイントすべて: ジョブの作成（POST）・状態変更（PATCH。close / abort）・
+// 取得（GET）と、一覧（GET /jobs/ingest・/jobs/query）の records の各要素
 
 /** Ingest ジョブ情報を検査する */
 const toIngestJob = (body: unknown): IngestJobInfo => {
@@ -707,8 +709,8 @@ function sobject<TRecord>(
  * await bulk.close(job.id);               // UploadComplete → 処理開始
  * const done = await bulk.waitForCompletion(job.id);
  * if (done.state === 'JobComplete') {
- *   const ok  = await bulk.getSuccessfulResults(job.id);
- *   const err = await bulk.getFailedResults(job.id);
+ *   const succeededCsv = await bulk.getSuccessfulResults(job.id);
+ *   const failedCsv    = await bulk.getFailedResults(job.id);
  * }
  * ```
  *

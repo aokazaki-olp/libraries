@@ -43,22 +43,23 @@ const createLogger = (logger: unknown): Logger | null => {
   if (typeof logger !== 'object' && typeof logger !== 'function') {
     throw new TypeError(`logger にはオブジェクトを指定してください (received: ${typeof logger})`);
   }
-  const impl = logger;
   const missing: string[] = [];
 
   const resolve = (level: keyof Logger, ...candidates: string[]): LogMethod => {
-    const name = candidates.find((candidate) => typeof Reflect.get(impl, candidate) === 'function');
+    const name = candidates.find(
+      (candidate) => typeof Reflect.get(logger, candidate) === 'function',
+    );
     if (name === undefined) {
       missing.push(level);
       return () => {};
     }
     // メソッドは呼び出し時に引く（作成後に差し替えられた実装・spy にも追従する）
     return (...args: unknown[]) => {
-      const method: unknown = Reflect.get(impl, name);
+      const method: unknown = Reflect.get(logger, name);
       if (typeof method !== 'function') {
         throw new TypeError(`logger.${name} が関数ではなくなりました`);
       }
-      method.call(impl, ...args);
+      method.call(logger, ...args);
     };
   };
 

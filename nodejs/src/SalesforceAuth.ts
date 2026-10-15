@@ -29,7 +29,7 @@ const JWT_LIFETIME_SEC = 180;
 interface Signer {
   computeRsaSha256Signature(input: string, privateKey: string): Buffer;
   base64EncodeWebSafe(bytes: Buffer): string;
-  newBlob(str: string): Buffer;
+  newBlob(text: string): Buffer;
 }
 
 const defaultSigner: Signer = {
@@ -39,7 +39,7 @@ const defaultSigner: Signer = {
     return sign.sign(privateKey);
   },
   base64EncodeWebSafe: (bytes: Buffer): string => bytes.toString('base64url'),
-  newBlob: (str: string): Buffer => Buffer.from(str, 'utf-8'),
+  newBlob: (text: string): Buffer => Buffer.from(text, 'utf-8'),
 };
 
 // ============================================================================

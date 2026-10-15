@@ -368,7 +368,7 @@ describe('use() — プラグイン同士のメソッド名の衝突', () => {
     );
   });
 
-  it('use(name, fn) でも同じ名前は TypeError', () => {
+  it('use(name, factory) でも同じ名前は TypeError', () => {
     const { client } = salesforce(respond(null));
     const sf = client.use('ping', () => () => 'pong');
 

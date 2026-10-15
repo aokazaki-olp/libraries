@@ -110,7 +110,7 @@ describe('signal の伝播', () => {
     const signer = {
       computeRsaSha256Signature: (): Buffer => Buffer.from('sig'),
       base64EncodeWebSafe: (bytes: Buffer): string => bytes.toString('base64url'),
-      newBlob: (str: string): Buffer => Buffer.from(str, 'utf-8'),
+      newBlob: (text: string): Buffer => Buffer.from(text, 'utf-8'),
     };
     const controller = new AbortController();
 

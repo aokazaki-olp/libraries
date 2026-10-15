@@ -13,7 +13,7 @@
  *
  * 使用例:
  *   const client = InvoiceApiClient.create(appId, { logger: console });
- *   const res = await client.get('/num', { number: 'T1234567890123', history: 0 });
+ *   const response = await client.get('/num', { number: 'T1234567890123', history: 0 });
  */
 
 import { ApiClient } from './ApiClient.ts';

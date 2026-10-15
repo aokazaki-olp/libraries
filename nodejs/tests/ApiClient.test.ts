@@ -231,7 +231,7 @@ describe('ApiClient.createClient — use', () => {
     expect(transport.calls[0]?.url).toBe('https://api.example.com/items');
   });
 
-  it('use(name, fn) でシングルメソッドを追加できる', async () => {
+  it('use(name, factory) でシングルメソッドを追加できる', async () => {
     const transport = mockTransport({ body: { total: 42 } });
     const client = ApiClient.createClient({
       baseUrl: 'https://api.example.com',
@@ -261,7 +261,8 @@ describe('ApiClient.createClient — use', () => {
     const transport = mockTransport();
     const client = ApiClient.createClient({ baseUrl: 'https://api.example.com', transport });
 
-    expect(() => client.use(() => 'not an object' as unknown as object)).toThrow(TypeError);
+    // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を返す
+    expect(() => client.use(() => 'not an object')).toThrow(TypeError);
   });
 });
 

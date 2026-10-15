@@ -338,7 +338,8 @@ describe('SlackApiClient.create — バリデーション', () => {
   it.each([[null], [undefined], [123], [true]])(
     'token=%s（非string）の場合 TypeError をスローする',
     (token) => {
-      expect(() => SlackApiClient.create(token as unknown as string)).toThrow(TypeError);
+      // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+      expect(() => SlackApiClient.create(token)).toThrow(TypeError);
     },
   );
 });
@@ -351,7 +352,8 @@ describe('SlackWebhookClient.create — バリデーション', () => {
   it.each([[null], [undefined], [123], [true]])(
     'webhookUrl=%s（非string）の場合 TypeError をスローする',
     (webhook) => {
-      expect(() => SlackWebhookClient.create(webhook as unknown as string)).toThrow(TypeError);
+      // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+      expect(() => SlackWebhookClient.create(webhook)).toThrow(TypeError);
     },
   );
 });
@@ -423,15 +425,15 @@ describe('SlackApiClient.create — ok:false', () => {
     const transport = makeSuccessTransport({ ok: false });
     const client = SlackApiClient.create('xoxb-token', { transport });
 
-    let err: SlackApiError | undefined;
+    let caught: SlackApiError | undefined;
     try {
       await client.post('/chat.postMessage', {});
     } catch (e) {
-      err = e instanceof SlackApiError ? e : undefined;
+      caught = e instanceof SlackApiError ? e : undefined;
     }
 
-    expect(err).toBeInstanceOf(SlackApiError);
-    expect(err?.code).toBe('slack_error');
+    expect(caught).toBeInstanceOf(SlackApiError);
+    expect(caught?.code).toBe('slack_error');
   });
 
   it('response_metadata が SlackApiError に伝播する', async () => {
@@ -442,14 +444,14 @@ describe('SlackApiClient.create — ok:false', () => {
     });
     const client = SlackApiClient.create('xoxb-token', { transport });
 
-    let err: SlackApiError | undefined;
+    let caught: SlackApiError | undefined;
     try {
       await client.post('/chat.postMessage', {});
     } catch (e) {
-      err = e instanceof SlackApiError ? e : undefined;
+      caught = e instanceof SlackApiError ? e : undefined;
     }
 
-    expect(err?.metadata).toEqual({ messages: ['[ERROR] invalid channel'] });
+    expect(caught?.metadata).toEqual({ messages: ['[ERROR] invalid channel'] });
   });
 });
 

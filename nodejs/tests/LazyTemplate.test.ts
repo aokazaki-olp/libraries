@@ -114,7 +114,8 @@ describe('LazyTemplate.evaluate — プロパティアクセス', () => {
   });
 
   it('"." はデータ全体を参照する', () => {
-    expect(new LazyTemplate('{{{.}}}').evaluate('hello' as unknown as object)).toBe('hello');
+    // @ts-expect-error -- 実行時の挙動を確かめるため型に反する値を渡す
+    expect(new LazyTemplate('{{{.}}}').evaluate('hello')).toBe('hello');
   });
 });
 
@@ -358,7 +359,8 @@ describe('LazyTemplate.registerFilter', () => {
   it('fn が関数以外 → TypeError', () => {
     const t = new LazyTemplate('');
     expect(() => {
-      t.registerFilter('fn', 'not a function' as unknown as () => void);
+      // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+      t.registerFilter('fn', 'not a function');
     }).toThrow(TypeError);
   });
 
