@@ -66,6 +66,29 @@ describe('signal の伝播', () => {
     expect(calledOptions.signal).toBe(controller.signal);
   });
 
+  it('createTransport は中断後の got の例外を signal.reason に置き換える', async () => {
+    const controller = new AbortController();
+    const mockGotFn = vi.fn(async () => {
+      controller.abort(new Error('利用者による中断'));
+      throw new Error('got の AbortError');
+    });
+    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as import('got').Got });
+
+    await expect(
+      transport.fetch('https://example.com', { signal: controller.signal }),
+    ).rejects.toBe(controller.signal.reason);
+  });
+
+  it('createTransport は中断されていなければ got の例外をそのまま投げる', async () => {
+    const original = new Error('ECONNRESET');
+    const mockGotFn = vi.fn().mockRejectedValue(original);
+    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as import('got').Got });
+
+    await expect(
+      transport.fetch('https://example.com', { signal: new AbortController().signal }),
+    ).rejects.toBe(original);
+  });
+
   it('SlackWebhookClient.send は signal を Transport に渡す', async () => {
     const transport = makeTransport(() => Promise.resolve(makeRawResponse()));
     const webhook = SlackWebhookClient.create('https://hooks.slack.com/T/B/x', { transport });

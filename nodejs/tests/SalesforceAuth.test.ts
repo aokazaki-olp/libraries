@@ -215,6 +215,35 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     expect(caughtError.cause).toBeUndefined();
   });
 
+  it('作り直すときは元の例外の cause を引き継ぐ（元の例外そのものは入れない）', async () => {
+    const signer = makeMockSigner();
+    const rootCause = new Error('socket hang up');
+    const transport: Transport = {
+      fetch: vi.fn(async (_url: string, options?: FetchOptions) => {
+        throw new HttpError(
+          'HTTPエラー 503',
+          503,
+          null,
+          {},
+          '',
+          { body: options?.payload },
+          { cause: rootCause },
+        );
+      }),
+    };
+
+    const caughtError: unknown = await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, {
+      transport,
+      signer,
+    }).catch((e: unknown) => e);
+
+    if (!(caughtError instanceof HttpError)) {
+      throw new Error('HttpError が投げられていません');
+    }
+    expect(caughtError.cause).toBe(rootCause);
+    expect(caughtError.request?.body).toMatchObject({ assertion: '[REDACTED]' });
+  });
+
   it('JWT の signingInput が header.claims の Base64URL 連結形式になる', async () => {
     const signer = makeMockSigner();
     const transport = makeMockTransport({

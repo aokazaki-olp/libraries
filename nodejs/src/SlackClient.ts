@@ -195,8 +195,8 @@ interface SlackApiClientOptions {
  * @param token - Slack API トークン
  * @param options - オプション設定
  * @returns クライアント（call/get/post/use/extend）
- * @throws {TypeError} token が空文字または文字列でない場合
- * @throws {SlackApiError} Slack API が ok:false を返した場合
+ * @throws {TypeError} token が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合、
+ *   logger が Logger として使えない場合
  */
 const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}): BaseClient => {
   if (typeof token !== 'string' || token === '') {
@@ -256,7 +256,8 @@ interface SlackWebhookInstance {
  * @param options - オプション設定
  * @returns { send } クライアント。send は、リトライ上限に達すると RetryExhaustedError、
  *   Slack Webhook が非2xxを返すと HttpError、signal が中断されるとその理由を投げる
- * @throws {TypeError} webhookUrl が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合
+ * @throws {TypeError} webhookUrl が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合、
+ *   logger が Logger として使えない場合
  */
 const createWebhookClient = (
   webhookUrl: string,
@@ -304,6 +305,7 @@ const createWebhookClient = (
  * @throws {TypeError} webhookUrl / オプションが不正な場合
  * @throws {RetryExhaustedError} リトライ上限に達した場合
  * @throws {HttpError} Slack Webhook が非2xxを返した場合
+ * @throws signal が中断された場合、その理由（既定は AbortError）
  */
 const sendWebhook = (
   webhookUrl: string,

@@ -151,6 +151,20 @@ describe('ApiClient.createClient — HTTPメソッドショートカット', () 
     await client.delete('/users/1');
     expect(transport.calls[0]?.options?.method).toBe('DELETE');
   });
+
+  it('引数で渡すもの（body・query 等）はオプションに書けない', async () => {
+    // @ts-expect-error -- GET の body は型で受けない（実行時は RequestValidationError）
+    await expect(client.get('/users', undefined, { body: { x: 1 } })).rejects.toThrow(
+      RequestValidationError,
+    );
+    // @ts-expect-error -- DELETE の rawBody も同じ
+    await expect(client.delete('/users/1', { rawBody: 'x' })).rejects.toThrow(
+      RequestValidationError,
+    );
+    // @ts-expect-error -- query は引数で渡す（オプションに書くと引数で上書きされる）
+    await client.get('/users', { page: 1 }, { query: { page: 2 } });
+    expect(transport.calls[0]?.url).toContain('page=1');
+  });
 });
 
 // ============================================================================

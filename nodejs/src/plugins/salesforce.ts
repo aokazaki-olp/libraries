@@ -179,6 +179,8 @@ export interface WaitOptions extends CallOptions {
 export interface ValidationError {
   row?: number;
   message: string;
+  /** CSV のパースに失敗した場合、パーサーが投げた例外（行番号などの詳細を持つ） */
+  cause?: Error;
 }
 
 export interface ValidationWarning {
@@ -1272,7 +1274,8 @@ const Utils = {
         });
       }
     } catch (e) {
-      errors.push({ message: `CSV パースエラー: ${toError(e).message}` });
+      const error = toError(e);
+      errors.push({ message: `CSV パースエラー: ${error.message}`, cause: error });
     }
 
     return {

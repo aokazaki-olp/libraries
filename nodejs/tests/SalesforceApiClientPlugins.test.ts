@@ -529,6 +529,13 @@ describe('SalesforceApiClientPlugins.Utils.validateCsv', () => {
     expect(result.errors.some((e) => e.message.includes('列数'))).toBe(true);
   });
 
+  it('パースできない CSV は errors に入り、パーサーの例外を cause に持つ', () => {
+    const result = SalesforceApiClientPlugins.Utils.validateCsv('Id,Name\n"001,Acme');
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.message).toContain('CSV パースエラー');
+    expect(result.errors[0]?.cause).toBeInstanceOf(Error);
+  });
+
   it('データ行 0 件は warnings に含まれる', () => {
     const result = SalesforceApiClientPlugins.Utils.validateCsv('Id,Name');
     expect(result.warnings.some((w) => w.message.includes('0 件'))).toBe(true);

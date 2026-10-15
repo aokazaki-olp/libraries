@@ -165,9 +165,12 @@ interface TokenResult {
  * @param options.signal - 中断シグナル
  * @param dependencies - 依存注入（テスト用）。transport 注入時はリトライ・ロギングも呼び出し側の責務となる
  * @returns access_token と instance_url
- * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正 / maxRetries・baseDelayMs が不正
- * @throws {HttpError} token endpoint が非 2xx を返した場合
+ * @throws {TypeError} 必須パラメータ欠落 / tokenHost の形式不正 / maxRetries・baseDelayMs が不正 /
+ *   logger が Logger として使えない場合
+ * @throws {HttpError} token endpoint が非 2xx を返した場合（リトライしないステータス）
+ * @throws {RetryExhaustedError} リトライ上限に達した場合
  * @throws {Error} レスポンスに access_token / instance_url が欠落していた場合
+ * @throws signal が中断された場合、その理由（既定は AbortError）
  */
 const getAccessTokenByJwt = async (
   options: JwtOptions,
@@ -227,15 +230,23 @@ const getAccessTokenByJwt = async (
   } catch (e) {
     // 標準の Transport は HttpError に request を付けないので、そのまま投げる（スタックも保たれる）。
     // 注入された Transport が request.body を付けていたら、assertion がログに乗らないよう伏せて作り直す。
-    // その場合だけ cause を付けない（元の例外を残すと、伏せた assertion が cause 経由で残る）
+    // 元の例外そのものは cause に入れない（伏せた assertion が cause 経由で残る）。元の cause は引き継ぐ
     if (e instanceof HttpError && e.request?.body != null) {
-      throw new HttpError(e.message, e.status, e.body, e.headers, e.text, {
-        ...e.request,
-        body: {
-          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-          assertion: '[REDACTED]',
+      throw new HttpError(
+        e.message,
+        e.status,
+        e.body,
+        e.headers,
+        e.text,
+        {
+          ...e.request,
+          body: {
+            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            assertion: '[REDACTED]',
+          },
         },
-      });
+        'cause' in e ? { cause: e.cause } : undefined,
+      );
     }
     throw e;
   }

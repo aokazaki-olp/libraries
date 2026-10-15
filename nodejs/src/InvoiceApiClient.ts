@@ -30,6 +30,7 @@ const API_PATH_VERSION = '1';
 const DEFAULT_VERSION: InvoiceApiVersion = '1';
 const SUPPORTED_VERSIONS: readonly InvoiceApiVersion[] = ['1'];
 const DEFAULT_TYPE: InvoiceResponseType = '21'; // JSON
+const SUPPORTED_TYPES: readonly InvoiceResponseType[] = ['01', '21', '31'];
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
 
@@ -51,7 +52,8 @@ interface InvoiceClientOptions {
  * @param options - オプション設定
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
  *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
- * @throws {TypeError} applicationId が空文字または string 以外の場合、version が未対応の場合
+ * @throws {TypeError} applicationId が空文字または string 以外の場合、version / type が未対応の場合、
+ *   maxRetries / baseDelayMs が不正な場合、logger が Logger として使えない場合
  */
 const create = (applicationId: string, options: InvoiceClientOptions = {}): BaseClient => {
   if (typeof applicationId !== 'string' || applicationId === '') {
@@ -71,6 +73,10 @@ const create = (applicationId: string, options: InvoiceClientOptions = {}): Base
 
   if (!SUPPORTED_VERSIONS.includes(version)) {
     throw new TypeError(`version には ${SUPPORTED_VERSIONS.join(' / ')} を指定してください`);
+  }
+  // type は全リクエストのクエリに載る。誤りは API 側で弾かれるが、原因が分かりにくい
+  if (!SUPPORTED_TYPES.includes(type)) {
+    throw new TypeError(`type には ${SUPPORTED_TYPES.join(' / ')} を指定してください`);
   }
 
   // 認証はクエリパラメータ (id) + 必須共通クエリ (type, version)。

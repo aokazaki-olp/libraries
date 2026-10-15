@@ -108,16 +108,25 @@ const withQueryAuth = (transport: Transport, params: Record<string, string>): Tr
 // Client型定義
 // ============================================================================
 
+/**
+ * HTTP メソッドの補助関数が受けるオプション
+ *
+ * method / endpoint / query / body は引数で渡すので受けない（受けると引数で黙って上書きされる）。
+ * rawBody は body を送れるメソッドだけが受ける。
+ */
+type MethodOptions = Omit<RequestOptions, 'method' | 'endpoint' | 'query' | 'body' | 'rawBody'>;
+type MethodOptionsWithRawBody = MethodOptions & Pick<RequestOptions, 'rawBody'>;
+
 type HttpMethods<TResponse> = {
   get(
     endpoint: string,
     query?: Record<string, unknown>,
-    options?: Partial<RequestOptions>,
+    options?: MethodOptions,
   ): Promise<TResponse>;
-  post(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  put(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  patch(endpoint: string, body?: unknown, options?: Partial<RequestOptions>): Promise<TResponse>;
-  delete(endpoint: string, options?: Omit<Partial<RequestOptions>, 'body'>): Promise<TResponse>;
+  post(endpoint: string, body?: unknown, options?: MethodOptionsWithRawBody): Promise<TResponse>;
+  put(endpoint: string, body?: unknown, options?: MethodOptionsWithRawBody): Promise<TResponse>;
+  patch(endpoint: string, body?: unknown, options?: MethodOptionsWithRawBody): Promise<TResponse>;
+  delete(endpoint: string, options?: MethodOptions): Promise<TResponse>;
 };
 
 type BaseClient<

@@ -41,7 +41,8 @@ interface SalesforceClientOptions {
  * @param options - オプション設定
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
  *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
- * @throws {TypeError} instanceUrl / accessToken が空文字の場合、apiVersion の形式が不正な場合
+ * @throws {TypeError} instanceUrl / accessToken が空文字の場合、apiVersion の形式が不正な場合、
+ *   maxRetries / baseDelayMs が不正な場合、logger が Logger として使えない場合
  */
 const create = (
   instanceUrl: string,

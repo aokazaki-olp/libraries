@@ -64,6 +64,13 @@ describe('InvoiceApiClient.create — バリデーション', () => {
       InvoiceApiClient.create(VALID_APP_ID, { version: '2' }),
     ).toThrow(/version/);
   });
+
+  it('未対応 type 指定で TypeError', () => {
+    expect(() =>
+      // @ts-expect-error: runtime バリデーション
+      InvoiceApiClient.create(VALID_APP_ID, { type: '99' }),
+    ).toThrow(/type/);
+  });
 });
 
 // ============================================================================
