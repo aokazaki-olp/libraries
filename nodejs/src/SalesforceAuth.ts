@@ -16,7 +16,7 @@
 
 import { createSign } from 'node:crypto';
 import { HttpCore } from './HttpCore.ts';
-import { HttpError } from './httpTypes.ts';
+import { HttpError, RetryExhaustedError } from './httpTypes.ts';
 import type { Logger } from './LoggerFacade.ts';
 import type { Transport } from './httpTypes.ts';
 
@@ -98,6 +98,8 @@ interface JwtParams {
   privateKey: string;
 }
 
+// 注入された Signer はパディング付きの base64url を返しうる（GAS の Utilities.base64EncodeWebSafe 等）。
+// JWT（RFC 7515）はパディングを付けないので落とす
 const base64UrlEncode = (signer: Signer, bytes: Buffer): string =>
   signer.base64EncodeWebSafe(bytes).replace(/=+$/, '');
 
@@ -146,6 +148,67 @@ interface TokenResult {
   accessToken: string;
   instanceUrl: string;
 }
+
+const REDACTED_PAYLOAD = {
+  grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+  assertion: '[REDACTED]',
+};
+
+/** cause の連鎖をたどる深さの上限（循環した cause で止まらなくなるのを防ぐ） */
+const MAX_CAUSE_DEPTH = 10;
+
+/**
+ * 例外とその cause の連鎖から assertion（署名済み JWT）を伏せる
+ *
+ * request.body を持つ HttpError は、body を伏せた複製に置き換える。連鎖の奥で置き換えが起きたら、
+ * その上の例外も伏せた cause を持つ複製に作り直す（withRetry の RetryExhaustedError は失敗した
+ * HttpError を cause に持つ）。元の例外は書き換えない。置き換えが無ければ元の例外をそのまま返す。
+ * 作り直し方を知らないエラー型は、名前と message を保った Error にする。
+ *
+ * @param error - Transport が投げた値
+ * @param depth - cause をたどった深さ（再帰用）
+ * @returns assertion を含まない例外（置き換えが無ければ error そのもの）
+ */
+const redactAssertion = (error: unknown, depth = 0): unknown => {
+  if (!Error.isError(error) || depth >= MAX_CAUSE_DEPTH) {
+    return error;
+  }
+  const hasCause = 'cause' in error;
+  const cause = hasCause ? redactAssertion(error.cause, depth + 1) : undefined;
+  const options = hasCause ? { cause } : undefined;
+
+  if (error instanceof HttpError && error.request?.body != null) {
+    return new HttpError(
+      error.message,
+      error.status,
+      error.body,
+      error.headers,
+      error.text,
+      { ...error.request, body: REDACTED_PAYLOAD },
+      options,
+    );
+  }
+  if (!hasCause || cause === error.cause) {
+    return error;
+  }
+  if (error instanceof HttpError) {
+    return new HttpError(
+      error.message,
+      error.status,
+      error.body,
+      error.headers,
+      error.text,
+      error.request,
+      options,
+    );
+  }
+  if (error instanceof RetryExhaustedError) {
+    return new RetryExhaustedError(error.message, options);
+  }
+  const rebuilt = new Error(error.message, options);
+  rebuilt.name = error.name;
+  return rebuilt;
+};
 
 /**
  * JWT Bearer Flow で access_token を取得する
@@ -229,26 +292,8 @@ const getAccessTokenByJwt = async (
     });
   } catch (e) {
     // 標準の Transport は HttpError に request を付けないので、そのまま投げる（スタックも保たれる）。
-    // 注入された Transport が request.body を付けていたら、assertion がログに乗らないよう伏せて作り直す。
-    // 元の例外そのものは cause に入れない（伏せた assertion が cause 経由で残る）。元の cause は引き継ぐ
-    if (e instanceof HttpError && e.request?.body != null) {
-      throw new HttpError(
-        e.message,
-        e.status,
-        e.body,
-        e.headers,
-        e.text,
-        {
-          ...e.request,
-          body: {
-            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            assertion: '[REDACTED]',
-          },
-        },
-        'cause' in e ? { cause: e.cause } : undefined,
-      );
-    }
-    throw e;
+    // 注入された Transport が request.body を付けていたら、assertion がログに乗らないよう伏せて作り直す
+    throw redactAssertion(e);
   }
 
   const body = response.body;

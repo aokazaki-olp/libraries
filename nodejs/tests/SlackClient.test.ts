@@ -86,6 +86,25 @@ describe('SlackCore.withRetry — 429 Retry-After', () => {
     expect(calls).toBe(2);
   });
 
+  it('Retry-After のヘッダー名は大文字小文字を区別しない（RETRY-AFTER）', async () => {
+    let calls = 0;
+    const transport = makeTransport(async () => {
+      calls++;
+      if (calls === 1) {
+        throw new HttpError('429', 429, null, { 'RETRY-AFTER': '5' });
+      }
+      return makeRawResponse();
+    });
+
+    const retrying = SlackCore.withRetry(transport, { maxRetries: 3 });
+    const promise = retrying.fetch('https://slack.com/api/test');
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(promise).resolves.toBeDefined();
+    expect(calls).toBe(2);
+  });
+
   it('Retry-After がない場合 1秒待機', async () => {
     let calls = 0;
     const transport = makeTransport(async () => {

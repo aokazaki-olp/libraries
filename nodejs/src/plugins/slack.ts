@@ -43,7 +43,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション（blocks, thread_ts 等）
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答（ok / channel / ts / message）
-   * @throws {TypeError} options に signal を入れた場合
+   * @throws {TypeError} options に signal や引数と同じ項目を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   postMessage(
@@ -59,7 +59,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション（text, thread_ts 等）
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答（ok / channel / ts / message）
-   * @throws {TypeError} options に signal を入れた場合
+   * @throws {TypeError} options に signal や引数と同じ項目を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   postBlocks(
@@ -76,7 +76,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答
-   * @throws {TypeError} options に signal を入れた場合
+   * @throws {TypeError} options に signal や引数と同じ項目を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   update(
@@ -140,17 +140,29 @@ export interface SlackReactionMethods {
  *
  * options は利用者がそのまま本文に展開するもので、型が通っていても JS からは何でも入りうる。
  * signal を混ぜると JSON にされて Slack へ送られ、中断も効かないので先に落とす。
+ * 引数で渡した値（channel / text 等）を options が黙って上書きするのも防ぐ。
  *
- * @throws {TypeError} options に signal がある場合
+ * @throws {TypeError} options に signal がある場合、引数と同じ名前の項目がある場合
  */
 const chatBody = (
   fields: Record<string, unknown>,
-  options: ChatOptions,
+  options: ChatOptions | null | undefined,
 ): Record<string, unknown> => {
-  if (Object.hasOwn(options, 'signal')) {
+  // 既定値 {} は undefined にしか効かない。JS から null が来ても「オプション無し」として扱う
+  const extra = options ?? {};
+  // ChatOptions の signal は never なので、object として読む
+  const untyped: object = extra;
+  const signal: unknown = Reflect.get(untyped, 'signal');
+  if (signal !== undefined) {
     throw new TypeError('signal は options ではなく callOptions に指定してください');
   }
-  return { ...fields, ...options };
+  const overridden = Object.keys(fields).filter((key) => Object.hasOwn(extra, key));
+  if (overridden.length > 0) {
+    throw new TypeError(
+      `options に引数と同じ項目は指定できません: ${overridden.join(', ')}（引数で渡してください）`,
+    );
+  }
+  return { ...fields, ...extra };
 };
 
 /**

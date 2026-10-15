@@ -45,7 +45,7 @@ import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 // shared は末端の共有ユーティリティ（コアにもクライアントにも依存しない）。
 // プラグインはコアの型だけを見る（PLUGIN_SYSTEM_RULES §2.4）が、待機と例外の正規化はここから借りる
-import { sleep } from '../shared/sleep.ts';
+import { MAX_TIMER_MS, sleep } from '../shared/sleep.ts';
 import { toError } from '../shared/toError.ts';
 
 // ============================================================================
@@ -168,8 +168,8 @@ export type GetResultsParallelOptions = CallOptions;
 
 export interface WaitOptions extends CallOptions {
   /**
-   * タイムアウト（ミリ秒、デフォルト: 300_000 = 5分。Infinity で無期限）。ポーリング間隔だけでなく、ジョブ情報の取得 1 回分にも掛かる
-   * GWS 環境では最大 25 分程度まで延長可能
+   * タイムアウト（ミリ秒、デフォルト: 300_000 = 5分。Infinity で無期限）。
+   * ポーリング間隔だけでなく、ジョブ情報の取得 1 回分にも掛かる
    */
   timeoutMs?: number;
   /** ポーリング間隔（ミリ秒、デフォルト: 10_000） */
@@ -334,10 +334,10 @@ const toSoqlResult = <TRow>(body: unknown, decodeRow: Decoder<TRow>): SoqlResult
   const totalSize: unknown = isObject(body) ? Reflect.get(body, 'totalSize') : undefined;
   const done: unknown = isObject(body) ? Reflect.get(body, 'done') : undefined;
   if (!isObject(body) || !Array.isArray(records) || typeof totalSize !== 'number') {
-    throw new Error('Salesforce /query が SOQL の結果形式でない応答を返しました');
+    throw new Error('Salesforce /query が SOQL の結果形式でない応答を返しました', { cause: body });
   }
   if (typeof done !== 'boolean') {
-    throw new Error('Salesforce /query が SOQL の結果形式でない応答を返しました');
+    throw new Error('Salesforce /query が SOQL の結果形式でない応答を返しました', { cause: body });
   }
   return {
     records: records.map((row: unknown) => decodeRow(row)),
@@ -359,7 +359,7 @@ const checkJobInfo = (body: unknown, states: ReadonlySet<string>, label: string)
   const id: unknown = isObject(body) ? Reflect.get(body, 'id') : undefined;
   const state: unknown = isObject(body) ? Reflect.get(body, 'state') : undefined;
   if (typeof id !== 'string' || typeof state !== 'string' || !states.has(state)) {
-    throw new Error(`${label} がジョブ情報の形式でない応答を返しました`);
+    throw new Error(`${label} がジョブ情報の形式でない応答を返しました`, { cause: body });
   }
 };
 
@@ -393,7 +393,7 @@ const toJobList = <TJob>(
   const records: unknown = isObject(body) ? Reflect.get(body, 'records') : undefined;
   const done: unknown = isObject(body) ? Reflect.get(body, 'done') : undefined;
   if (!isObject(body) || !Array.isArray(records) || typeof done !== 'boolean') {
-    throw new Error(`${label} がジョブ一覧の形式でない応答を返しました`);
+    throw new Error(`${label} がジョブ一覧の形式でない応答を返しました`, { cause: body });
   }
   return {
     records: records.map((record: unknown) => decodeJob(record)),
@@ -432,6 +432,20 @@ const fetchCsv = async (
   return { csv: captured.text, headers: captured.headers };
 };
 
+/**
+ * bulk 系に渡されたクライアントを検査する（.use() を経由しない直接呼び出しの境界）
+ *
+ * @throws {TypeError} call を持つクライアントでない場合
+ */
+const assertClient = (client: unknown): void => {
+  const call: unknown = isObject(client) ? Reflect.get(client, 'call') : undefined;
+  if (typeof call !== 'function') {
+    throw new TypeError(
+      'client には ApiClient のクライアント（call を持つもの）を指定してください',
+    );
+  }
+};
+
 /** 複数 CSV ページを結合する（先頭ページのヘッダー行を保持し、以降のヘッダー行を除去） */
 const mergeCsvPages = (pages: string[]): string => {
   const [first, ...rest] = pages;
@@ -441,8 +455,9 @@ const mergeCsvPages = (pages: string[]): string => {
   if (rest.length === 0) {
     return first;
   }
-  // 末尾の \r?\n を除去してから LF で結合する（末尾改行による空行挿入を防ぐ）
-  // 入力が CRLF であっても結合後は LF に統一される（Salesforce は LF/CRLF 両対応）
+  // 末尾の改行を除去してから、先頭ページの改行コードで結合する（末尾改行による空行挿入を防ぐ）。
+  // 各ページのヘッダー行は最初の改行までとみなす（Salesforce が返すヘッダーは列名だけで改行を含まない）
+  const newline = /\r\n/.test(first) ? '\r\n' : '\n';
   const parts = [first.replace(/\r?\n$/, '')];
   for (const page of rest) {
     const headerEnd = page.indexOf('\n');
@@ -453,14 +468,11 @@ const mergeCsvPages = (pages: string[]): string => {
       }
     }
   }
-  return parts.join('\n');
+  return parts.join(newline);
 };
 
-/** タイマーに渡せる最大のミリ秒（これを超えると Node は 1ms に丸める） */
-const MAX_TIMER_MS = 2 ** 31 - 1;
-
 /**
- * waitForCompletion の待ち時間の設定を検査する（作成時に fail-fast させる）
+ * waitForCompletion の待ち時間の設定を検査する（ポーリングを始める前に fail-fast させる）
  *
  * @throws {TypeError} timeoutMs が 0 以上の数（Infinity は無期限）でない場合、
  *   intervalMs が 1 以上でタイマーの上限以下の有限数でない場合
@@ -478,12 +490,19 @@ const assertWaitOptions = (timeoutMs: number, intervalMs: number): void => {
   }
 };
 
-/** 残り時間で打ち切る signal を作る。残り時間がタイマーで表せない（0 以下・無期限・上限超え）なら作らない */
+/**
+ * 残り時間で打ち切る signal を作る。無期限（Infinity）なら作らない
+ *
+ * 残りが 0 以下でも 1ms の signal を作る（待機の直後は残りがちょうど尽きていることが多く、
+ * signal を付けないと応答の返らない取得が期限を無視して止まる）。
+ * 残りがタイマーの上限を超える場合は上限で打ち切る（取得 1 回が約 24.8 日返らない場合だけ早めに切れる）。
+ */
 const deadlineSignal = (deadline: number): AbortSignal | undefined => {
-  const remaining = deadline - Date.now();
-  return remaining > 0 && remaining <= MAX_TIMER_MS
-    ? AbortSignal.timeout(Math.ceil(remaining))
-    : undefined;
+  if (deadline === Infinity) {
+    return undefined;
+  }
+  const remaining = Math.ceil(deadline - Date.now());
+  return AbortSignal.timeout(Math.min(Math.max(remaining, 1), MAX_TIMER_MS));
 };
 
 /**
@@ -558,11 +577,15 @@ const buildSoql =
         decodeRow,
       );
       records.push(...result.records);
+      const visited = new Set<string>();
       while (!result.done) {
-        if (result.nextRecordsUrl === undefined) {
-          // ここで止めると途中までの records を全件として返してしまう
-          throw new Error('SOQL の応答が done: false なのに nextRecordsUrl がありません');
+        // 無いと途中までの records を全件として返し、同じ URL が続くと終わらない
+        if (!result.nextRecordsUrl || visited.has(result.nextRecordsUrl)) {
+          throw new Error(
+            `SOQL の応答の nextRecordsUrl が不正です (done: false, nextRecordsUrl: ${String(result.nextRecordsUrl)})`,
+          );
         }
+        visited.add(result.nextRecordsUrl);
         // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
         // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
         // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
@@ -585,6 +608,7 @@ const buildSoql =
  *
  * @param decodeRow - 各行の検証・変換
  * @returns query / queryAll を追加するプラグイン
+ * @throws {TypeError} decodeRow が関数でない場合
  * @example
  *   const sf = SalesforceApiClient.create(url, token)
  *     .use(SalesforceApiClientPlugins.soql(decodeAccount));
@@ -596,6 +620,10 @@ function soql<TRow>(decodeRow: Decoder<TRow>): Plugin<unknown, SoqlMethods<TRow>
 function soql<TRow>(
   decodeRow?: Decoder<TRow>,
 ): Plugin<unknown, SoqlMethods<TRow>> | Plugin<unknown, SoqlMethods<unknown>> {
+  // 公開 API の境界。誤りをクエリ実行時ではなく作成時に知らせる
+  if (decodeRow !== undefined && typeof decodeRow !== 'function') {
+    throw new TypeError('decodeRow には関数を指定してください');
+  }
   return decodeRow ? buildSoql(decodeRow) : buildSoql((row) => row);
 }
 
@@ -606,7 +634,9 @@ function soql<TRow>(
 /** decode 省略時の既定: オブジェクトであることだけを検査する */
 const toRecord = (body: unknown): Record<string, unknown> => {
   if (!isObject(body)) {
-    throw new Error('Salesforce sObject API がレコードの形式でない応答を返しました');
+    throw new Error('Salesforce sObject API がレコードの形式でない応答を返しました', {
+      cause: body,
+    });
   }
   return Object.fromEntries(Object.entries(body));
 };
@@ -616,51 +646,56 @@ const toCreateResult = (body: unknown): SobjectCreateResult => {
   const id: unknown = isObject(body) ? Reflect.get(body, 'id') : undefined;
   const success: unknown = isObject(body) ? Reflect.get(body, 'success') : undefined;
   if (typeof id !== 'string' || typeof success !== 'boolean') {
-    throw new Error('Salesforce sObject API がレコード作成結果の形式でない応答を返しました');
+    throw new Error('Salesforce sObject API がレコード作成結果の形式でない応答を返しました', {
+      cause: body,
+    });
   }
   return { id, success };
 };
 
 const buildSobject =
   <TRecord>(type: string, decode: Decoder<TRecord>): Plugin<unknown, SobjectMethods<TRecord>> =>
-  (client) => ({
-    findById: async (id, callOptions) =>
-      decode(
-        await client.call({
-          method: 'GET',
-          endpoint: `/sobjects/${type}/${id}`,
-          signal: callOptions?.signal,
-        }),
-      ),
+  (client) => {
+    const typePath = encodeURIComponent(type);
+    return {
+      findById: async (id, callOptions) =>
+        decode(
+          await client.call({
+            method: 'GET',
+            endpoint: `/sobjects/${typePath}/${encodeURIComponent(id)}`,
+            signal: callOptions?.signal,
+          }),
+        ),
 
-    create: async (data, callOptions) =>
-      toCreateResult(
+      create: async (data, callOptions) =>
+        toCreateResult(
+          await client.call({
+            method: 'POST',
+            endpoint: `/sobjects/${typePath}`,
+            body: data,
+            signal: callOptions?.signal,
+          }),
+        ),
+
+      // PATCH / DELETE は 204 No Content を返すので、戻り値は無い
+      update: async (id, data, callOptions) => {
         await client.call({
-          method: 'POST',
-          endpoint: `/sobjects/${type}`,
+          method: 'PATCH',
+          endpoint: `/sobjects/${typePath}/${encodeURIComponent(id)}`,
           body: data,
           signal: callOptions?.signal,
-        }),
-      ),
+        });
+      },
 
-    // PATCH / DELETE は 204 No Content を返すので、戻り値は無い
-    update: async (id, data, callOptions) => {
-      await client.call({
-        method: 'PATCH',
-        endpoint: `/sobjects/${type}/${id}`,
-        body: data,
-        signal: callOptions?.signal,
-      });
-    },
-
-    delete: async (id, callOptions) => {
-      await client.call({
-        method: 'DELETE',
-        endpoint: `/sobjects/${type}/${id}`,
-        signal: callOptions?.signal,
-      });
-    },
-  });
+      delete: async (id, callOptions) => {
+        await client.call({
+          method: 'DELETE',
+          endpoint: `/sobjects/${typePath}/${encodeURIComponent(id)}`,
+          signal: callOptions?.signal,
+        });
+      },
+    };
+  };
 
 /**
  * sObject CRUD プラグイン
@@ -671,11 +706,18 @@ const buildSobject =
  * @param type - sObject API 名 (例: 'Account', 'Contact')
  * @param decode - レコードの検証・変換
  * @returns findById / create / update / delete を追加するプラグイン
+ * @throws {TypeError} type が空文字または string 以外の場合、decode が関数でない場合
  * @example
  *   const sf = SalesforceApiClient.create(url, token)
  *     .use(SalesforceApiClientPlugins.sobject('Account', decodeAccount));
  *   const account = await sf.findById('001...');
  *   await sf.update('001...', { Name: 'New Name' });
+ *
+ *   // 複数の sObject を使うときは名前を付けて足す（同じメソッド名は use() で TypeError になる）
+ *   const crm = SalesforceApiClient.create(url, token)
+ *     .use('account', SalesforceApiClientPlugins.sobject('Account'))
+ *     .use('contact', SalesforceApiClientPlugins.sobject('Contact'));
+ *   await crm.contact.findById('003...');
  */
 function sobject(type: string): Plugin<unknown, SobjectMethods<Record<string, unknown>>>;
 function sobject<TRecord>(
@@ -688,6 +730,12 @@ function sobject<TRecord>(
 ):
   | Plugin<unknown, SobjectMethods<TRecord>>
   | Plugin<unknown, SobjectMethods<Record<string, unknown>>> {
+  if (typeof type !== 'string' || type === '') {
+    throw new TypeError('type には sObject の API 名 (string) を指定してください');
+  }
+  if (decode !== undefined && typeof decode !== 'function') {
+    throw new TypeError('decode には関数を指定してください');
+  }
   return decode ? buildSobject(type, decode) : buildSobject(type, toRecord);
 }
 
@@ -723,6 +771,7 @@ function sobject<TRecord>(
  *   各メソッドの末尾引数 callOptions.signal で中断できる。
  */
 const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
+  assertClient(client);
   /**
    * Ingest ジョブを作成する
    * @param options - 操作種別・対象オブジェクト等の設定
@@ -752,7 +801,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
   const upload = async (jobId: string, csv: string, callOptions?: CallOptions): Promise<void> => {
     await client.call({
       method: 'PUT',
-      endpoint: `/jobs/ingest/${jobId}/batches`,
+      endpoint: `/jobs/ingest/${encodeURIComponent(jobId)}/batches`,
       rawBody: csv,
       headers: { 'Content-Type': 'text/csv' },
       signal: callOptions?.signal,
@@ -767,7 +816,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
     toIngestJob(
       await client.call({
         method: 'PATCH',
-        endpoint: `/jobs/ingest/${jobId}`,
+        endpoint: `/jobs/ingest/${encodeURIComponent(jobId)}`,
         body: { state },
         signal: callOptions?.signal,
       }),
@@ -804,7 +853,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
   const deleteJob = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
     await client.call({
       method: 'DELETE',
-      endpoint: `/jobs/ingest/${jobId}`,
+      endpoint: `/jobs/ingest/${encodeURIComponent(jobId)}`,
       signal: callOptions?.signal,
     });
   };
@@ -820,7 +869,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
     toIngestJob(
       await client.call({
         method: 'GET',
-        endpoint: `/jobs/ingest/${jobId}`,
+        endpoint: `/jobs/ingest/${encodeURIComponent(jobId)}`,
         signal: callOptions?.signal,
       }),
     );
@@ -858,7 +907,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @returns CSV 文字列
    */
   const getSuccessfulResults = (jobId: string, callOptions?: CallOptions): Promise<string> =>
-    getCsv(`/jobs/ingest/${jobId}/successfulResults`, callOptions);
+    getCsv(`/jobs/ingest/${encodeURIComponent(jobId)}/successfulResults`, callOptions);
 
   /**
    * 処理失敗レコードの結果 CSV を取得する（sf__Error, sf__Id 列を含む）
@@ -867,7 +916,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @returns CSV 文字列
    */
   const getFailedResults = (jobId: string, callOptions?: CallOptions): Promise<string> =>
-    getCsv(`/jobs/ingest/${jobId}/failedResults`, callOptions);
+    getCsv(`/jobs/ingest/${encodeURIComponent(jobId)}/failedResults`, callOptions);
 
   /**
    * 未処理レコードの CSV を取得する
@@ -876,7 +925,7 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @returns CSV 文字列
    */
   const getUnprocessedRecords = (jobId: string, callOptions?: CallOptions): Promise<string> =>
-    getCsv(`/jobs/ingest/${jobId}/unprocessedrecords`, callOptions);
+    getCsv(`/jobs/ingest/${encodeURIComponent(jobId)}/unprocessedrecords`, callOptions);
 
   /**
    * ジョブが完了状態になるまでポーリングして待機する
@@ -940,8 +989,10 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
  *   bulkIngest と bulkQuery はメソッド名（createJob / getJob / abort 等）が衝突するため、
  *   クライアントへ合成せず独立したオブジェクトとして返す。
  *   各メソッドの末尾引数（callOptions / options）の signal で中断できる。
+ * @throws {TypeError} client が call を持つクライアントでない場合
  */
 const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
+  assertClient(client);
   /**
    * Query ジョブを作成して即座に処理を開始する
    * @param options - クエリ文字列・操作種別等の設定
@@ -974,7 +1025,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
   const abort = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
     await client.call({
       method: 'DELETE',
-      endpoint: `/jobs/query/${jobId}`,
+      endpoint: `/jobs/query/${encodeURIComponent(jobId)}`,
       signal: callOptions?.signal,
     });
   };
@@ -991,7 +1042,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
   const deleteJob = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
     await client.call({
       method: 'DELETE',
-      endpoint: `/jobs/query/${jobId}`,
+      endpoint: `/jobs/query/${encodeURIComponent(jobId)}`,
       signal: callOptions?.signal,
     });
   };
@@ -1007,7 +1058,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
     toQueryJob(
       await client.call({
         method: 'GET',
-        endpoint: `/jobs/query/${jobId}`,
+        endpoint: `/jobs/query/${encodeURIComponent(jobId)}`,
         signal: callOptions?.signal,
       }),
     );
@@ -1058,7 +1109,7 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
 
     const { csv, headers } = await fetchCsv(
       client,
-      `/jobs/query/${jobId}/results`,
+      `/jobs/query/${encodeURIComponent(jobId)}/results`,
       query,
       options.signal,
     );
@@ -1086,9 +1137,17 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
     options: GetResultsParallelOptions = {},
   ): Promise<string> => {
     const pages: string[] = [];
+    const visited = new Set<string>();
     let locator: string | null = null;
 
     do {
+      if (locator !== null) {
+        // 同じロケーターが返り続けると終わらない
+        if (visited.has(locator)) {
+          throw new Error(`Sforce-Locator が同じ値を繰り返しました (locator: ${locator})`);
+        }
+        visited.add(locator);
+      }
       const page = await getResults(jobId, {
         signal: options.signal,
         ...(locator != null ? { locator } : {}),

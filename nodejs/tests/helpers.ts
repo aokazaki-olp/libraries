@@ -46,21 +46,23 @@ export const makeRawResponse = (overrides: Partial<RawResponse> = {}): RawRespon
   ...overrides,
 });
 
-type FetchFn = (url: string, options?: FetchOptions) => Promise<RawResponse>;
+type FetchFunction = (url: string, options?: FetchOptions) => Promise<RawResponse>;
 
 /** fetch をメソッドではなく Mock のプロパティとして持つ（expect(transport.fetch) で this を失わない） */
 type MockTransport = Omit<Transport, 'fetch'> & {
-  fetch: Mock<FetchFn>;
+  fetch: Mock<FetchFunction>;
   calls: { url: string; options?: FetchOptions }[];
 };
 
-export const makeTransport = (impl: FetchFn): MockTransport => {
-  const fetchFn = vi.fn(async (url: string, options?: FetchOptions) => impl(url, options));
+export const makeTransport = (implementation: FetchFunction): MockTransport => {
+  const fetchFunction = vi.fn(async (url: string, options?: FetchOptions) =>
+    implementation(url, options),
+  );
   return {
     get calls() {
-      return fetchFn.mock.calls.map(([url, options]) => ({ url, options }));
+      return fetchFunction.mock.calls.map(([url, options]) => ({ url, options }));
     },
-    fetch: fetchFn,
+    fetch: fetchFunction,
   };
 };
 

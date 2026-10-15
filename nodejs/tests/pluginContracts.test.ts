@@ -301,6 +301,28 @@ describe('waitForCompletion の timeoutMs', () => {
       'がタイムアウトしました (50ms)',
     );
   });
+
+  it('待機で残り時間を使い切った後の取得が返ってこなくても打ち切る', async () => {
+    // 1 回目は InProgress を返し、2 回目以降は signal が中断されるまで応答しない
+    let callCount = 0;
+    const { client } = salesforce((_url, options) => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(makeRawResponse({ body: { id: 'job001', state: 'InProgress' } }));
+      }
+      return new Promise<RawResponse>((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          reject(new Error('aborted'));
+        });
+      });
+    });
+    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+
+    await expect(
+      bulk.waitForCompletion('job001', { timeoutMs: 30, intervalMs: 1000 }),
+    ).rejects.toThrow('がタイムアウトしました (30ms)');
+    expect(callCount).toBe(2);
+  });
 });
 
 describe('waitForCompletion の待ち時間の設定', () => {
@@ -396,7 +418,7 @@ describe('soql.queryAll — 応答の不整合', () => {
     const sf = client.use(SalesforceApiClientPlugins.soql());
 
     await expect(sf.queryAll('SELECT Id FROM Account')).rejects.toThrow(
-      'done: false なのに nextRecordsUrl がありません',
+      'nextRecordsUrl が不正です',
     );
   });
 });
@@ -432,5 +454,139 @@ describe('Slack chat — options の signal', () => {
     // @ts-expect-error -- ChatOptions は signal を受けない（callOptions に渡す）
     await expect(slack.postMessage('C1', 'hi', { signal })).rejects.toThrow(TypeError);
     expect(transport.calls).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// 3 回目のレビューで足した検査
+// ============================================================================
+
+describe('use() — 黙って捨てられるメソッドを TypeError にする', () => {
+  const base = () => salesforce(respond(null)).client;
+
+  it.each(['call', 'extend', 'use'])('予約名 %s は使えない', (name) => {
+    expect(() => base().use(() => ({ [name]: () => 'plugin' }))).toThrow(
+      `plugin のメソッド名に使えない名前です: ${name}`,
+    );
+  });
+
+  it('Symbol キーの重複も検出する', () => {
+    const key = Symbol('k');
+    const client = base().use(() => ({ [key]: () => 'a' }));
+
+    expect(() => client.use(() => ({ [key]: () => 'b' }))).toThrow('重複しています');
+  });
+
+  it('クラスのインスタンス（プロトタイプ上のメソッドは写せない）は TypeError', () => {
+    class Methods {
+      hello(): string {
+        return 'hello';
+      }
+    }
+
+    expect(() => base().use(() => new Methods())).toThrow('プレーンオブジェクト');
+  });
+
+  it('列挙できないプロパティは TypeError', () => {
+    const methods = Object.defineProperty({}, 'hidden', { value: () => 1, enumerable: false });
+
+    expect(() => base().use(() => methods)).toThrow('列挙できないプロパティ');
+  });
+});
+
+describe('soql / sobject / bulk — 作成時の引数の検査', () => {
+  it('sobject の type が空文字なら TypeError', () => {
+    expect(() => SalesforceApiClientPlugins.sobject('')).toThrow(TypeError);
+  });
+
+  it('decode / decodeRow が関数でなければ TypeError', () => {
+    // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+    expect(() => SalesforceApiClientPlugins.soql('row')).toThrow(TypeError);
+    // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+    expect(() => SalesforceApiClientPlugins.sobject('Account', {})).toThrow(TypeError);
+  });
+
+  it('bulk にクライアントでない値を渡すと TypeError', () => {
+    // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+    expect(() => SalesforceApiClientPlugins.bulkIngest({})).toThrow(TypeError);
+  });
+
+  it('id はパスに埋め込む前にエンコードする', async () => {
+    const { client, transport } = salesforce(respond({ Id: '001' }));
+    const sf = client.use(SalesforceApiClientPlugins.sobject('Account'));
+
+    await sf.findById('../Contact/003');
+
+    expect(transport.calls[0]?.url).toContain('/sobjects/Account/..%2FContact%2F003');
+  });
+});
+
+describe('ページ送りが進まない応答', () => {
+  it('queryAll: 同じ nextRecordsUrl が続くと Error', async () => {
+    const { client } = salesforce(
+      respond({ totalSize: 2, done: false, records: [], nextRecordsUrl: '/query/01g-2000' }),
+    );
+    const sf = client.use(SalesforceApiClientPlugins.soql());
+
+    await expect(sf.queryAll('SELECT Id FROM Account')).rejects.toThrow(
+      'nextRecordsUrl が不正です',
+    );
+  });
+
+  it('getResultsParallel: 同じ Sforce-Locator が続くと Error', async () => {
+    const { client } = salesforce(() =>
+      Promise.resolve(makeRawResponse({ text: 'Id\n1', headers: { 'sforce-locator': 'L1' } })),
+    );
+    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+
+    await expect(bulk.getResultsParallel('q1')).rejects.toThrow('同じ値を繰り返しました');
+  });
+
+  it('getResultsParallel: CRLF のページは CRLF で結合する', async () => {
+    const pages = [
+      { text: 'Id\r\n1\r\n', locator: 'L1' },
+      { text: 'Id\r\n2\r\n', locator: 'null' },
+    ];
+    let callIndex = 0;
+    const { client } = salesforce(() => {
+      const page = pages[callIndex++];
+      return Promise.resolve(
+        makeRawResponse({
+          text: page?.text ?? '',
+          headers: { 'Sforce-Locator': page?.locator ?? 'null' },
+        }),
+      );
+    });
+    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+
+    await expect(bulk.getResultsParallel('q1')).resolves.toBe('Id\r\n1\r\n2');
+  });
+});
+
+describe('Slack chat — options の検査', () => {
+  const slackChat = () => {
+    const transport = makeTransport(respond({ ok: true }));
+    return {
+      transport,
+      slack: SlackApiClient.create('xoxb-test', { transport }).use(SlackPlugins.chat()),
+    };
+  };
+
+  it('引数と同じ項目を options に入れると TypeError（引数を黙って上書きしない）', async () => {
+    const { slack, transport } = slackChat();
+
+    await expect(slack.postMessage('C1', 'hi', { channel: 'C2' })).rejects.toThrow(
+      'options に引数と同じ項目は指定できません: channel',
+    );
+    expect(transport.calls).toHaveLength(0);
+  });
+
+  it('options が null でもオプション無しとして送る', async () => {
+    const { slack, transport } = slackChat();
+
+    // @ts-expect-error -- JS から null が来る場合を確かめる
+    await slack.postMessage('C1', 'hi', null);
+
+    expect(transport.calls).toHaveLength(1);
   });
 });

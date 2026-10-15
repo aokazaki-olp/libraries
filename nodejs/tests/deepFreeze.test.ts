@@ -85,3 +85,31 @@ describe('deepFreeze — 循環参照・既凍結', () => {
     expect(Object.isFrozen(inner)).toBe(true);
   });
 });
+
+describe('deepFreeze — たどり方', () => {
+  it('浅く凍結済みの子の先も凍結する', () => {
+    const grandchild = { c: 1 };
+    const child = Object.freeze({ grandchild });
+
+    deepFreeze({ child });
+
+    expect(Object.isFrozen(grandchild)).toBe(true);
+  });
+
+  it('関数も受け付け、そのプロパティも凍結する', () => {
+    const options = { retries: 1 };
+    const target = Object.assign(() => 1, { options });
+
+    deepFreeze(target);
+
+    expect(Object.isFrozen(target)).toBe(true);
+    expect(Object.isFrozen(options)).toBe(true);
+  });
+
+  it('循環参照でも止まる', () => {
+    const a: Record<string, unknown> = {};
+    a['self'] = a;
+
+    expect(() => deepFreeze(a)).not.toThrow();
+  });
+});

@@ -6,8 +6,14 @@
 
 import { abortReason } from './abort.ts';
 
+/** タイマーに渡せる最大のミリ秒（これを超えると Node は 1ms に丸める） */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
+
 /**
  * 指定ミリ秒待つ。signal が中断されたら待機をやめて reject する
+ *
+ * MAX_TIMER_MS を超える待機は MAX_TIMER_MS で打ち切る（そのまま渡すと 1ms に丸められ、
+ * 指数バックオフや大きな Retry-After がほぼ待たずに再送になる）。
  *
  * @param ms - 待機ミリ秒
  * @param signal - 中断シグナル
@@ -16,10 +22,11 @@ import { abortReason } from './abort.ts';
  */
 export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
   const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+  const delay = Math.min(ms, MAX_TIMER_MS);
   if (!signal) {
     setTimeout(() => {
       resolve(undefined);
-    }, ms);
+    }, delay);
     return promise;
   }
 
@@ -35,7 +42,7 @@ export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
   const timer = setTimeout(() => {
     signal.removeEventListener('abort', onAbort);
     resolve(undefined);
-  }, ms);
+  }, delay);
   signal.addEventListener('abort', onAbort, { once: true });
   return promise;
 };

@@ -167,7 +167,9 @@ interface ClientConfig<TResponse = RawResponse> {
  *
  * @param config - クライアント設定
  * @returns クライアント（call/get/post/put/patch/delete/extend/use）。
- *   use() は plugin の戻り値が Object でないとき TypeError、call() は GET / HEAD / DELETE に body を付けると
+ *   use() は次の場合に TypeError を投げる: plugin の戻り値がプレーンオブジェクトでない・列挙できない
+ *   プロパティがある、メソッド名が call / extend / use または既存の plugin と重複する、use(name) に factory が無い。
+ *   call() は GET / HEAD / DELETE に body を付けた場合と、body と rawBody を同時に指定した場合に
  *   RequestValidationError を投げる
  * @remarks use() で追加した plugin メソッドは HTTP メソッド名（get/post/put/patch/delete）と同名でも plugin が優先される
  */
@@ -186,6 +188,9 @@ function createClient<TResponse>(
   }
   return buildClient({ ...config, responseHandler: (response: RawResponse) => response });
 }
+
+/** use() で足せない名前（クライアントの土台のメソッド） */
+const RESERVED_METHODS: ReadonlySet<PropertyKey> = new Set(['call', 'extend', 'use']);
 
 const buildClient = <TResponse>(
   config: ClientConfig<TResponse> & { responseHandler: ResponseHandler<TResponse> },
@@ -209,6 +214,10 @@ const buildClient = <TResponse>(
     const hasBody = request.body != null;
     const canHaveBody = !/^(GET|HEAD|DELETE)$/.test(method);
 
+    if (hasRawBody && hasBody) {
+      // rawBody が優先されて body が黙って捨てられるのを防ぐ
+      throw new RequestValidationError(`body と rawBody は同時に指定できません (url: ${url})`);
+    }
     if ((hasRawBody || hasBody) && !canHaveBody) {
       // 黙って捨てると、送ったつもりのデータが届かないことに気づけない
       throw new RequestValidationError(
@@ -275,15 +284,35 @@ const buildClient = <TResponse>(
       if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
         throw new TypeError('plugin の戻り値には Object を指定してください');
       }
+      // メソッドはスプレッドで写すので、プロトタイプ上のメソッド（クラスのインスタンス）と
+      // 列挙できないプロパティは黙って消える
+      const prototype: unknown = Object.getPrototypeOf(newMethods);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new TypeError('plugin の戻り値にはプレーンオブジェクトを指定してください');
+      }
+      const keys = Reflect.ownKeys(newMethods);
+      const hidden = keys.filter(
+        (key) => !Object.prototype.propertyIsEnumerable.call(newMethods, key),
+      );
+      if (hidden.length > 0) {
+        throw new TypeError(
+          `plugin の戻り値に列挙できないプロパティがあります: ${hidden.map(String).join(', ')}`,
+        );
+      }
 
+      // call / extend / use はクライアントの土台なので、plugin の同名メソッドは使われない
+      const reserved = keys.filter((key) => RESERVED_METHODS.has(key));
+      if (reserved.length > 0) {
+        throw new TypeError(
+          `plugin のメソッド名に使えない名前です: ${reserved.map(String).join(', ')}`,
+        );
+      }
       // plugin 同士の同名メソッドは後勝ちにすると、先の plugin が黙って壊れる。
       // HTTP メソッド名（delete 等）の上書きは設計どおり許す
-      const duplicated = Object.keys(newMethods).filter((key) =>
-        Object.hasOwn(additionalMethods, key),
-      );
+      const duplicated = keys.filter((key) => Object.hasOwn(additionalMethods, key));
       if (duplicated.length > 0) {
         throw new TypeError(
-          `plugin のメソッド名が既存の plugin と重複しています: ${duplicated.join(', ')}`,
+          `plugin のメソッド名が既存の plugin と重複しています: ${duplicated.map(String).join(', ')}`,
         );
       }
 

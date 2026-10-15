@@ -41,7 +41,8 @@ interface GBizInfoClientOptions {
  * @param options - オプション設定 (version 既定値は 'v2')
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
  *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
- * @throws {TypeError} token が空文字または string 以外の場合、maxRetries / baseDelayMs が不正な場合、
+ * @throws {TypeError} token が空文字または string 以外の場合、version が未対応の場合、
+ *   maxRetries / baseDelayMs が不正な場合、
  *   logger が Logger として使えない場合
  */
 const create = (token: string, options: GBizInfoClientOptions = {}): BaseClient => {

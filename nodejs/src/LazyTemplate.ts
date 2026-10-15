@@ -47,7 +47,7 @@ type CompiledEvaluator = (data: object) => unknown;
  * JSON 文字列にする（json / jsonPretty フィルター）
  *
  * 循環参照・BigInt など JSON にできない値は '{}' にする。例外にしないのは仕様
- * （LAZY_TEMPLATE_SPEC.md「安全なデータアクセス」。GAS 版・Python 版と出力を揃える）
+ * （aokazaki-olp/lt の LAZY_TEMPLATE_SPEC.md「安全なデータアクセス」。GAS 版・Python 版と出力を揃える）
  */
 const stringifyJson = (value: unknown, indent?: number): string | undefined => {
   try {
@@ -86,46 +86,46 @@ class LazyTemplate {
 
   /** プリミティブフィルター 18個 */
   static readonly PRIMITIVE_FILTERS = {
-    trim: (v: unknown) => (typeof v === 'string' ? v.trim() : v),
-    trimStart: (v: unknown) => (typeof v === 'string' ? v.trimStart() : v),
-    trimEnd: (v: unknown) => (typeof v === 'string' ? v.trimEnd() : v),
-    upper: (v: unknown) => (typeof v === 'string' ? v.toUpperCase() : v),
-    lower: (v: unknown) => (typeof v === 'string' ? v.toLowerCase() : v),
-    round: (v: unknown) => {
+    trim: (v: unknown): unknown => (typeof v === 'string' ? v.trim() : v),
+    trimStart: (v: unknown): unknown => (typeof v === 'string' ? v.trimStart() : v),
+    trimEnd: (v: unknown): unknown => (typeof v === 'string' ? v.trimEnd() : v),
+    upper: (v: unknown): unknown => (typeof v === 'string' ? v.toUpperCase() : v),
+    lower: (v: unknown): unknown => (typeof v === 'string' ? v.toLowerCase() : v),
+    round: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : v;
     },
-    int: (v: unknown) => {
+    int: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.trunc(n) : v;
     },
-    float: (v: unknown) => {
+    float: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? n : v;
     },
-    abs: (v: unknown) => {
+    abs: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.abs(n) : v;
     },
-    ceil: (v: unknown) => {
+    ceil: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.ceil(n) : v;
     },
-    floor: (v: unknown) => {
+    floor: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.floor(n) : v;
     },
-    negate: (v: unknown) => {
+    negate: (v: unknown): unknown => {
       const n = Number(v);
       return Number.isFinite(n) ? -n : v;
     },
-    length: (v: unknown) => (typeof v === 'string' || Array.isArray(v) ? v.length : 0),
+    length: (v: unknown): unknown => (typeof v === 'string' || Array.isArray(v) ? v.length : 0),
     // eslint-disable-next-line @typescript-eslint/no-base-to-string -- 任意の値を String() の既定規則で文字列にするのがこのフィルターの仕様
-    string: (v: unknown) => (v == null ? '' : String(v)),
-    boolean: (v: unknown) => Boolean(v),
-    default: (v: unknown) => (v == null ? '' : v),
-    json: (v: unknown) => stringifyJson(v),
-    jsonPretty: (v: unknown) => stringifyJson(v, 2),
+    string: (v: unknown): unknown => (v == null ? '' : String(v)),
+    boolean: (v: unknown): unknown => Boolean(v),
+    default: (v: unknown): unknown => (v == null ? '' : v),
+    json: (v: unknown): unknown => stringifyJson(v),
+    jsonPretty: (v: unknown): unknown => stringifyJson(v, 2),
   } as const satisfies FilterMap;
 
   private readonly cache: Map<string, CompiledEvaluator>;
@@ -245,9 +245,9 @@ class LazyTemplate {
     if (cached !== undefined) {
       return cached;
     }
-    const fn = this.buildEvaluator(key);
-    this.cache.set(key, fn);
-    return fn;
+    const evaluator = this.buildEvaluator(key);
+    this.cache.set(key, evaluator);
+    return evaluator;
   }
 
   /**
@@ -416,8 +416,8 @@ class LazyTemplate {
     });
 
     return (data: object) => {
-      for (const fn of compiled) {
-        const value = fn(data);
+      for (const evaluator of compiled) {
+        const value = evaluator(data);
         if (value !== undefined && value !== null && value !== '') {
           return value;
         }
@@ -472,4 +472,4 @@ class LazyTemplate {
 }
 
 export { LazyTemplate };
-export type { FilterFn, FilterMap };
+export type { CompiledEvaluator, FilterFn, FilterMap };

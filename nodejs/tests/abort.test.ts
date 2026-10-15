@@ -6,6 +6,7 @@ import { SalesforceAuth } from '../src/SalesforceAuth.ts';
 import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SlackCore, SlackWebhookClient } from '../src/SlackClient.ts';
 import { HttpError } from '../src/httpTypes.ts';
+import type { Got } from 'got';
 import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
 import { sleep } from '../src/shared/sleep.ts';
 import { makeRawResponse, makeTransport } from './helpers.ts';
@@ -21,6 +22,24 @@ describe('sleep', () => {
       const promise = sleep(100);
       await vi.advanceTimersByTimeAsync(100);
       await expect(promise).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('タイマーの上限を超える待機は上限で待つ（1ms に丸めて即座に終わらない）', async () => {
+    vi.useFakeTimers();
+    try {
+      let settled = false;
+      const promise = (async () => {
+        await sleep(2 ** 31 * 10);
+        settled = true;
+      })();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2 ** 31);
+      await promise;
+      expect(settled).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -57,7 +76,7 @@ describe('signal の伝播', () => {
 
   it('createTransport は signal を got に渡す', async () => {
     const mockGotFn = vi.fn().mockResolvedValue({ statusCode: 200, headers: {}, body: '' });
-    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as import('got').Got });
+    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as Got });
     const controller = new AbortController();
 
     await transport.fetch('https://example.com', { signal: controller.signal });
@@ -72,7 +91,7 @@ describe('signal の伝播', () => {
       controller.abort(new Error('利用者による中断'));
       throw new Error('got の AbortError');
     });
-    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as import('got').Got });
+    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as Got });
 
     await expect(
       transport.fetch('https://example.com', { signal: controller.signal }),
@@ -82,7 +101,7 @@ describe('signal の伝播', () => {
   it('createTransport は中断されていなければ got の例外をそのまま投げる', async () => {
     const original = new Error('ECONNRESET');
     const mockGotFn = vi.fn().mockRejectedValue(original);
-    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as import('got').Got });
+    const transport = HttpCore.createTransport({ got: mockGotFn as unknown as Got });
 
     await expect(
       transport.fetch('https://example.com', { signal: new AbortController().signal }),

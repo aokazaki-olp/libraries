@@ -63,7 +63,8 @@ interface RetryPlan {
 
 /** Retry-After ヘッダの秒数を読む。読めなければ 1 秒 */
 const retryAfterMs = (headers: Record<string, string | string[]>): number => {
-  const raw = headers['Retry-After'] ?? headers['retry-after'];
+  // HTTP ヘッダー名は大文字小文字を区別しない（RFC 9110）。Transport によって表記が違う
+  const raw = Object.entries(headers).find(([name]) => name.toLowerCase() === 'retry-after')?.[1];
   const value = Array.isArray(raw) ? raw[0] : raw;
   const seconds = parseInt(value ?? '', 10);
   return (Number.isFinite(seconds) && seconds > 0 ? seconds : 1) * 1000;
@@ -194,7 +195,7 @@ interface SlackApiClientOptions {
  *
  * @param token - Slack API トークン
  * @param options - オプション設定
- * @returns クライアント（call/get/post/use/extend）
+ * @returns クライアント（call/get/post/put/patch/delete/use/extend）
  * @throws {TypeError} token が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合、
  *   logger が Logger として使えない場合
  */

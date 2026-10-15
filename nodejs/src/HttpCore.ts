@@ -77,20 +77,20 @@ const normalizeHeaders = (headers: IncomingHttpHeaders): Record<string, string |
 // createTransport
 // ============================================================================
 
-interface TransportDeps {
+interface TransportDependencies {
   got?: Got;
 }
 
 /**
  * got を使った基本Transportを作成する
  *
- * @param deps - 依存注入（テスト用）
+ * @param dependencies - 依存注入（テスト用）
  * @returns Transport。返した fetch は次を投げる:
  *   RequestValidationError（method が HTTP メソッドの構文でない）・
  *   HttpError（ステータスが 2xx 以外）・中断理由（signal が中断された）・got の通信エラー
  */
-const createTransport = (deps?: TransportDeps): Transport => {
-  const http = deps?.got ?? got;
+const createTransport = (dependencies?: TransportDependencies): Transport => {
+  const http = dependencies?.got ?? got;
 
   return {
     fetch: async (url: string, options: FetchOptions = {}): Promise<RawResponse> => {
@@ -189,6 +189,10 @@ const shouldRetry = (e: unknown): boolean => {
 
 /**
  * 指数バックオフリトライ機能をTransportに追加する
+ *
+ * メソッドを問わず再送する。POST / PATCH のような冪等でないリクエストは、サーバー側で処理済みでも
+ * 応答が 5xx・通信エラーになれば再送され、ジョブやメッセージが重複しうる。避けたい場合は
+ * maxRetries: 0 で作ったクライアントで送る。
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定

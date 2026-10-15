@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.ts';
 import { HttpError, RequestValidationError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
+import type { Got } from 'got';
 import { createMockLogger, makeRawResponse, makeTransport } from './helpers.ts';
 
 // ============================================================================
@@ -350,7 +351,7 @@ describe('HttpCore — デコレータ積み重ね', () => {
 describe('HttpCore.createTransport — got 統合', () => {
   it('HTTP メソッドの構文でない method は got を呼ばずに RequestValidationError をスローする', async () => {
     const mockGotFn = vi.fn();
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await expect(transport.fetch('https://example.com', { method: 'GE T' })).rejects.toThrow(
@@ -361,7 +362,7 @@ describe('HttpCore.createTransport — got 統合', () => {
 
   it('拡張メソッド（PURGE 等）は構文が正しければ got に渡す', async () => {
     const mockGotFn = vi.fn().mockResolvedValue({ statusCode: 200, headers: {}, body: '' });
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com', { method: 'purge' });
@@ -378,7 +379,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       headers: { 'content-type': 'text/plain', 'x-empty': undefined },
       body: 'ok',
     });
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     const response = await transport.fetch('https://example.com');
@@ -393,7 +394,7 @@ describe('HttpCore.createTransport — got 統合', () => {
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
     // Got インターフェースに合わせてキャスト
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await expect(
@@ -408,7 +409,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       body: '{"ok":true,"data":42}',
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     const result = await transport.fetch('https://example.com/api');
@@ -423,7 +424,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       body: 'plain text response',
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     const result = await transport.fetch('https://example.com/text');
@@ -438,7 +439,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       body: '{"result":"ok"}',
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com/form', {
@@ -458,7 +459,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       body: '{"result":"ok"}',
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com/json', {
@@ -478,7 +479,7 @@ describe('HttpCore.createTransport — got 統合', () => {
       body: '',
     };
     const mockGotFn = vi.fn().mockResolvedValue(mockResponse);
-    const mockGot = mockGotFn as unknown as import('got').Got;
+    const mockGot = mockGotFn as unknown as Got;
 
     const transport = HttpCore.createTransport({ got: mockGot });
     await transport.fetch('https://example.com/', { timeoutMs: 3000 });

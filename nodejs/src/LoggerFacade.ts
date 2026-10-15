@@ -6,7 +6,7 @@
  * 対応する実装:
  *   - console (JavaScript標準)
  *   - winston / pino / bunyan (Node.js)
- *   - GAS Logger / BBLog (GAS)
+ *   - log だけを持つオブジェクト（GAS の Logger / BBLog と同じ形）
  *   - java.util.logging互換
  */
 

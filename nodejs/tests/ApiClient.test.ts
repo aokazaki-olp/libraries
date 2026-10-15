@@ -152,6 +152,13 @@ describe('ApiClient.createClient — HTTPメソッドショートカット', () 
     expect(transport.calls[0]?.options?.method).toBe('DELETE');
   });
 
+  it('body と rawBody を同時に指定すると RequestValidationError（body を黙って捨てない）', async () => {
+    await expect(client.post('/users', { a: 1 }, { rawBody: 'x' })).rejects.toThrow(
+      RequestValidationError,
+    );
+    expect(transport.calls).toHaveLength(0);
+  });
+
   it('引数で渡すもの（body・query 等）はオプションに書けない', async () => {
     // @ts-expect-error -- GET の body は型で受けない（実行時は RequestValidationError）
     await expect(client.get('/users', undefined, { body: { x: 1 } })).rejects.toThrow(

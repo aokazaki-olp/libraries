@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as crypto from 'node:crypto';
 import { SalesforceAuth } from '../src/SalesforceAuth.ts';
-import { HttpError } from '../src/httpTypes.ts';
+import { HttpError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { FetchOptions, RawResponse, Transport } from '../src/httpTypes.ts';
 import type { Signer } from '../src/SalesforceAuth.ts';
 import { makeRawResponse } from './helpers.ts';
@@ -15,7 +15,7 @@ const makeMockSigner = () => {
     Buffer.from('mock-signature'),
   );
   const base64EncodeWebSafe = vi.fn((bytes: Buffer) => bytes.toString('base64url'));
-  const newBlob = vi.fn((str: string) => Buffer.from(str, 'utf-8'));
+  const newBlob = vi.fn((text: string) => Buffer.from(text, 'utf-8'));
   return { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } satisfies Signer;
 };
 
@@ -84,6 +84,7 @@ describe('SalesforceAuth.getAccessTokenByJwt — バリデーション', () => {
     ['consumerKey が空文字', { ...VALID_OPTIONS, consumerKey: '' }, 'consumerKey'],
     [
       'consumerKey が非string',
+      // 型に反する値を渡して実行時の検査を確かめる（表の行なので @ts-expect-error を置ける位置が無い）
       { ...VALID_OPTIONS, consumerKey: 123 as unknown as string },
       'consumerKey',
     ],
@@ -242,6 +243,38 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
     }
     expect(caughtError.cause).toBe(rootCause);
     expect(caughtError.request?.body).toMatchObject({ assertion: '[REDACTED]' });
+  });
+
+  it.each([
+    [
+      'HttpError の cause',
+      (inner: HttpError) =>
+        new HttpError('HTTPエラー 400', 400, null, {}, '', undefined, { cause: inner }),
+    ],
+    [
+      'RetryExhaustedError の cause',
+      (inner: HttpError) => new RetryExhaustedError('上限', { cause: inner }),
+    ],
+  ])('cause の連鎖の奥にある assertion も伏せる（%s）', async (_label, wrap) => {
+    const signer = makeMockSigner();
+    const transport: Transport = {
+      fetch: vi.fn(async (_url: string, options?: FetchOptions) => {
+        throw wrap(new HttpError('HTTPエラー 503', 503, null, {}, '', { body: options?.payload }));
+      }),
+    };
+
+    const caughtError: unknown = await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, {
+      transport,
+      signer,
+    }).catch((e: unknown) => e);
+
+    if (!Error.isError(caughtError) || !(caughtError.cause instanceof HttpError)) {
+      throw new Error('cause に HttpError を持つ例外が投げられていません');
+    }
+    expect(caughtError.cause.request?.body).toMatchObject({ assertion: '[REDACTED]' });
+    expect(JSON.stringify(caughtError.cause.request)).not.toContain(
+      Buffer.from('mock-signature').toString('base64url'),
+    );
   });
 
   it('JWT の signingInput が header.claims の Base64URL 連結形式になる', async () => {

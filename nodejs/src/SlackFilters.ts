@@ -16,12 +16,12 @@
 // eslint-disable-next-line @typescript-eslint/no-base-to-string -- オブジェクトが [object Object] になるのも仕様どおり
 const toString = (v: unknown): string => (v == null ? '' : String(v));
 
-const processList = (v: unknown, formatFn: (line: string) => string): string => {
+const processList = (v: unknown, formatLine: (line: string) => string): string => {
   if (v == null || v === '') {
     return '';
   }
   const lines = Array.isArray(v) ? v.map(String) : toString(v).split(/\r?\n/);
-  return lines.map(formatFn).join('\n');
+  return lines.map(formatLine).join('\n');
 };
 
 // ============================================================================

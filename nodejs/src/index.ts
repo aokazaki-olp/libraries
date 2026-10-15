@@ -28,7 +28,7 @@ export type { Logger } from './LoggerFacade.ts';
 // ============================================================================
 
 export { LazyTemplate } from './LazyTemplate.ts';
-export type { FilterFn, FilterMap } from './LazyTemplate.ts';
+export type { CompiledEvaluator, FilterFn, FilterMap } from './LazyTemplate.ts';
 export { SlackFilters } from './SlackFilters.ts';
 export type { SlackFilterMap } from './SlackFilters.ts';
 export { deepFreeze } from './deepFreeze.ts';
@@ -41,7 +41,7 @@ export { SalesforceApiClient } from './SalesforceApiClient.ts';
 export type { SalesforceClientOptions } from './SalesforceApiClient.ts';
 
 export { GBizInfoApiClient } from './GBizInfoApiClient.ts';
-export type { GBizInfoClientOptions } from './GBizInfoApiClient.ts';
+export type { GBizInfoClientOptions, GBizInfoApiVersion } from './GBizInfoApiClient.ts';
 
 export { InvoiceApiClient } from './InvoiceApiClient.ts';
 export type {
