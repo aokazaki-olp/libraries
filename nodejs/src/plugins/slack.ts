@@ -29,6 +29,8 @@ export interface ChatOptions {
   username?: string;
   icon_emoji?: string;
   icon_url?: string;
+  /** 中断シグナルは callOptions に渡す。ここに入れると Slack への本文に混ざる */
+  signal?: never;
   [key: string]: unknown;
 }
 
@@ -41,6 +43,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション（blocks, thread_ts 等）
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答（ok / channel / ts / message）
+   * @throws {TypeError} options に signal を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   postMessage(
@@ -56,6 +59,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション（text, thread_ts 等）
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答（ok / channel / ts / message）
+   * @throws {TypeError} options に signal を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   postBlocks(
@@ -72,6 +76,7 @@ export interface SlackChatMethods {
    * @param options - 追加オプション
    * @param callOptions - 中断シグナル等
    * @returns Slack の応答
+   * @throws {TypeError} options に signal を入れた場合
    * @throws {SlackApiError} Slack が ok:false を返した場合
    */
   update(
@@ -131,6 +136,24 @@ export interface SlackReactionMethods {
 // ============================================================================
 
 /**
+ * chat.* の本文を組み立てる
+ *
+ * options は利用者がそのまま本文に展開するもので、型が通っていても JS からは何でも入りうる。
+ * signal を混ぜると JSON にされて Slack へ送られ、中断も効かないので先に落とす。
+ *
+ * @throws {TypeError} options に signal がある場合
+ */
+const chatBody = (
+  fields: Record<string, unknown>,
+  options: ChatOptions,
+): Record<string, unknown> => {
+  if (Object.hasOwn(options, 'signal')) {
+    throw new TypeError('signal は options ではなく callOptions に指定してください');
+  }
+  return { ...fields, ...options };
+};
+
+/**
  * Slack チャットメッセージ操作プラグイン（chat.* API）
  *
  * @returns postMessage / postBlocks / update / delete を追加するプラグイン
@@ -139,25 +162,37 @@ export interface SlackReactionMethods {
  *   await slack.postMessage('C123456', 'Hello!');
  */
 const chat = (): Plugin<unknown, SlackChatMethods> => (client) => ({
-  postMessage: (channel, text, options = {}, callOptions) =>
-    client.post(
-      '/chat.postMessage',
-      { channel, text, ...options },
-      { signal: callOptions?.signal },
-    ),
+  postMessage: async (channel, text, options = {}, callOptions) =>
+    await client.call({
+      method: 'POST',
+      endpoint: '/chat.postMessage',
+      body: chatBody({ channel, text }, options),
+      signal: callOptions?.signal,
+    }),
 
-  postBlocks: (channel, blocks, options = {}, callOptions) =>
-    client.post(
-      '/chat.postMessage',
-      { channel, blocks, ...options },
-      { signal: callOptions?.signal },
-    ),
+  postBlocks: async (channel, blocks, options = {}, callOptions) =>
+    await client.call({
+      method: 'POST',
+      endpoint: '/chat.postMessage',
+      body: chatBody({ channel, blocks }, options),
+      signal: callOptions?.signal,
+    }),
 
-  update: (channel, ts, text, options = {}, callOptions) =>
-    client.post('/chat.update', { channel, ts, text, ...options }, { signal: callOptions?.signal }),
+  update: async (channel, ts, text, options = {}, callOptions) =>
+    await client.call({
+      method: 'POST',
+      endpoint: '/chat.update',
+      body: chatBody({ channel, ts, text }, options),
+      signal: callOptions?.signal,
+    }),
 
   delete: (channel, ts, callOptions) =>
-    client.post('/chat.delete', { channel, ts }, { signal: callOptions?.signal }),
+    client.call({
+      method: 'POST',
+      endpoint: '/chat.delete',
+      body: { channel, ts },
+      signal: callOptions?.signal,
+    }),
 });
 
 // ============================================================================
@@ -174,10 +209,20 @@ const chat = (): Plugin<unknown, SlackChatMethods> => (client) => ({
  */
 const reactions = (): Plugin<unknown, SlackReactionMethods> => (client) => ({
   addReaction: (channel, timestamp, name, callOptions) =>
-    client.post('/reactions.add', { channel, timestamp, name }, { signal: callOptions?.signal }),
+    client.call({
+      method: 'POST',
+      endpoint: '/reactions.add',
+      body: { channel, timestamp, name },
+      signal: callOptions?.signal,
+    }),
 
   removeReaction: (channel, timestamp, name, callOptions) =>
-    client.post('/reactions.remove', { channel, timestamp, name }, { signal: callOptions?.signal }),
+    client.call({
+      method: 'POST',
+      endpoint: '/reactions.remove',
+      body: { channel, timestamp, name },
+      signal: callOptions?.signal,
+    }),
 });
 
 // ============================================================================

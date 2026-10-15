@@ -186,7 +186,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
 
   it('getFailedResults() は /failedResults を呼ぶ', async () => {
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: 'sf__Id,sf__Error\n001xxx,FIELD_REQUIRED' })),
+      Promise.resolve(makeRawResponse({ text: 'sf__Id,sf__Error\n001xxx,FIELD_REQUIRED' })),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
@@ -197,7 +197,7 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
   });
 
   it('getUnprocessedRecords() は /unprocessedrecords を呼ぶ', async () => {
-    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ body: SAMPLE_CSV })));
+    const transport = makeTransport(() => Promise.resolve(makeRawResponse({ text: SAMPLE_CSV })));
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
@@ -214,16 +214,6 @@ describe('SalesforceApiClientPlugins.bulkIngest — 結果取得', () => {
     const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
 
     await expect(bulk.getSuccessfulResults('job001')).resolves.toBe('');
-  });
-
-  it('CSV でない応答（JSON オブジェクト）は Error をスローする', async () => {
-    const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: { errorCode: 'X' } })),
-    );
-    const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
-    const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
-
-    await expect(bulk.getFailedResults('job001')).rejects.toThrow('CSV を期待した応答');
   });
 });
 
@@ -339,7 +329,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — abort / deleteJob / getJob / 
 describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
   it('CSV を返し nextLocator が null の場合（最終ページ）', async () => {
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: SAMPLE_CSV, headers: { 'Sforce-Locator': 'null' } })),
+      Promise.resolve(makeRawResponse({ text: SAMPLE_CSV, headers: { 'Sforce-Locator': 'null' } })),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -354,7 +344,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
   it('Sforce-Locator ヘッダーがある場合 nextLocator を返す', async () => {
     const transport = makeTransport(() =>
       Promise.resolve(
-        makeRawResponse({ body: SAMPLE_CSV, headers: { 'Sforce-Locator': 'LOCATOR_ABC' } }),
+        makeRawResponse({ text: SAMPLE_CSV, headers: { 'Sforce-Locator': 'LOCATOR_ABC' } }),
       ),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
@@ -367,7 +357,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
 
   it('maxRecords / locator クエリパラメータが URL に付与される', async () => {
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: SAMPLE_CSV, headers: {} })),
+      Promise.resolve(makeRawResponse({ text: SAMPLE_CSV, headers: {} })),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -382,7 +372,7 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResults', () => {
 describe('SalesforceApiClientPlugins.bulkQuery — getResultsParallel', () => {
   it('1ページのみの場合はそのまま返す', async () => {
     const transport = makeTransport(() =>
-      Promise.resolve(makeRawResponse({ body: SAMPLE_CSV, headers: { 'Sforce-Locator': 'null' } })),
+      Promise.resolve(makeRawResponse({ text: SAMPLE_CSV, headers: { 'Sforce-Locator': 'null' } })),
     );
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -401,7 +391,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResultsParallel', () => {
       const locator = callCount === 0 ? 'LOC_NEXT' : 'null';
       const body = callCount === 0 ? page1 : page2;
       callCount++;
-      return Promise.resolve(makeRawResponse({ body, headers: { 'Sforce-Locator': locator } }));
+      return Promise.resolve(
+        makeRawResponse({ text: body, headers: { 'Sforce-Locator': locator } }),
+      );
     });
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -617,7 +609,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResultsParallel エッジ�
       const locator = callCount === 0 ? 'LOC_NEXT' : 'null';
       const body = callCount === 0 ? page1 : page2;
       callCount++;
-      return Promise.resolve(makeRawResponse({ body, headers: { 'Sforce-Locator': locator } }));
+      return Promise.resolve(
+        makeRawResponse({ text: body, headers: { 'Sforce-Locator': locator } }),
+      );
     });
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);
@@ -635,7 +629,9 @@ describe('SalesforceApiClientPlugins.bulkQuery — getResultsParallel エッジ�
       const locator = callCount === 0 ? 'LOC_NEXT' : 'null';
       const body = callCount === 0 ? page1 : page2;
       callCount++;
-      return Promise.resolve(makeRawResponse({ body, headers: { 'Sforce-Locator': locator } }));
+      return Promise.resolve(
+        makeRawResponse({ text: body, headers: { 'Sforce-Locator': locator } }),
+      );
     });
     const sf = SalesforceApiClient.create(BASE_URL, TOKEN, { transport });
     const query = SalesforceApiClientPlugins.bulkQuery(sf);

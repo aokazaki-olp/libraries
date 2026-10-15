@@ -40,7 +40,7 @@
  */
 
 import type { BaseClient, Plugin } from '../ApiClient.ts';
-import type { CallOptions, Decoder, FetchOptions } from '../httpTypes.ts';
+import type { CallOptions, Decoder, FetchOptions, RawResponse } from '../httpTypes.ts';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 // shared は末端の共有ユーティリティ（コアにもクライアントにも依存しない）。
@@ -211,7 +211,8 @@ export interface SoqlMethods<TRow> {
    * @param soql - SOQL クエリ文字列
    * @param callOptions - 中断シグナル等
    * @returns 全ページのレコード（decodeRow を通した値）
-   * @throws {Error} 応答が SOQL の結果形式でない場合。decodeRow が投げた例外もそのまま伝わる
+   * @throws {Error} 応答が SOQL の結果形式でない場合、または done: false なのに nextRecordsUrl が
+   *   無い場合。decodeRow が投げた例外もそのまま伝わる
    */
   queryAll(soql: string, callOptions?: CallOptions): Promise<TRow[]>;
 }
@@ -398,20 +399,33 @@ const toJobList = <TJob>(
 };
 
 /**
- * CSV を返すエンドポイントの応答を文字列として受ける
+ * CSV を返すエンドポイントを GET し、ボディを Transport が受けたままの文字列で返す
  *
- * 空のボディは Transport が null にするので空文字に戻す。
+ * responseHandler が返すのは JSON として解釈を試みた後の値で、1 列 0 行の CSV（`"Id"`）は
+ * JSON 文字列として解釈され引用符が落ちる。そのため Transport を包んで生の text を拾う。
+ * 応答ヘッダー（Sforce-Locator 等）も同じ経路で返す。
  *
- * @throws {Error} 文字列でも空でもない応答の場合
+ * extend() で作るクライアントは use() で足したメソッドを持たないが、ここでは call しか使わない。
  */
-const toCsv = (body: unknown): string => {
-  if (typeof body === 'string') {
-    return body;
+const fetchCsv = async (
+  client: BaseClient,
+  endpoint: string,
+  query: Record<string, unknown> | undefined,
+  signal: AbortSignal | undefined,
+): Promise<{ csv: string; headers: RawResponse['headers'] }> => {
+  let captured: RawResponse | undefined;
+  const capturingClient = client.extend((transport) => ({
+    fetch: async (url: string, fetchOptions?: FetchOptions) => {
+      captured = await transport.fetch(url, fetchOptions);
+      return captured;
+    },
+  }));
+  await capturingClient.call({ method: 'GET', endpoint, query, signal });
+  if (captured === undefined) {
+    // Transport を経由せずに応答が返ることは無いが、型では追えないので明示的に落とす
+    throw new Error(`CSV の応答を受け取れませんでした (endpoint: ${endpoint})`);
   }
-  if (body == null) {
-    return '';
-  }
-  throw new Error(`CSV を期待した応答に ${typeof body} が返りました`);
+  return { csv: captured.text, headers: captured.headers };
 };
 
 /** 複数 CSV ページを結合する（先頭ページのヘッダー行を保持し、以降のヘッダー行を除去） */
@@ -523,7 +537,12 @@ const buildSoql =
   (client) => ({
     query: async (soqlQuery, callOptions) =>
       toSoqlResult(
-        await client.get('/query', { q: soqlQuery }, { signal: callOptions?.signal }),
+        await client.call({
+          method: 'GET',
+          endpoint: '/query',
+          query: { q: soqlQuery },
+          signal: callOptions?.signal,
+        }),
         decodeRow,
       ),
 
@@ -531,16 +550,23 @@ const buildSoql =
       const signal = callOptions?.signal;
       const records: TRow[] = [];
       let result = toSoqlResult(
-        await client.get('/query', { q: soqlQuery }, { signal }),
+        await client.call({ method: 'GET', endpoint: '/query', query: { q: soqlQuery }, signal }),
         decodeRow,
       );
       records.push(...result.records);
-      while (!result.done && result.nextRecordsUrl) {
+      while (!result.done) {
+        if (result.nextRecordsUrl === undefined) {
+          // ここで止めると途中までの records を全件として返してしまう
+          throw new Error('SOQL の応答が done: false なのに nextRecordsUrl がありません');
+        }
         // SF が返す nextRecordsUrl は /services/data/vXX.X/query/... の絶対パス形式。
         // ApiClient は baseUrl (/services/data/vXX.X) に endpoint を追記するため、
         // 重複する先頭部分を除去して相対パス (/query/...) に変換する。
         const nextPath = result.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '');
-        result = toSoqlResult(await client.get(nextPath, undefined, { signal }), decodeRow);
+        result = toSoqlResult(
+          await client.call({ method: 'GET', endpoint: nextPath, signal }),
+          decodeRow,
+        );
         records.push(...result.records);
       }
       return records;
@@ -596,19 +622,39 @@ const buildSobject =
   (client) => ({
     findById: async (id, callOptions) =>
       decode(
-        await client.get(`/sobjects/${type}/${id}`, undefined, { signal: callOptions?.signal }),
+        await client.call({
+          method: 'GET',
+          endpoint: `/sobjects/${type}/${id}`,
+          signal: callOptions?.signal,
+        }),
       ),
 
     create: async (data, callOptions) =>
-      toCreateResult(await client.post(`/sobjects/${type}`, data, { signal: callOptions?.signal })),
+      toCreateResult(
+        await client.call({
+          method: 'POST',
+          endpoint: `/sobjects/${type}`,
+          body: data,
+          signal: callOptions?.signal,
+        }),
+      ),
 
     // PATCH / DELETE は 204 No Content を返すので、戻り値は無い
     update: async (id, data, callOptions) => {
-      await client.patch(`/sobjects/${type}/${id}`, data, { signal: callOptions?.signal });
+      await client.call({
+        method: 'PATCH',
+        endpoint: `/sobjects/${type}/${id}`,
+        body: data,
+        signal: callOptions?.signal,
+      });
     },
 
     delete: async (id, callOptions) => {
-      await client.delete(`/sobjects/${type}/${id}`, { signal: callOptions?.signal });
+      await client.call({
+        method: 'DELETE',
+        endpoint: `/sobjects/${type}/${id}`,
+        signal: callOptions?.signal,
+      });
     },
   });
 
@@ -684,7 +730,14 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
     options: CreateIngestJobOptions,
     callOptions?: CallOptions,
   ): Promise<IngestJobInfo> =>
-    toIngestJob(await client.post('/jobs/ingest', options, { signal: callOptions?.signal }));
+    toIngestJob(
+      await client.call({
+        method: 'POST',
+        endpoint: '/jobs/ingest',
+        body: options,
+        signal: callOptions?.signal,
+      }),
+    );
 
   /**
    * CSV データをアップロードする（Content-Type: text/csv）
@@ -708,7 +761,12 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
     callOptions?: CallOptions,
   ): Promise<IngestJobInfo> =>
     toIngestJob(
-      await client.patch(`/jobs/ingest/${jobId}`, { state }, { signal: callOptions?.signal }),
+      await client.call({
+        method: 'PATCH',
+        endpoint: `/jobs/ingest/${jobId}`,
+        body: { state },
+        signal: callOptions?.signal,
+      }),
     );
 
   /**
@@ -740,7 +798,11 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param callOptions - 中断シグナル等
    */
   const deleteJob = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
-    await client.delete(`/jobs/ingest/${jobId}`, { signal: callOptions?.signal });
+    await client.call({
+      method: 'DELETE',
+      endpoint: `/jobs/ingest/${jobId}`,
+      signal: callOptions?.signal,
+    });
   };
 
   /**
@@ -752,7 +814,11 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    */
   const getJob = async (jobId: string, callOptions?: CallOptions): Promise<IngestJobInfo> =>
     toIngestJob(
-      await client.get(`/jobs/ingest/${jobId}`, undefined, { signal: callOptions?.signal }),
+      await client.call({
+        method: 'GET',
+        endpoint: `/jobs/ingest/${jobId}`,
+        signal: callOptions?.signal,
+      }),
     );
 
   /**
@@ -768,20 +834,24 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
   ): Promise<ListIngestJobsResponse> =>
     toJobList(
       // { ...undefined } は空オブジェクトになるため options が undefined でも安全
-      await client.get('/jobs/ingest', { ...options }, { signal: callOptions?.signal }),
+      await client.call({
+        method: 'GET',
+        endpoint: '/jobs/ingest',
+        query: { ...options },
+        signal: callOptions?.signal,
+      }),
       toIngestJob,
       INGEST_LABEL,
     );
 
   const getCsv = async (path: string, callOptions?: CallOptions): Promise<string> =>
-    toCsv(await client.get(path, undefined, { signal: callOptions?.signal }));
+    (await fetchCsv(client, path, undefined, callOptions?.signal)).csv;
 
   /**
    * 処理成功レコードの結果 CSV を取得する
    * @param jobId - 取得対象ジョブ ID
    * @param callOptions - 中断シグナル等
    * @returns CSV 文字列
-   * @throws {Error} 応答が CSV でない場合
    */
   const getSuccessfulResults = (jobId: string, callOptions?: CallOptions): Promise<string> =>
     getCsv(`/jobs/ingest/${jobId}/successfulResults`, callOptions);
@@ -791,7 +861,6 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @param callOptions - 中断シグナル等
    * @returns CSV 文字列
-   * @throws {Error} 応答が CSV でない場合
    */
   const getFailedResults = (jobId: string, callOptions?: CallOptions): Promise<string> =>
     getCsv(`/jobs/ingest/${jobId}/failedResults`, callOptions);
@@ -801,7 +870,6 @@ const bulkIngest = (client: BaseClient): BulkIngestPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @param callOptions - 中断シグナル等
    * @returns CSV 文字列
-   * @throws {Error} 応答が CSV でない場合
    */
   const getUnprocessedRecords = (jobId: string, callOptions?: CallOptions): Promise<string> =>
     getCsv(`/jobs/ingest/${jobId}/unprocessedrecords`, callOptions);
@@ -881,7 +949,14 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
     options: CreateQueryJobOptions,
     callOptions?: CallOptions,
   ): Promise<QueryJobInfo> =>
-    toQueryJob(await client.post('/jobs/query', options, { signal: callOptions?.signal }));
+    toQueryJob(
+      await client.call({
+        method: 'POST',
+        endpoint: '/jobs/query',
+        body: options,
+        signal: callOptions?.signal,
+      }),
+    );
 
   /**
    * ジョブを中断する
@@ -893,7 +968,11 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param callOptions - 中断シグナル等
    */
   const abort = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
-    await client.delete(`/jobs/query/${jobId}`, { signal: callOptions?.signal });
+    await client.call({
+      method: 'DELETE',
+      endpoint: `/jobs/query/${jobId}`,
+      signal: callOptions?.signal,
+    });
   };
 
   /**
@@ -906,7 +985,11 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param callOptions - 中断シグナル等
    */
   const deleteJob = async (jobId: string, callOptions?: CallOptions): Promise<void> => {
-    await client.delete(`/jobs/query/${jobId}`, { signal: callOptions?.signal });
+    await client.call({
+      method: 'DELETE',
+      endpoint: `/jobs/query/${jobId}`,
+      signal: callOptions?.signal,
+    });
   };
 
   /**
@@ -918,7 +1001,11 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    */
   const getJob = async (jobId: string, callOptions?: CallOptions): Promise<QueryJobInfo> =>
     toQueryJob(
-      await client.get(`/jobs/query/${jobId}`, undefined, { signal: callOptions?.signal }),
+      await client.call({
+        method: 'GET',
+        endpoint: `/jobs/query/${jobId}`,
+        signal: callOptions?.signal,
+      }),
     );
 
   /**
@@ -934,7 +1021,12 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
   ): Promise<ListQueryJobsResponse> =>
     toJobList(
       // { ...undefined } は空オブジェクトになるため options が undefined でも安全
-      await client.get('/jobs/query', { ...options }, { signal: callOptions?.signal }),
+      await client.call({
+        method: 'GET',
+        endpoint: '/jobs/query',
+        query: { ...options },
+        signal: callOptions?.signal,
+      }),
       toQueryJob,
       QUERY_LABEL,
     );
@@ -947,31 +1039,11 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @param options - maxRecords（最大取得件数）・locator（前回の nextLocator）・signal
    * @returns CSV 文字列と次ページのロケーター
-   * @throws {Error} 応答が CSV でない場合
    */
   const getResults = async (
     jobId: string,
     options: GetResultsOptions = {},
   ): Promise<QueryResultsPage> => {
-    let nextLocator: string | null = null;
-
-    // Sforce-Locator レスポンスヘッダーをキャプチャするために transport をラップする。
-    // SalesforceApiClient の responseHandler は response.body のみを返すため
-    // ヘッダーは transport デコレータ層で取得する必要がある。
-    // extend() は additionalMethods をリセットするが、capturingClient は .get() のみ使用するため問題ない。
-    const capturingClient = client.extend((transport) => ({
-      fetch: async (url: string, fetchOptions?: FetchOptions) => {
-        const response = await transport.fetch(url, fetchOptions);
-        // HTTP ヘッダーは RFC 7230 でケースインセンシティブなため、小文字正規化して検索する
-        const locatorEntry = Object.entries(response.headers).find(
-          ([name]) => name.toLowerCase() === 'sforce-locator',
-        );
-        const rawLocator = locatorEntry?.[1];
-        nextLocator = typeof rawLocator === 'string' && rawLocator !== 'null' ? rawLocator : null;
-        return response;
-      },
-    }));
-
     const query: Record<string, unknown> = {};
     if (options.maxRecords != null) {
       query['maxRecords'] = options.maxRecords;
@@ -980,11 +1052,18 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
       query['locator'] = options.locator;
     }
 
-    const csv = toCsv(
-      await capturingClient.get(`/jobs/query/${jobId}/results`, query, {
-        signal: options.signal,
-      }),
+    const { csv, headers } = await fetchCsv(
+      client,
+      `/jobs/query/${jobId}/results`,
+      query,
+      options.signal,
     );
+    // HTTP ヘッダー名は大文字小文字を区別しない（RFC 9110）ので小文字にそろえて探す
+    const locatorEntry = Object.entries(headers).find(
+      ([name]) => name.toLowerCase() === 'sforce-locator',
+    );
+    const rawLocator = locatorEntry?.[1];
+    const nextLocator = typeof rawLocator === 'string' && rawLocator !== 'null' ? rawLocator : null;
     return { csv, nextLocator };
   };
 
@@ -997,7 +1076,6 @@ const bulkQuery = (client: BaseClient): BulkQueryPlugin => {
    * @param jobId - 取得対象ジョブ ID
    * @param options - signal
    * @returns ヘッダー行 1 行 + 全データ行を結合した CSV 文字列
-   * @throws {Error} 応答が CSV でない場合
    */
   const getResultsParallel = async (
     jobId: string,

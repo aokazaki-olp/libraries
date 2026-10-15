@@ -267,6 +267,17 @@ const buildClient = <TResponse>(
         throw new TypeError('plugin の戻り値には Object を指定してください');
       }
 
+      // plugin 同士の同名メソッドは後勝ちにすると、先の plugin が黙って壊れる。
+      // HTTP メソッド名（delete 等）の上書きは設計どおり許す
+      const duplicated = Object.keys(newMethods).filter((key) =>
+        Object.hasOwn(additionalMethods, key),
+      );
+      if (duplicated.length > 0) {
+        throw new TypeError(
+          `plugin のメソッド名が既存の plugin と重複しています: ${duplicated.join(', ')}`,
+        );
+      }
+
       return createExtended({ ...additionalMethods, ...newMethods });
     }
 

@@ -353,3 +353,84 @@ describe('waitForCompletion の待ち時間の設定', () => {
     expect(transport.calls).toHaveLength(1);
   });
 });
+
+// ============================================================================
+// プラグインの合成
+// ============================================================================
+
+describe('use() — プラグイン同士のメソッド名の衝突', () => {
+  it('既に足したメソッド名を別のプラグインが定義すると TypeError', () => {
+    const { client } = salesforce(respond(null));
+    const sf = client.use(SalesforceApiClientPlugins.sobject('Account'));
+
+    expect(() => sf.use(SalesforceApiClientPlugins.sobject('Contact'))).toThrow(
+      'plugin のメソッド名が既存の plugin と重複しています: findById, create, update, delete',
+    );
+  });
+
+  it('use(name, fn) でも同じ名前は TypeError', () => {
+    const { client } = salesforce(respond(null));
+    const sf = client.use('ping', () => () => 'pong');
+
+    expect(() => sf.use('ping', () => () => 'pong')).toThrow(TypeError);
+  });
+
+  it('他のプラグインが HTTP メソッド名を上書きしても、プラグインの通信は影響を受けない', async () => {
+    const { client, transport } = salesforce(respond({ totalSize: 0, done: true, records: [] }));
+    const sf = client
+      .use(() => ({ get: () => Promise.reject(new Error('上書きされた get が呼ばれた')) }))
+      .use(SalesforceApiClientPlugins.soql());
+
+    await expect(sf.query('SELECT Id FROM Account')).resolves.toEqual({
+      totalSize: 0,
+      done: true,
+      records: [],
+    });
+    expect(transport.calls[0]?.url).toContain('/query');
+  });
+});
+
+describe('soql.queryAll — 応答の不整合', () => {
+  it('done: false なのに nextRecordsUrl が無いと Error（途中までを全件として返さない）', async () => {
+    const { client } = salesforce(respond({ totalSize: 2, done: false, records: [{ Id: '001' }] }));
+    const sf = client.use(SalesforceApiClientPlugins.soql());
+
+    await expect(sf.queryAll('SELECT Id FROM Account')).rejects.toThrow(
+      'done: false なのに nextRecordsUrl がありません',
+    );
+  });
+});
+
+describe('CSV の取得は Transport が受けた文字列をそのまま返す', () => {
+  // 1 列 0 行の CSV は JSON の文字列としても読めてしまう
+  const csvResponse =
+    (text: string, headers: RawResponse['headers'] = {}) =>
+    () =>
+      Promise.resolve(makeRawResponse({ body: JSON.parse(text), text, headers }));
+
+  it('bulkIngest の結果 CSV', async () => {
+    const { client } = salesforce(csvResponse('"Id"'));
+    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+
+    await expect(bulk.getSuccessfulResults('j1')).resolves.toBe('"Id"');
+  });
+
+  it('bulkQuery の結果 CSV と Sforce-Locator', async () => {
+    const { client } = salesforce(csvResponse('"Id"', { 'Sforce-Locator': 'LOC1' }));
+    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+
+    await expect(bulk.getResults('q1')).resolves.toEqual({ csv: '"Id"', nextLocator: 'LOC1' });
+  });
+});
+
+describe('Slack chat — options の signal', () => {
+  it('options に signal を入れると TypeError（本文に混ぜて送らない）', async () => {
+    const transport = makeTransport(respond({ ok: true }));
+    const slack = SlackApiClient.create('xoxb-test', { transport }).use(SlackPlugins.chat());
+    const { signal } = new AbortController();
+
+    // @ts-expect-error -- ChatOptions は signal を受けない（callOptions に渡す）
+    await expect(slack.postMessage('C1', 'hi', { signal })).rejects.toThrow(TypeError);
+    expect(transport.calls).toHaveLength(0);
+  });
+});
