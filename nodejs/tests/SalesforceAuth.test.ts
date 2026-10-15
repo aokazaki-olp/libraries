@@ -11,12 +11,12 @@ import { makeRawResponse } from './helpers.ts';
 // ============================================================================
 
 const makeMockSigner = () => {
-  const computeRsaSha256Signature = vi.fn((_input: string, _privateKey: string) =>
+  const signRsaSha256 = vi.fn((_input: string, _privateKey: string) =>
     Buffer.from('mock-signature'),
   );
-  const base64EncodeWebSafe = vi.fn((bytes: Buffer) => bytes.toString('base64url'));
-  const newBlob = vi.fn((text: string) => Buffer.from(text, 'utf-8'));
-  return { computeRsaSha256Signature, base64EncodeWebSafe, newBlob } satisfies Signer;
+  const encodeBase64Url = vi.fn((bytes: Buffer) => bytes.toString('base64url'));
+  const toBytes = vi.fn((text: string) => Buffer.from(text, 'utf-8'));
+  return { signRsaSha256, encodeBase64Url, toBytes } satisfies Signer;
 };
 
 const makeMockTransport = (
@@ -166,8 +166,8 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const blobCalls = signer.newBlob.mock.calls;
-    const claimsJson = String(blobCalls[1]?.[0]); // 2回目の呼び出しがclaimsのJSON
+    const toBytesCalls = signer.toBytes.mock.calls;
+    const claimsJson = String(toBytesCalls[1]?.[0]); // 2回目の呼び出しがclaimsのJSON
     const claims: unknown = JSON.parse(claimsJson);
 
     expect(claims).toMatchObject({
@@ -285,7 +285,7 @@ describe('SalesforceAuth.getAccessTokenByJwt — 正常系', () => {
 
     await SalesforceAuth.getAccessTokenByJwt(VALID_OPTIONS, { transport, signer });
 
-    const signCalls = signer.computeRsaSha256Signature.mock.calls;
+    const signCalls = signer.signRsaSha256.mock.calls;
     const signingInput = String(signCalls[0]?.[0]);
     const parts = signingInput.split('.');
     expect(parts).toHaveLength(2);

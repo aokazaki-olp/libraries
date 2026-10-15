@@ -28,6 +28,8 @@ const API_VERSION_PATTERN = /^v\d+\.\d+$/;
 interface SalesforceClientOptions {
   apiVersion?: string;
   maxRetries?: number;
+  /** 5xx・通信エラーで再送するメソッド（既定は冪等なメソッドだけ。429 はメソッドを問わず再送） */
+  retryMethods?: readonly string[];
   baseDelayMs?: number;
   logger?: Logger;
   transport?: Transport;
@@ -42,7 +44,7 @@ interface SalesforceClientOptions {
  * @returns クライアント (call/get/post/put/patch/delete/use/extend)。レスポンスは検証前の unknown。
  *   型を付けるときは呼び出し側で decode する（CODING_RULES.md §2.7）
  * @throws {TypeError} instanceUrl / accessToken が空文字の場合、apiVersion の形式が不正な場合、
- *   maxRetries / baseDelayMs が不正な場合、logger が Logger として使えない場合
+ *   maxRetries / baseDelayMs / retryMethods が不正な場合、logger が Logger として使えない場合
  */
 const create = (
   instanceUrl: string,
@@ -61,6 +63,7 @@ const create = (
   const {
     apiVersion = DEFAULT_API_VERSION,
     maxRetries = DEFAULT_MAX_RETRIES,
+    retryMethods,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     logger,
     transport: injectedTransport,
@@ -82,11 +85,10 @@ const create = (
     baseUrl,
     transport: injectedTransport ?? HttpCore.createTransport(),
     headers: { Accept: 'application/json' },
-    logger,
     responseHandler: (response) => response.body,
   })
     .extend((t) => ApiClient.withBearerAuth(t, accessToken))
-    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => HttpCore.withRetry(t, { maxRetries, baseDelayMs, retryMethods, logger }))
     .extend((t) => HttpCore.withLogger(t, logger));
 };
 

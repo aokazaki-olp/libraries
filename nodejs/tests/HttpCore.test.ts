@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpCore } from '../src/HttpCore.ts';
+import type { RetryOptions } from '../src/HttpCore.ts';
 import { HttpError, RequestValidationError, RetryExhaustedError } from '../src/httpTypes.ts';
 import type { RawResponse } from '../src/httpTypes.ts';
 import type { Got } from 'got';
@@ -486,5 +487,67 @@ describe('HttpCore.createTransport — got 統合', () => {
 
     const calledOptions = mockGotFn.mock.calls[0]?.[1];
     expect(calledOptions.timeout).toHaveProperty('request', 3000);
+  });
+});
+
+describe('HttpCore.withRetry — 再送するメソッド', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const failingOnce = (error: unknown) => {
+    let calls = 0;
+    const transport = makeTransport(async () => {
+      calls++;
+      if (calls === 1) {
+        throw error;
+      }
+      return makeRawResponse();
+    });
+    return { transport, count: () => calls };
+  };
+
+  it('POST の 5xx は既定では再送しない（処理済みの要求を重複させない）', async () => {
+    const error = new HttpError('503', 503, null);
+    const { transport, count } = failingOnce(error);
+    const retrying = HttpCore.withRetry(transport, { baseDelayMs: 1 });
+
+    await expect(retrying.fetch('https://example.com', { method: 'POST' })).rejects.toBe(error);
+    expect(count()).toBe(1);
+  });
+
+  it('POST の通信エラーも既定では再送しない', async () => {
+    const error = new Error('ECONNRESET');
+    const { transport, count } = failingOnce(error);
+    const retrying = HttpCore.withRetry(transport, { baseDelayMs: 1 });
+
+    await expect(retrying.fetch('https://example.com', { method: 'post' })).rejects.toBe(error);
+    expect(count()).toBe(1);
+  });
+
+  it('POST でも 429 は再送する（サーバーが処理を拒んだ応答）', async () => {
+    const { transport, count } = failingOnce(new HttpError('429', 429, null));
+    const retrying = HttpCore.withRetry(transport, { baseDelayMs: 1 });
+
+    const promise = retrying.fetch('https://example.com', { method: 'POST' });
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBeDefined();
+    expect(count()).toBe(2);
+  });
+
+  it('retryMethods に足した POST は 5xx で再送する', async () => {
+    const { transport, count } = failingOnce(new HttpError('503', 503, null));
+    const retrying = HttpCore.withRetry(transport, { baseDelayMs: 1, retryMethods: ['post'] });
+
+    const promise = retrying.fetch('https://example.com', { method: 'POST' });
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBeDefined();
+    expect(count()).toBe(2);
+  });
+
+  it('retryMethods が文字列の配列でなければ作成時に TypeError', () => {
+    const transport = makeTransport(async () => makeRawResponse());
+    // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
+    const options: RetryOptions = { retryMethods: 'POST' };
+    expect(() => HttpCore.withRetry(transport, options)).toThrow(TypeError);
   });
 });

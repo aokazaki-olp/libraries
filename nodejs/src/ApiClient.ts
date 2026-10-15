@@ -9,7 +9,6 @@
  *   - call() が async になった以外、GAS版と同じAPI
  */
 
-import type { Logger } from './LoggerFacade.ts';
 import { HttpCore } from './HttpCore.ts';
 import { RequestValidationError } from './httpTypes.ts';
 import type { FetchOptions, RawResponse, RequestOptions, Transport } from './httpTypes.ts';
@@ -153,7 +152,6 @@ type BaseClient<
 interface ClientConfig<TResponse = RawResponse> {
   baseUrl: string;
   transport?: Transport;
-  logger?: Logger;
   headers?: Record<string, string>;
   /** 省略時は RawResponse をそのまま返す */
   responseHandler?: ResponseHandler<TResponse>;
@@ -248,7 +246,6 @@ const buildClient = <TResponse>(
   const extend = (decorator: (transport: Transport) => Transport): BaseClient<TResponse> =>
     buildClient<TResponse>({
       baseUrl,
-      logger: config.logger,
       headers: HttpCore.cloneHeaders(headers),
       transport: decorator(transport),
       responseHandler,

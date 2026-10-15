@@ -21,6 +21,14 @@ import { sleep } from './shared/sleep.ts';
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
 
+/**
+ * 5xx・通信エラーで再送してよい既定のメソッド（RFC 9110 §9.2.2 の冪等なメソッド）
+ *
+ * POST / PATCH は、サーバー側で処理済みでも応答が失われれば再送され、ジョブやメッセージが重複しうる。
+ * 429 はサーバーが処理を拒んだ応答なので、メソッドを問わず再送する。
+ */
+const IDEMPOTENT_METHODS: readonly string[] = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'DELETE'];
+
 // ============================================================================
 // ユーティリティ
 // ============================================================================
@@ -35,6 +43,47 @@ const mergeHeaders = (
 const hasHeader = (headers: Record<string, string>, key: string): boolean => {
   const needle = key.toLowerCase();
   return Object.keys(headers).some((k) => k.toLowerCase() === needle);
+};
+
+/**
+ * 失敗した要求を再送してよいかを決める（withRetry / SlackCore.withRetry 共通）
+ *
+ * @param e - Transport が投げた値
+ * @param method - 要求のメソッド
+ * @param retryMethods - 5xx・通信エラーで再送してよいメソッド
+ * @returns 再送してよいなら true
+ */
+const isRetryable = (e: unknown, method: string, retryMethods: readonly string[]): boolean => {
+  // 組み立ての誤りは再送しても変わらない。RetryExhaustedError は二重に包まない
+  if (e instanceof RequestValidationError || e instanceof RetryExhaustedError) {
+    return false;
+  }
+  if (e instanceof HttpError) {
+    if (e.status === 429) {
+      return true;
+    }
+    if (e.status < 500 || e.status >= 600) {
+      return false;
+    }
+  }
+  // 5xx と、ネットワークエラー・タイムアウト等の Transport 層エラー
+  // （fetch ベースの Transport は通信障害を TypeError で投げるので、TypeError も対象）
+  return retryMethods.includes(method.toUpperCase());
+};
+
+/**
+ * retryMethods を検査して大文字にそろえる
+ *
+ * @throws {TypeError} 文字列の配列でない場合
+ */
+const normalizeRetryMethods = (retryMethods: unknown): readonly string[] => {
+  if (retryMethods === undefined) {
+    return IDEMPOTENT_METHODS;
+  }
+  if (!Array.isArray(retryMethods) || !retryMethods.every((m) => typeof m === 'string')) {
+    throw new TypeError('retryMethods には HTTP メソッド名（string）の配列を指定してください');
+  }
+  return retryMethods.map((m: string) => m.toUpperCase());
 };
 
 /** HTTP メソッドの構文（RFC 9110 §9.1 の method = token） */
@@ -171,39 +220,29 @@ const createTransport = (dependencies?: TransportDependencies): Transport => {
 interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
+  /** 5xx・通信エラーで再送するメソッド。既定は冪等なメソッドだけ（429 はメソッドを問わず再送） */
+  retryMethods?: readonly string[];
   logger?: Logger;
 }
-
-const shouldRetry = (e: unknown): boolean => {
-  if (e instanceof HttpError) {
-    return e.status === 429 || (e.status >= 500 && e.status < 600);
-  }
-  // 組み立ての誤りは再送しても変わらない。RetryExhaustedError は二重に包まない
-  if (e instanceof RequestValidationError || e instanceof RetryExhaustedError) {
-    return false;
-  }
-  // ネットワークエラー・タイムアウト等の Transport 層エラーをリトライ対象とする
-  // （fetch ベースの Transport は通信障害を TypeError で投げるので、TypeError も対象）
-  return true;
-};
 
 /**
  * 指数バックオフリトライ機能をTransportに追加する
  *
- * メソッドを問わず再送する。POST / PATCH のような冪等でないリクエストは、サーバー側で処理済みでも
- * 応答が 5xx・通信エラーになれば再送され、ジョブやメッセージが重複しうる。避けたい場合は
- * maxRetries: 0 で作ったクライアントで送る。
+ * 429 はメソッドを問わず再送する。5xx・通信エラーで再送するのは retryMethods のメソッドだけで、
+ * 既定は冪等なメソッド（GET / HEAD / OPTIONS / TRACE / PUT / DELETE）。POST / PATCH を再送すると、
+ * サーバー側で処理済みの要求が重複しうる。重複しても害の無い POST は retryMethods に足す。
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定
  * @returns リトライ機能付きTransport。fetchOptions.signal が中断されたらリトライも待機もやめ、
  *   中断理由（signal.reason）を投げる。リトライ上限に達したら RetryExhaustedError を投げる
- * @throws {TypeError} maxRetries / baseDelayMs が不正な場合
+ * @throws {TypeError} maxRetries / baseDelayMs / retryMethods が不正な場合
  */
 const withRetry = (transport: Transport, options: RetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   assertRetryOptions(maxRetries, baseDelayMs);
+  const retryMethods = normalizeRetryMethods(options.retryMethods);
   const log = LoggerFacade.createLogger(options.logger);
 
   return {
@@ -219,7 +258,7 @@ const withRetry = (transport: Transport, options: RetryOptions = {}): Transport 
           if (fetchOptions?.signal?.aborted === true) {
             throw abortReason(fetchOptions.signal);
           }
-          if (!shouldRetry(e)) {
+          if (!isRetryable(e, method, retryMethods)) {
             throw e;
           }
 
@@ -295,6 +334,8 @@ export const HttpCore = {
   mergeHeaders,
   hasHeader,
   assertRetryOptions,
+  isRetryable,
+  normalizeRetryMethods,
   createTransport,
   withRetry,
   withLogger,

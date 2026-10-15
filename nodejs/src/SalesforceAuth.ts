@@ -27,19 +27,22 @@ const JWT_LIFETIME_SEC = 180;
 // ============================================================================
 
 interface Signer {
-  computeRsaSha256Signature(input: string, privateKey: string): Buffer;
-  base64EncodeWebSafe(bytes: Buffer): string;
-  newBlob(text: string): Buffer;
+  /** input を RSA-SHA256 で署名する（privateKey は PEM 形式） */
+  signRsaSha256(input: string, privateKey: string): Buffer;
+  /** base64url に符号化する（末尾のパディングは付いていてもよい。呼び出し側で落とす） */
+  encodeBase64Url(bytes: Buffer): string;
+  /** 文字列を UTF-8 のバイト列にする */
+  toBytes(text: string): Buffer;
 }
 
 const defaultSigner: Signer = {
-  computeRsaSha256Signature: (input: string, privateKey: string): Buffer => {
+  signRsaSha256: (input: string, privateKey: string): Buffer => {
     const sign = createSign('RSA-SHA256');
     sign.update(input);
     return sign.sign(privateKey);
   },
-  base64EncodeWebSafe: (bytes: Buffer): string => bytes.toString('base64url'),
-  newBlob: (text: string): Buffer => Buffer.from(text, 'utf-8'),
+  encodeBase64Url: (bytes: Buffer): string => bytes.toString('base64url'),
+  toBytes: (text: string): Buffer => Buffer.from(text, 'utf-8'),
 };
 
 // ============================================================================
@@ -101,7 +104,7 @@ interface JwtParams {
 // 注入された Signer はパディング付きの base64url を返しうる（GAS の Utilities.base64EncodeWebSafe 等）。
 // JWT（RFC 7515）はパディングを付けないので落とす
 const base64UrlEncode = (signer: Signer, bytes: Buffer): string =>
-  signer.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+  signer.encodeBase64Url(bytes).replace(/=+$/, '');
 
 const buildJwt = (signer: Signer, params: JwtParams): string => {
   const { consumerKey, username, audience, privateKey } = params;
@@ -114,12 +117,12 @@ const buildJwt = (signer: Signer, params: JwtParams): string => {
     exp: now + JWT_LIFETIME_SEC,
   };
 
-  const headerBytes = signer.newBlob(JSON.stringify(header));
-  const claimsBytes = signer.newBlob(JSON.stringify(claims));
+  const headerBytes = signer.toBytes(JSON.stringify(header));
+  const claimsBytes = signer.toBytes(JSON.stringify(claims));
   const headerB64 = base64UrlEncode(signer, headerBytes);
   const claimsB64 = base64UrlEncode(signer, claimsBytes);
   const signingInput = `${headerB64}.${claimsB64}`;
-  const signature = signer.computeRsaSha256Signature(signingInput, privateKey);
+  const signature = signer.signRsaSha256(signingInput, privateKey);
   return `${signingInput}.${base64UrlEncode(signer, signature)}`;
 };
 
@@ -270,7 +273,13 @@ const getAccessTokenByJwt = async (
   const transport =
     dependencies.transport ??
     HttpCore.withLogger(
-      HttpCore.withRetry(HttpCore.createTransport(), { maxRetries, baseDelayMs, logger }),
+      HttpCore.withRetry(HttpCore.createTransport(), {
+        maxRetries,
+        baseDelayMs,
+        // トークンの発行は重複しても害が無い（後から発行したトークンも有効）ので POST も再送する
+        retryMethods: ['POST'],
+        logger,
+      }),
       logger,
     );
 

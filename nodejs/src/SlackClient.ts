@@ -13,7 +13,7 @@ import { LoggerFacade } from './LoggerFacade.ts';
 import type { Logger } from './LoggerFacade.ts';
 import { ApiClient } from './ApiClient.ts';
 import { HttpCore } from './HttpCore.ts';
-import { HttpError, RequestValidationError, RetryExhaustedError } from './httpTypes.ts';
+import { HttpError, RetryExhaustedError } from './httpTypes.ts';
 import type { BaseClient } from './ApiClient.ts';
 import type { CallOptions, FetchOptions, RawResponse, Transport } from './httpTypes.ts';
 import { abortReason } from './shared/abort.ts';
@@ -50,6 +50,11 @@ const DEFAULT_BASE_DELAY_MS = 1000;
 interface SlackRetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
+  /**
+   * 5xx・通信エラーで再送するメソッド。既定は冪等なメソッドだけ（HttpCore.withRetry と同じ）。
+   * Slack Web API はすべて POST なので、既定では 429 だけを再送する（chat.postMessage の重複を避ける）
+   */
+  retryMethods?: readonly string[];
   logger?: Logger;
 }
 
@@ -73,15 +78,20 @@ const retryAfterMs = (headers: Record<string, string | string[]>): number => {
 /**
  * 例外からリトライ方針を決める。リトライしないなら null
  *
+ * 再送するかは HttpCore.isRetryable で決める（429 は常に、5xx・通信エラーは retryMethods のメソッドだけ）。
  * - 429: Retry-After を尊重する
  * - 5xx・ネットワークエラー等: 指数バックオフ
- * - 4xx（429 以外）・RequestValidationError（組み立ての誤り）・RetryExhaustedError（二重ラップ防止）: リトライしない
- *   （fetch ベースの Transport は通信障害を TypeError で投げるので、TypeError 一般はリトライ対象）
  */
-const planRetry = (e: unknown, attempt: number, baseDelayMs: number): RetryPlan | null => {
+const planRetry = (
+  e: unknown,
+  attempt: number,
+  baseDelayMs: number,
+  method: string,
+  retryMethods: readonly string[],
+): RetryPlan | null => {
   const backoffMs = 2 ** attempt * baseDelayMs;
 
-  if (e instanceof RetryExhaustedError || e instanceof RequestValidationError) {
+  if (!HttpCore.isRetryable(e, method, retryMethods)) {
     return null;
   }
   if (!(e instanceof HttpError)) {
@@ -95,30 +105,28 @@ const planRetry = (e: unknown, attempt: number, baseDelayMs: number): RetryPlan 
       reason: ' (HTTP 429)',
     };
   }
-  if (e.status >= 500 && e.status < 600) {
-    return {
-      delayMs: backoffMs,
-      label: ` status=${String(e.status)}`,
-      reason: ` (HTTP ${String(e.status)})`,
-    };
-  }
-  return null;
+  return {
+    delayMs: backoffMs,
+    label: ` status=${String(e.status)}`,
+    reason: ` (HTTP ${String(e.status)})`,
+  };
 };
 
 /**
  * Slack用のリトライ機能をTransportに追加する。
- * HTTP 429 の際は Retry-After ヘッダーを尊重し、5xx は指数バックオフで再試行する。
+ * HTTP 429 の際は Retry-After ヘッダーを尊重し、5xx・通信エラーは retryMethods のメソッドだけ指数バックオフで再試行する。
  *
  * @param transport - ラップ対象Transport
  * @param options - リトライ設定
  * @returns リトライ機能付きTransport。signal が中断されたらリトライも待機もやめて中断理由を投げ、
  *   上限に達したら RetryExhaustedError を投げる
- * @throws {TypeError} maxRetries / baseDelayMs が不正な場合
+ * @throws {TypeError} maxRetries / baseDelayMs / retryMethods が不正な場合
  */
 const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Transport => {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   HttpCore.assertRetryOptions(maxRetries, baseDelayMs);
+  const retryMethods = HttpCore.normalizeRetryMethods(options.retryMethods);
   const log = LoggerFacade.createLogger(options.logger);
 
   return {
@@ -130,7 +138,7 @@ const withRetry = (transport: Transport, options: SlackRetryOptions = {}): Trans
         try {
           return await transport.fetch(url, fetchOptions);
         } catch (e) {
-          const plan = planRetry(e, attempt, baseDelayMs);
+          const plan = planRetry(e, attempt, baseDelayMs, method, retryMethods);
           // 呼び出し側が中断したものは再送しない。どの時点で気づいても中断理由を投げる
           if (fetchOptions?.signal?.aborted === true) {
             throw abortReason(fetchOptions.signal);
@@ -185,6 +193,8 @@ const slackResponseHandler = (response: RawResponse): unknown => {
 
 interface SlackApiClientOptions {
   maxRetries?: number;
+  /** 5xx・通信エラーで再送するメソッド（既定は冪等なメソッドだけ。429 はメソッドを問わず再送） */
+  retryMethods?: readonly string[];
   baseDelayMs?: number;
   logger?: Logger;
   transport?: Transport;
@@ -196,7 +206,7 @@ interface SlackApiClientOptions {
  * @param token - Slack API トークン
  * @param options - オプション設定
  * @returns クライアント（call/get/post/put/patch/delete/use/extend）
- * @throws {TypeError} token が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合、
+ * @throws {TypeError} token が空文字または文字列でない場合、maxRetries / baseDelayMs / retryMethods が不正な場合、
  *   logger が Logger として使えない場合
  */
 const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}): BaseClient => {
@@ -205,6 +215,7 @@ const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}
   }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
+    retryMethods,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     logger,
     transport: injectedTransport,
@@ -213,11 +224,10 @@ const createSlackApiClient = (token: string, options: SlackApiClientOptions = {}
   return ApiClient.createClient({
     baseUrl: SLACK_BASE_URL,
     transport: injectedTransport ?? HttpCore.createTransport(),
-    logger,
     responseHandler: slackResponseHandler,
   })
     .extend((t) => ApiClient.withBearerAuth(t, token))
-    .extend((t) => withRetry(t, { maxRetries, baseDelayMs, logger }))
+    .extend((t) => withRetry(t, { maxRetries, baseDelayMs, retryMethods, logger }))
     .extend((t) => HttpCore.withLogger(t, logger));
 };
 
@@ -240,6 +250,8 @@ interface SlackPayload {
 
 interface SlackWebhookOptions {
   maxRetries?: number;
+  /** 5xx・通信エラーで再送するメソッド（既定は冪等なメソッドだけ。429 はメソッドを問わず再送） */
+  retryMethods?: readonly string[];
   baseDelayMs?: number;
   timeoutMs?: number;
   logger?: Logger;
@@ -257,7 +269,7 @@ interface SlackWebhookInstance {
  * @param options - オプション設定
  * @returns { send } クライアント。send は、リトライ上限に達すると RetryExhaustedError、
  *   Slack Webhook が非2xxを返すと HttpError、signal が中断されるとその理由を投げる
- * @throws {TypeError} webhookUrl が空文字または文字列でない場合、maxRetries / baseDelayMs が不正な場合、
+ * @throws {TypeError} webhookUrl が空文字または文字列でない場合、maxRetries / baseDelayMs / retryMethods が不正な場合、
  *   logger が Logger として使えない場合
  */
 const createWebhookClient = (
@@ -269,6 +281,7 @@ const createWebhookClient = (
   }
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
+    retryMethods,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     timeoutMs,
     logger,
@@ -276,10 +289,14 @@ const createWebhookClient = (
   } = options;
 
   HttpCore.assertRetryOptions(maxRetries, baseDelayMs);
+  // maxRetries: 0 だと withRetry を作らないので、ここで検査しておく
+  HttpCore.normalizeRetryMethods(retryMethods);
 
   const baseTransport = injectedTransport ?? HttpCore.createTransport();
   const transport = HttpCore.withLogger(
-    maxRetries > 0 ? withRetry(baseTransport, { maxRetries, baseDelayMs, logger }) : baseTransport,
+    maxRetries > 0
+      ? withRetry(baseTransport, { maxRetries, baseDelayMs, retryMethods, logger })
+      : baseTransport,
     logger,
   );
 

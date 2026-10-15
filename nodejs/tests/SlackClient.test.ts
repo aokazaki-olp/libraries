@@ -292,6 +292,7 @@ describe('SlackCore.withRetry — ロギング', () => {
     const retrying = SlackCore.withRetry(transport, {
       maxRetries: 3,
       baseDelayMs: 10,
+      retryMethods: ['POST'],
       logger,
     });
     const promise = retrying.fetch('https://slack.com/api/test', { method: 'POST' });
