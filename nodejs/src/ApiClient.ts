@@ -128,20 +128,30 @@ type HttpMethods<TResponse> = {
   delete(endpoint: string, options?: MethodOptions): Promise<TResponse>;
 };
 
-type BaseClient<
-  TResponse = unknown,
-  TMethods extends object = Record<string, never>,
-> = HttpMethods<TResponse> &
+/** 追加メソッドの無い状態（keyof が never になるので、HTTP メソッドを 1 つも隠さない） */
+type NoMethods = object;
+
+/**
+ * クライアントの型
+ *
+ * plugin が HTTP メソッド名（delete 等）を定義した場合、実行時は plugin が勝つ。型も同じにするため、
+ * 上書きされた HTTP メソッドを Omit で外す（交差型のままだと元のシグネチャと混ざり、誤った呼び出しが通る）。
+ */
+type BaseClient<TResponse = unknown, TMethods extends object = NoMethods> = Omit<
+  HttpMethods<TResponse>,
+  keyof TMethods
+> &
   TMethods & {
     call(request: RequestOptions): Promise<TResponse>;
     // extend はトランスポートのみ差し替え、追加メソッドはリセットされる（use()で再追加する）
     extend(decorator: (transport: Transport) => Transport): BaseClient<TResponse>;
+    // plugin には追加メソッドを持たないコアのクライアントを渡す（他の plugin の上書きの影響を受けない）
     use<TNew extends object>(
-      plugin: (client: BaseClient<TResponse, TMethods>) => TNew,
+      plugin: (client: BaseClient<TResponse>) => TNew,
     ): BaseClient<TResponse, TMethods & TNew>;
     use<TName extends string, TFn>(
       name: TName,
-      factory: (client: BaseClient<TResponse, TMethods>) => TFn,
+      factory: (client: BaseClient<TResponse>) => TFn,
     ): BaseClient<TResponse, TMethods & Record<TName, TFn>>;
   };
 
@@ -257,25 +267,25 @@ const buildClient = <TResponse>(
     type Client = BaseClient<TResponse, TMethods>;
 
     function use<TNew extends object>(
-      plugin: (c: Client) => TNew,
+      plugin: (core: BaseClient<TResponse>) => TNew,
     ): BaseClient<TResponse, TMethods & TNew>;
     function use<TName extends string, TFn>(
       name: TName,
-      factory: (c: Client) => TFn,
+      factory: (core: BaseClient<TResponse>) => TFn,
     ): BaseClient<TResponse, TMethods & Record<TName, TFn>>;
     function use(
-      pluginOrName: ((c: Client) => unknown) | string,
-      factory?: (c: Client) => unknown,
-    ): BaseClient<TResponse, object> {
+      pluginOrName: ((core: BaseClient<TResponse>) => unknown) | string,
+      factory?: (core: BaseClient<TResponse>) => unknown,
+    ): unknown {
       let newMethods: unknown;
 
       if (typeof pluginOrName === 'string') {
         if (!factory) {
           throw new TypeError('use(name, factory) の形式では factory を指定してください');
         }
-        newMethods = { [pluginOrName]: factory(client) };
+        newMethods = { [pluginOrName]: factory(coreClient) };
       } else {
-        newMethods = pluginOrName(client);
+        newMethods = pluginOrName(coreClient);
       }
       // plugin は利用者が書く境界。型が通っていても JS からは何でも返りうる
       if (typeof newMethods !== 'object' || newMethods === null || Array.isArray(newMethods)) {
@@ -337,8 +347,9 @@ const buildClient = <TResponse>(
     return client;
   };
 
-  // 追加メソッド無しの初期クライアント。空オブジェクトを空メソッド集合の起点にする
-  return createExtended<Record<string, never>>({});
+  // 追加メソッド無しの初期クライアント。plugin にはこれを渡す（use() が呼ばれるのは代入の後）
+  const coreClient = createExtended<NoMethods>({});
+  return coreClient;
 };
 
 export const ApiClient = {

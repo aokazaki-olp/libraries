@@ -353,3 +353,33 @@ describe('ApiClient.createClient — デフォルトヘッダー', () => {
     expect(transport.calls[0]?.options?.headers?.['X-Custom']).toBe('override');
   });
 });
+
+describe('ApiClient.createClient — use() の型と plugin に渡すクライアント', () => {
+  it('plugin が上書きした HTTP メソッドは、型の上でも元のシグネチャを持たない', async () => {
+    const transport = mockTransport({ status: 200, body: null });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://example.com',
+      transport,
+      responseHandler: (response) => response.body,
+    }).use(SalesforceApiClientPlugins.sobject('Account'));
+
+    // @ts-expect-error -- sobject の delete(id) に HTTP の delete(endpoint, options) のつもりで渡せない
+    await client.delete('/sobjects/Contact/003', { headers: {} });
+    expect(transport.calls[0]?.url).toContain('/sobjects/Account/');
+  });
+
+  it('plugin には他の plugin の上書きを含まないコアのクライアントが渡る', async () => {
+    const transport = mockTransport({ status: 200, body: null });
+    const client = ApiClient.createClient({
+      baseUrl: 'https://example.com',
+      transport,
+      responseHandler: (response) => response.body,
+    })
+      .use(() => ({ get: () => Promise.resolve('overridden') }))
+      .use((core) => ({ fetchItems: () => core.get('/items') }));
+
+    await client.fetchItems();
+
+    expect(transport.calls[0]?.url).toContain('/items');
+  });
+});

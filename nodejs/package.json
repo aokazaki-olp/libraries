@@ -2,6 +2,12 @@
   "name": "libraries-nodejs",
   "version": "1.0.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "engines": {
     "node": ">=24.12.0"
   },
