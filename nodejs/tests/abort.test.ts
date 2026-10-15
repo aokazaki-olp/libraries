@@ -7,7 +7,7 @@ import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SlackCore, SlackWebhookClient } from '../src/SlackClient.ts';
 import { HttpError } from '../src/httpTypes.ts';
 import type { Got } from 'got';
-import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
+import { SalesforceBulk } from '../src/SalesforceBulk.ts';
 import { sleep } from '../src/shared/sleep.ts';
 import { makeRawResponse, makeTransport } from './helpers.ts';
 
@@ -245,7 +245,7 @@ describe('中断されたらリトライしない', () => {
       Promise.resolve(makeRawResponse({ body: { id: 'job001', state: 'InProgress' } })),
     );
     const sf = SalesforceApiClient.create('https://x.my.salesforce.com', 't', { transport });
-    const bulk = SalesforceApiClientPlugins.bulkIngest(sf);
+    const bulk = SalesforceBulk.bulkIngest(sf);
     const controller = new AbortController();
 
     const promise = bulk.waitForCompletion('job001', {

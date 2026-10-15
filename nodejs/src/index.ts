@@ -53,24 +53,8 @@ export type {
 export { SalesforceAuth } from './SalesforceAuth.ts';
 export type { JwtOptions, JwtDependencies, TokenResult, Signer } from './SalesforceAuth.ts';
 
-export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient.ts';
+export { SalesforceBulk } from './SalesforceBulk.ts';
 export type {
-  SlackApiClientOptions,
-  SlackWebhookOptions,
-  SlackPayload,
-  SlackWebhookInstance,
-} from './SlackClient.ts';
-
-// ============================================================================
-// プラグイン
-// ============================================================================
-
-export { SalesforceApiClientPlugins } from './plugins/salesforce.ts';
-export type {
-  SoqlResult,
-  SoqlMethods,
-  SobjectMethods,
-  SobjectCreateResult,
   IngestOperation,
   IngestState,
   QueryOperation,
@@ -92,8 +76,28 @@ export type {
   ValidationError,
   ValidationWarning,
   ValidationResult,
-  BulkIngestPlugin,
-  BulkQueryPlugin,
+  BulkIngestClient,
+  BulkQueryClient,
+} from './SalesforceBulk.ts';
+
+export { SlackApiClient, SlackWebhookClient, SlackApiError } from './SlackClient.ts';
+export type {
+  SlackApiClientOptions,
+  SlackWebhookOptions,
+  SlackPayload,
+  SlackWebhookInstance,
+} from './SlackClient.ts';
+
+// ============================================================================
+// プラグイン
+// ============================================================================
+
+export { SalesforceApiClientPlugins } from './plugins/salesforce.ts';
+export type {
+  SoqlResult,
+  SoqlMethods,
+  SobjectMethods,
+  SobjectCreateResult,
 } from './plugins/salesforce.ts';
 
 export { SlackPlugins } from './plugins/slack.ts';

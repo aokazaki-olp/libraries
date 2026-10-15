@@ -9,6 +9,7 @@ import { SalesforceApiClient } from '../src/SalesforceApiClient.ts';
 import { SlackApiClient } from '../src/SlackClient.ts';
 import type { FetchOptions, RawResponse } from '../src/httpTypes.ts';
 import { SalesforceApiClientPlugins } from '../src/plugins/salesforce.ts';
+import { SalesforceBulk } from '../src/SalesforceBulk.ts';
 import { SlackPlugins } from '../src/plugins/slack.ts';
 import { makeRawResponse, makeTransport } from './helpers.ts';
 
@@ -133,7 +134,7 @@ describe('sobject — 応答の検査と戻り値', () => {
 describe('bulk — ジョブ情報の検査', () => {
   it('state が既知の値でなければ Error（waitForCompletion が終わらなくなるのを防ぐ）', async () => {
     const { client } = salesforce(respond({ id: 'job001', state: 'Unknown' }));
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.getJob('job001')).rejects.toThrow('ジョブ情報の形式でない');
     await expect(bulk.waitForCompletion('job001', { intervalMs: 1 })).rejects.toThrow(
@@ -143,14 +144,14 @@ describe('bulk — ジョブ情報の検査', () => {
 
   it('id が無ければ Error', async () => {
     const { client } = salesforce(respond({ state: 'JobComplete' }));
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.getJob('job001')).rejects.toThrow('ジョブ情報の形式でない');
   });
 
   it('listJobs は records 配列と done を検査する', async () => {
     const { client } = salesforce(respond({ records: 'x', done: true }));
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.listJobs()).rejects.toThrow('ジョブ一覧の形式でない');
   });
@@ -159,7 +160,7 @@ describe('bulk — ジョブ情報の検査', () => {
     const { client } = salesforce(
       respond({ records: [{ id: 'j', state: 'Open' }], done: true, nextRecordsUrl: null }),
     );
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.listJobs()).resolves.toEqual({
       records: [{ id: 'j', state: 'Open' }],
@@ -208,7 +209,7 @@ describe('プラグインのメソッドは callOptions.signal を Transport に
       }
       return Promise.resolve(makeRawResponse({ body: { id: 'job001', state: 'Open' } }));
     });
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await bulk.createJob({ operation: 'insert', object: 'Account' }, { signal });
     await bulk.upload('job001', 'Id\n001', { signal });
@@ -235,7 +236,7 @@ describe('プラグインのメソッドは callOptions.signal を Transport に
       }
       return Promise.resolve(makeRawResponse({ body: { id: 'q1', state: 'JobComplete' } }));
     });
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await bulk.createJob({ operation: 'query', query: 'SELECT Id FROM Account' }, { signal });
     await bulk.abort('q1', { signal });
@@ -295,7 +296,7 @@ describe('waitForCompletion の timeoutMs', () => {
           });
         }),
     );
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.waitForCompletion('job001', { timeoutMs: 50 })).rejects.toThrow(
       'がタイムアウトしました (50ms)',
@@ -316,7 +317,7 @@ describe('waitForCompletion の timeoutMs', () => {
         });
       });
     });
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(
       bulk.waitForCompletion('job001', { timeoutMs: 30, intervalMs: 1000 }),
@@ -336,7 +337,7 @@ describe('waitForCompletion の待ち時間の設定', () => {
     ['intervalMs がタイマーの上限超え', { intervalMs: 2 ** 31 }],
   ])('%s は TypeError（API を連打しない・すぐ打ち切らない）', async (_label, options) => {
     const { client, transport } = salesforce(job('InProgress'));
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.waitForCompletion('job001', options)).rejects.toThrow(TypeError);
     expect(transport.calls).toHaveLength(0);
@@ -348,7 +349,7 @@ describe('waitForCompletion の待ち時間の設定', () => {
     ['タイマーの上限超え', 3_000_000_000],
   ])('timeoutMs が %s でも取得して完了を返す', async (_label, timeoutMs) => {
     const { client } = salesforce(job('JobComplete'));
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.waitForCompletion('job001', { timeoutMs })).resolves.toMatchObject({
       state: 'JobComplete',
@@ -357,7 +358,7 @@ describe('waitForCompletion の待ち時間の設定', () => {
 
   it('timeoutMs が 0 でも 1 回は取得し、完了していれば返す', async () => {
     const { client, transport } = salesforce(job('JobComplete'));
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.waitForCompletion('job001', { timeoutMs: 0 })).resolves.toMatchObject({
       state: 'JobComplete',
@@ -367,7 +368,7 @@ describe('waitForCompletion の待ち時間の設定', () => {
 
   it('timeoutMs が 0 で未完了なら、1 回取得してタイムアウト', async () => {
     const { client, transport } = salesforce(job('InProgress'));
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.waitForCompletion('job001', { timeoutMs: 0 })).rejects.toThrow(
       'がタイムアウトしました (0ms)',
@@ -432,14 +433,14 @@ describe('CSV の取得は Transport が受けた文字列をそのまま返す'
 
   it('bulkIngest の結果 CSV', async () => {
     const { client } = salesforce(csvResponse('"Id"'));
-    const bulk = SalesforceApiClientPlugins.bulkIngest(client);
+    const bulk = SalesforceBulk.bulkIngest(client);
 
     await expect(bulk.getSuccessfulResults('j1')).resolves.toBe('"Id"');
   });
 
   it('bulkQuery の結果 CSV と Sforce-Locator', async () => {
     const { client } = salesforce(csvResponse('"Id"', { 'Sforce-Locator': 'LOC1' }));
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.getResults('q1')).resolves.toEqual({ csv: '"Id"', nextLocator: 'LOC1' });
   });
@@ -508,7 +509,7 @@ describe('soql / sobject / bulk — 作成時の引数の検査', () => {
 
   it('bulk にクライアントでない値を渡すと TypeError', () => {
     // @ts-expect-error -- 実行時の検査を確かめるため型に反する値を渡す
-    expect(() => SalesforceApiClientPlugins.bulkIngest({})).toThrow(TypeError);
+    expect(() => SalesforceBulk.bulkIngest({})).toThrow(TypeError);
   });
 
   it('id はパスに埋め込む前にエンコードする', async () => {
@@ -537,7 +538,7 @@ describe('ページ送りが進まない応答', () => {
     const { client } = salesforce(() =>
       Promise.resolve(makeRawResponse({ text: 'Id\n1', headers: { 'sforce-locator': 'L1' } })),
     );
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.getResultsParallel('q1')).rejects.toThrow('同じ値を繰り返しました');
   });
@@ -557,7 +558,7 @@ describe('ページ送りが進まない応答', () => {
         }),
       );
     });
-    const bulk = SalesforceApiClientPlugins.bulkQuery(client);
+    const bulk = SalesforceBulk.bulkQuery(client);
 
     await expect(bulk.getResultsParallel('q1')).resolves.toBe('Id\r\n1\r\n2');
   });
